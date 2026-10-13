@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ChevronRight, CirclePlus, Search, X } from 'lucide-react';
 import { judge, type Judgment, type Price, type Verdict } from '@stockup/domain';
 import { Alert, attempt, describeError, RetryAlert } from '@/components/editing';
+import { NewProductForm } from '@/components/product-form';
 import { verdictTone } from '@/components/verdict';
 import { api, type CategoryGroup, type Channel, type PriceRecord, type Product, type Promotion } from '@/lib/api';
 import { formatSize, formatStockLineGap, formatYuan } from '@/lib/format';
@@ -36,6 +37,9 @@ const card = 'bg-card rounded-2xl shadow-[0_1px_2px_rgba(30,41,36,.04),0_0_0_1px
 const rowRule =
   "relative [&:not(:first-child)]:before:bg-border [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:right-0 [&:not(:first-child)]:before:left-4 [&:not(:first-child)]:before:h-px [&:not(:first-child)]:before:content-['']";
 
+type Layout = 'narrow' | 'wide';
+type SearchFound = ReturnType<typeof useProductSearch>['found'];
+
 function yuan(cents: number) {
   return (cents / 100).toFixed(2);
 }
@@ -44,11 +48,34 @@ function perBase(product: Product) {
   return formatSize(product.baseSize, product.pricingUnit);
 }
 
+const wideScreen = '(min-width: 900px)';
+
+function useWideScreen() {
+  const [wide, setWide] = useState(() => window.matchMedia(wideScreen).matches);
+  useEffect(() => {
+    const media = window.matchMedia(wideScreen);
+    const onChange = () => setWide(media.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+  return wide;
+}
+
 export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): void }) {
+  const wide = useWideScreen();
   const [household, setHousehold] = useState<Household>();
   const [loadError, setLoadError] = useState<string>();
   const [productId, setProductId] = useHistoryState<string | undefined>('quickPriceProductId', undefined);
+  // Picking a product, even the one on screen, starts a fresh pricing.
+  const [picks, setPicks] = useState(0);
   const [query, setQuery] = useState('');
+  const trimmed = query.trim();
+  const { found, error: searchError } = useProductSearch(trimmed);
+  // The query whose first result Enter picks once its results arrive.
+  const [choosing, setChoosing] = useState<string>();
+  // The name a new product starts with, while the member creates it.
+  const [creating, setCreating] = useState<string>();
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -69,53 +96,147 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
     reload();
   }, [reload]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      // A slash typed into a field is text.
+      if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+      event.preventDefault();
+      searchRef.current?.select();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const product = household?.products.find((p) => p.id === productId && !p.archived);
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    setChoosing(undefined);
+  };
   const pick = (id: string) => {
     setProductId(id);
-    setQuery('');
+    setPicks((n) => n + 1);
+    changeQuery('');
+    setCreating(undefined);
+  };
+  const create = (name: string) => {
+    setCreating(name);
+    changeQuery('');
   };
 
-  return (
-    <div className={cn('mx-auto flex max-w-md flex-col gap-3 px-4 pt-3', product ? 'pb-36' : 'pb-8')}>
-      <div className="bg-background sticky top-0 z-10 -mx-4 px-4 pt-1 pb-2">
-        <label className={cn(card, 'flex h-12 items-center gap-2.5 rounded-[14px] px-4')}>
-          <Search className="text-muted-foreground size-[18px] shrink-0" />
-          <input
-            type="search"
-            aria-label="搜索商品"
-            placeholder={product ? '换一个商品' : '搜商品，拼音首字母也行'}
-            className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-base outline-none [&::-webkit-search-cancel-button]:hidden"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
-          />
-          {query && (
-            <button
-              type="button"
-              aria-label="清空搜索"
-              className="bg-border text-muted-foreground flex size-5 items-center justify-center rounded-full"
-              onClick={() => setQuery('')}
-            >
-              <X className="size-3" />
-            </button>
-          )}
-        </label>
-        {query.trim() && household && (
-          <SearchResults query={query.trim()} groups={household.groups} onPick={pick} />
-        )}
-      </div>
+  useEffect(() => {
+    if (choosing === undefined || found?.query !== choosing) return;
+    setChoosing(undefined);
+    const first = found.products[0];
+    if (first) pick(first.id);
+    else create(choosing);
+  }, [found, choosing]);
 
-      {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
-      {household && !query.trim() && !product && (
-        <ProductList groups={household.groups} products={household.products} onPick={pick} />
+  const search = (
+    <label className={cn(card, 'flex h-12 items-center gap-2.5 rounded-[14px] px-4')}>
+      <Search className="text-muted-foreground size-[18px] shrink-0" />
+      <input
+        ref={searchRef}
+        type="search"
+        aria-label="搜索商品"
+        aria-keyshortcuts="/"
+        placeholder={product ? '换一个商品' : '搜商品，拼音首字母也行'}
+        className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-base outline-none [&::-webkit-search-cancel-button]:hidden"
+        value={query}
+        onChange={(e) => changeQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') changeQuery('');
+          // Enter while an IME composes commits the composition.
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing && trimmed) {
+            e.preventDefault();
+            setChoosing(trimmed);
+          }
+        }}
+      />
+      {query && (
+        <button
+          type="button"
+          aria-label="清空搜索"
+          className="bg-border text-muted-foreground flex size-5 items-center justify-center rounded-full"
+          onClick={() => changeQuery('')}
+        >
+          <X className="size-3" />
+        </button>
       )}
-      {household && product && (
-        <QuickPrice
-          key={product.id}
-          product={product}
-          household={household}
-          onOpenProduct={() => onOpenProduct(product.id)}
-        />
+    </label>
+  );
+  const results = trimmed && household && (
+    <SearchResults
+      query={trimmed}
+      found={found}
+      error={searchError}
+      groups={household.groups}
+      onPick={pick}
+      onCreate={create}
+    />
+  );
+  const list = household && (
+    <ProductList groups={household.groups} products={household.products} selectedId={product?.id} onPick={pick} />
+  );
+  const newProduct = household && creating !== undefined && (
+    <NewProductForm
+      key={creating}
+      groups={household.groups}
+      defaultName={creating}
+      className={cn(card, 'border-0 p-4')}
+      onCancel={() => setCreating(undefined)}
+      onCreated={async (created) => {
+        await reload();
+        pick(created.id);
+      }}
+    />
+  );
+  const loadAlert = loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />;
+  const quickPrice = (layout: Layout) =>
+    household &&
+    product && (
+      <QuickPrice
+        key={`${product.id}:${picks}`}
+        layout={layout}
+        product={product}
+        household={household}
+        onOpenProduct={() => onOpenProduct(product.id)}
+      />
+    );
+
+  // Both layouts keep the search box and QuickPrice at the same place in the tree, so crossing the
+  // breakpoint, like rotating a tablet, keeps the search and the price being entered.
+  return (
+    <div
+      className={cn(
+        wide
+          ? 'mx-auto grid max-w-7xl grid-cols-[17rem_minmax(0,1fr)_21rem] items-start gap-5 px-5 py-4'
+          : 'mx-auto flex max-w-md flex-col gap-3 px-4 pt-3',
+        !wide && (product && !newProduct ? 'pb-36' : 'pb-8'),
+      )}
+    >
+      <div
+        className={
+          wide
+            ? 'sticky top-4 flex max-h-[calc(100svh-2rem)] flex-col gap-3 overflow-y-auto'
+            : 'bg-background sticky top-0 z-10 -mx-4 flex flex-col gap-2 px-4 pt-1 pb-2'
+        }
+      >
+        {search}
+        {wide && loadAlert}
+        {wide ? results || list : results}
+      </div>
+      {!wide && loadAlert}
+      {newProduct ? (
+        <div className="flex flex-col">{newProduct}</div>
+      ) : product ? (
+        quickPrice(wide ? 'wide' : 'narrow')
+      ) : wide ? (
+        household && (
+          <p className="text-muted-foreground col-span-2 py-16 text-center text-sm">从左侧选一个商品开始算价，按 / 搜索。</p>
+        )
+      ) : (
+        !trimmed && list
       )}
     </div>
   );
@@ -131,29 +252,46 @@ function categoryLabel(groups: CategoryGroup[], categoryId: string) {
 
 function SearchResults({
   query,
+  found,
+  error,
   groups,
   onPick,
+  onCreate,
 }: {
   query: string;
+  found: SearchFound;
+  error: string | undefined;
   groups: CategoryGroup[];
   onPick(id: string): void;
+  onCreate(name: string): void;
 }) {
-  const { found, error } = useProductSearch(query);
-
   if (error) return <Alert>{`搜索失败：${error}`}</Alert>;
   if (!found) return null;
   const stale = found.query !== query;
   return (
-    <section aria-label="搜索结果" aria-busy={stale} className={cn(card, 'mt-2 overflow-hidden', stale && 'opacity-50')}>
+    <section aria-label="搜索结果" aria-busy={stale} className={cn(card, 'overflow-hidden', stale && 'opacity-50')}>
       {found.products.length === 0 ? (
-        <p className="text-muted-foreground px-4 py-3.5 text-[15px]">没有找到「{found.query}」相关的商品。</p>
+        <div inert={stale} className="flex flex-col items-start gap-1.5 px-4 py-3.5">
+          <p className="text-muted-foreground text-[15px]">没有找到「{found.query}」相关的商品。</p>
+          <button
+            type="button"
+            className="flex h-9 items-center gap-2 text-[15px]"
+            onClick={() => onCreate(found.query)}
+          >
+            <CirclePlus className="text-muted-foreground size-4" />
+            <span className="decoration-primary underline decoration-2 underline-offset-[5px]">新建「{found.query}」</span>
+          </button>
+        </div>
       ) : (
         <ul inert={stale}>
-          {found.products.map((p) => (
+          {found.products.map((p, i) => (
             <li key={p.id} className={rowRule}>
               <button
                 type="button"
-                className="active:bg-muted flex w-full items-baseline justify-between gap-3 px-4 py-3.5 text-left"
+                className={cn(
+                  'active:bg-muted hover:bg-muted/60 flex w-full items-baseline justify-between gap-3 px-4 py-3.5 text-left',
+                  i === 0 && 'min-[900px]:bg-muted/60',
+                )}
                 onClick={() => onPick(p.id)}
               >
                 <span className="text-base">{p.name}</span>
@@ -170,24 +308,26 @@ function SearchResults({
 function ProductList({
   groups,
   products,
+  selectedId,
   onPick,
 }: {
   groups: CategoryGroup[];
   products: Product[];
+  selectedId: string | undefined;
   onPick(id: string): void;
 }) {
   const [groupId, setGroupId] = useHistoryState<string | undefined>('quickPriceGroupId', undefined);
   const active = products.filter((p) => !p.archived);
   if (active.length === 0) {
-    return <p className="text-muted-foreground px-1 py-8 text-center text-sm">还没有商品，先在「商品」页添加。</p>;
+    return <p className="text-muted-foreground px-1 py-8 text-center text-sm">还没有商品，搜索商品名就能新建。</p>;
   }
   const shownGroups = groups.filter(
     (g) => g.categories.some((c) => active.some((p) => p.categoryId === c.id)) && (!groupId || g.id === groupId),
   );
 
   return (
-    <>
-      <div role="tablist" aria-label="大类" className="-mx-4 flex gap-5 overflow-x-auto px-5">
+    <section aria-label="商品列表" className="flex flex-col gap-3">
+      <div role="tablist" aria-label="大类" className="-mx-4 flex shrink-0 gap-5 overflow-x-auto px-5 min-[900px]:mx-0 min-[900px]:px-1">
         {[{ id: undefined, name: '全部' }, ...groups].map((g) => (
           <button
             key={g.id ?? ''}
@@ -221,7 +361,8 @@ function ProductList({
                     <li key={p.id} className={rowRule}>
                       <button
                         type="button"
-                        className="active:bg-muted flex w-full items-center gap-3 px-4 py-3.5 text-left"
+                        aria-current={p.id === selectedId || undefined}
+                        className="active:bg-muted aria-[current]:bg-muted flex w-full items-center gap-3 px-4 py-3.5 text-left"
                         onClick={() => onPick(p.id)}
                       >
                         <span className="min-w-0 flex-1 truncate text-base">{p.name}</span>
@@ -246,7 +387,7 @@ function ProductList({
           }),
         )}
       </div>
-    </>
+    </section>
   );
 }
 
@@ -347,10 +488,12 @@ const bigInput =
   'numeric w-full min-w-0 bg-transparent text-right text-[28px] font-semibold outline-none placeholder:text-border';
 
 function QuickPrice({
+  layout,
   product,
   household,
   onOpenProduct,
 }: {
+  layout: Layout;
   product: Product;
   household: Household;
   onOpenProduct(): void;
@@ -457,31 +600,25 @@ function QuickPrice({
     setPending(false);
   }
 
-  return (
-    <>
-      <section aria-label="商品" className={cn(card, 'p-4')}>
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-[22px] leading-7 font-semibold tracking-[0.01em]">{product.name}</h2>
-          <button type="button" className="text-muted-foreground flex shrink-0 items-center text-xs" onClick={onOpenProduct}>
-            每 {perBase(product)} · 详情
-            <ChevronRight className="size-3.5" />
-          </button>
-        </div>
-        <div className="mt-3">
-          {loadError ? (
-            <RetryAlert message={`价格记录加载失败：${loadError}`} onRetry={loadRecords} />
-          ) : (
-            records && (
-              <PriceRuler
-                references={references}
-                unitPrice={priced?.unitPrice ?? null}
-                verdictClass={tone?.solid ?? 'bg-skip'}
-              />
-            )
-          )}
-        </div>
-      </section>
+  const heading = (
+    <div className="flex items-baseline justify-between gap-3">
+      <h2 className="text-[22px] leading-7 font-semibold tracking-[0.01em]">{product.name}</h2>
+      <button type="button" className="text-muted-foreground flex shrink-0 items-center text-xs" onClick={onOpenProduct}>
+        每 {perBase(product)} · 详情
+        <ChevronRight className="size-3.5" />
+      </button>
+    </div>
+  );
+  const ruler = loadError ? (
+    <RetryAlert message={`价格记录加载失败：${loadError}`} onRetry={loadRecords} />
+  ) : (
+    records && (
+      <PriceRuler references={references} unitPrice={priced?.unitPrice ?? null} verdictClass={tone?.solid ?? 'bg-skip'} />
+    )
+  );
 
+  const entry = (
+    <>
       <form
         aria-label="快速算价"
         className={cn(card, 'overflow-hidden')}
@@ -495,6 +632,7 @@ function QuickPrice({
             id={`${id}-list`}
             inputMode="decimal"
             autoComplete="off"
+            autoFocus={layout === 'wide'}
             placeholder="0.00"
             className={bigInput}
             value={listPrice}
@@ -686,52 +824,91 @@ function QuickPrice({
       </section>
 
       {error && <Alert>{error}</Alert>}
+    </>
+  );
 
-      <div className="fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-md px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {saved && (
-          <p role="status" className="bg-foreground text-background mb-2 flex items-center justify-between rounded-xl px-4 py-2.5 text-sm">
-            {saved}
-            <button type="button" className="decoration-primary underline decoration-2 underline-offset-4" onClick={onOpenProduct}>
-              查看记录
-            </button>
-          </p>
+  const savedStatus = saved && (
+    <p role="status" className="bg-foreground text-background flex items-center justify-between rounded-xl px-4 py-2.5 text-sm">
+      {saved}
+      <button type="button" className="decoration-primary underline decoration-2 underline-offset-4" onClick={onOpenProduct}>
+        查看记录
+      </button>
+    </p>
+  );
+  const verdictOutput = (
+    <output aria-label="判断" className="flex min-w-0 flex-1 items-stretch gap-1">
+      <span
+        className={cn(
+          'flex w-[60px] shrink-0 items-center justify-center rounded-[14px] text-center text-[17px] leading-5 font-semibold transition-colors',
+          tone ? cn(tone.soft, tone.text) : 'bg-muted text-muted-foreground',
         )}
+      >
+        {judgment?.verdict ? badgeLabels[judgment.verdict] : '—'}
+      </span>
+      <span className="min-w-0 flex-1 px-2.5 py-1.5">
+        {priced ? (
+          <>
+            <span className="flex items-baseline gap-1">
+              <span className="numeric text-[32px] leading-none font-bold">{yuan(priced.unitPrice)}</span>
+              <span className="text-muted-foreground text-xs">元 / {perBase(product)}</span>
+            </span>
+            <span className="text-muted-foreground mt-1 block truncate text-xs tabular-nums">
+              <Gap judgment={judgment} netPrice={priced.netPrice} />
+            </span>
+          </>
+        ) : (
+          <span className="text-muted-foreground flex h-full items-center text-[13px]">
+            {typeof price === 'string' ? price : '填好原价、件数和规格'}
+          </span>
+        )}
+      </span>
+    </output>
+  );
+  const saveButton = (className?: string) => (
+    <button
+      type="button"
+      disabled={!priced || !channelId || pending}
+      className={cn(
+        'bg-primary text-primary-foreground disabled:bg-muted disabled:text-muted-foreground shrink-0 rounded-[14px] px-4 text-[15px] font-semibold',
+        className,
+      )}
+      onClick={save}
+    >
+      {saveLabel}
+    </button>
+  );
+
+  if (layout === 'wide') {
+    return (
+      <>
+        <div className="flex min-w-0 flex-col gap-3">
+          <section aria-label="商品" className={cn(card, 'p-4')}>
+            {heading}
+          </section>
+          {entry}
+        </div>
+        <section aria-label="算价结果" className={cn(card, 'sticky top-4 flex flex-col gap-4 p-4')}>
+          {ruler}
+          <div className="flex min-h-[60px] items-stretch">{verdictOutput}</div>
+          {saveButton('h-12')}
+          {savedStatus}
+        </section>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <section aria-label="商品" className={cn(card, 'p-4')}>
+        {heading}
+        <div className="mt-3">{ruler}</div>
+      </section>
+      {entry}
+      <div className="fixed inset-x-0 bottom-0 z-20 mx-auto flex w-full max-w-md flex-col gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {savedStatus}
         <div className="bg-card flex items-stretch gap-1 rounded-[20px] p-1.5 shadow-[0_12px_32px_-8px_rgba(30,41,36,.28),0_0_0_1px_rgba(30,41,36,.05)]">
-          <output aria-label="判断" className="flex min-w-0 flex-1 items-stretch gap-1">
-            <span
-              className={cn(
-                'flex w-[60px] shrink-0 items-center justify-center rounded-[14px] text-center text-[17px] leading-5 font-semibold transition-colors',
-                tone ? cn(tone.soft, tone.text) : 'bg-muted text-muted-foreground',
-              )}
-            >
-              {judgment?.verdict ? badgeLabels[judgment.verdict] : '—'}
-            </span>
-            <span className="min-w-0 flex-1 px-2.5 py-1.5">
-              {priced ? (
-                <>
-                  <span className="flex items-baseline gap-1">
-                    <span className="numeric text-[32px] leading-none font-bold">{yuan(priced.unitPrice)}</span>
-                    <span className="text-muted-foreground text-xs">元 / {perBase(product)}</span>
-                  </span>
-                  <span className="text-muted-foreground mt-1 block truncate text-xs tabular-nums">
-                    <Gap judgment={judgment} netPrice={priced.netPrice} />
-                  </span>
-                </>
-              ) : (
-                <span className="text-muted-foreground flex h-full items-center text-[13px]">
-                  {typeof price === 'string' ? price : '填好原价、件数和规格'}
-                </span>
-              )}
-            </span>
-          </output>
-          <button
-            type="button"
-            disabled={!priced || !channelId || pending}
-            className="bg-primary text-primary-foreground disabled:bg-muted disabled:text-muted-foreground shrink-0 rounded-[14px] px-4 text-[15px] font-semibold"
-            onClick={save}
-          >
-            {saveLabel}
-          </button>
+          {verdictOutput}
+          {saveButton()}
         </div>
       </div>
     </>

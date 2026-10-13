@@ -256,3 +256,132 @@ test('quick price shows the same judgment as the judgment API', async ({ page })
     else await expect(list.getByRole('listitem'), JSON.stringify(c)).toHaveText(references);
   }
 });
+
+test('a wide screen shows the product list, the form and the result side by side', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop', 'the three columns need a wide screen');
+  const suffix = crypto.randomUUID().slice(0, 6);
+  const productName = `洁柔面巾纸 ${suffix}`;
+
+  await page.goto('/');
+  await page.getByLabel('用户名').fill(founder.username);
+  await page.getByLabel('密码').fill(founder.password);
+  await page.getByRole('button', { name: '登录' }).click();
+  await expect(page.getByRole('searchbox', { name: '搜索商品' })).toBeVisible();
+
+  const group = await post<{ id: string }>(page.request, '/api/category-groups', { name: `生活用品 ${suffix}` });
+  const category = await post<{ id: string }>(page.request, '/api/categories', {
+    name: `面巾纸 ${suffix}`,
+    categoryGroupId: group.id,
+  });
+  await post(page.request, '/api/products', {
+    categoryId: category.id,
+    name: productName,
+    pricingUnit: { dimension: 'count', name: '抽' },
+    baseSize: 100,
+  });
+  await page.reload();
+
+  const list = page.getByRole('region', { name: '商品列表' });
+  await list.getByRole('button', { name: productName }).click();
+  await expect(page.getByRole('heading', { name: productName })).toBeVisible();
+
+  const form = page.getByRole('form', { name: '快速算价' });
+  const result = page.getByRole('region', { name: '算价结果' });
+  await expect(list).toBeVisible();
+  await expect(form).toBeVisible();
+  await expect(result).toBeVisible();
+  await expect(result.getByRole('status', { name: '判断' })).toBeVisible();
+  await expect(result.getByRole('button', { name: '存为仅记录' })).toBeVisible();
+  const [left, middle, right] = await Promise.all([list.boundingBox(), form.boundingBox(), result.boundingBox()]);
+  expect(left!.x + left!.width).toBeLessThanOrEqual(middle!.x);
+  expect(middle!.x + middle!.width).toBeLessThanOrEqual(right!.x);
+});
+
+test('a member prices and saves with the keyboard alone', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop', 'keyboard pricing is for computers');
+  const suffix = crypto.randomUUID().slice(0, 6);
+  const productName = `得宝抽纸 ${suffix}`;
+
+  await page.goto('/');
+  await page.getByLabel('用户名').fill(founder.username);
+  await page.getByLabel('密码').fill(founder.password);
+  await page.getByRole('button', { name: '登录' }).click();
+  const search = page.getByRole('searchbox', { name: '搜索商品' });
+  await expect(search).toBeVisible();
+
+  await post(page.request, '/api/channels', { name: `楼下超市 ${suffix}` });
+  const group = await post<{ id: string }>(page.request, '/api/category-groups', { name: `生活用品 ${suffix}` });
+  const category = await post<{ id: string }>(page.request, '/api/categories', {
+    name: `抽纸 ${suffix}`,
+    categoryGroupId: group.id,
+  });
+  const product = await post<{ id: string }>(page.request, '/api/products', {
+    categoryId: category.id,
+    name: productName,
+    pricingUnit: { dimension: 'count', name: '抽' },
+    baseSize: 90,
+  });
+  await page.reload();
+  await expect(search).toBeVisible();
+
+  await page.locator('body').click({ position: { x: 1, y: 1 } });
+  await page.keyboard.press('/');
+  await expect(search).toBeFocused();
+  await page.keyboard.type(`dbcz${suffix}`);
+  await expect(page.getByRole('region', { name: '搜索结果' }).getByRole('button', { name: productName })).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: productName })).toBeVisible();
+
+  const form = page.getByRole('form', { name: '快速算价' });
+  await expect(form.getByLabel('原价')).toBeFocused();
+  await page.keyboard.type('99');
+  await page.keyboard.press('Tab');
+  await expect(form.getByLabel('件数')).toBeFocused();
+  await page.keyboard.type('3*6');
+  await page.keyboard.press('Tab');
+  await expect(form.getByLabel('规格', { exact: true })).toBeFocused();
+  await page.keyboard.type('130');
+  await expect(page.getByRole('status', { name: '判断' })).toContainText('3.81元 / 90 抽');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('status').filter({ hasText: '已存为仅记录' })).toBeVisible();
+
+  const res = await page.request.get(`/api/price-records?productId=${product.id}`);
+  const records = (await res.json()) as { listPrice: number; quantity: number; purchased: boolean }[];
+  expect(records).toHaveLength(1);
+  expect(records[0]).toMatchObject({ listPrice: 9900, quantity: 18, purchased: false });
+});
+
+test('a member creates a product that search misses and goes on pricing it', async ({ page }) => {
+  const suffix = crypto.randomUUID().slice(0, 6);
+  const productName = `心相印湿巾 ${suffix}`;
+  const categoryName = `湿巾 ${suffix}`;
+
+  await page.goto('/');
+  await page.getByLabel('用户名').fill(founder.username);
+  await page.getByLabel('密码').fill(founder.password);
+  await page.getByRole('button', { name: '登录' }).click();
+  const search = page.getByRole('searchbox', { name: '搜索商品' });
+  await expect(search).toBeVisible();
+
+  const group = await post<{ id: string }>(page.request, '/api/category-groups', { name: `生活用品 ${suffix}` });
+  await post(page.request, '/api/categories', { name: categoryName, categoryGroupId: group.id });
+  await page.reload();
+
+  await search.fill(productName);
+  const results = page.getByRole('region', { name: '搜索结果' });
+  await expect(results).toContainText(`没有找到「${productName}」相关的商品。`);
+  await results.getByRole('button', { name: `新建「${productName}」` }).click();
+
+  const create = page.getByRole('form', { name: '新建商品' });
+  await expect(create.getByLabel('商品名称')).toHaveValue(productName);
+  await create.getByLabel('所属品类').selectOption({ label: categoryName });
+  await create.getByLabel('计数单位名称').fill('片');
+  await create.getByLabel('基准规格').fill('80');
+  await create.getByRole('button', { name: '创建商品' }).click();
+
+  await expect(page.getByRole('heading', { name: productName })).toBeVisible();
+  await expect(search).toHaveValue('');
+  await page.getByRole('form', { name: '快速算价' }).getByLabel('原价').fill('19.9');
+  await expect(page.getByRole('status', { name: '判断' })).toContainText('无参考');
+  await expect(page.getByRole('status', { name: '判断' })).toContainText('19.90元 / 80 片');
+});

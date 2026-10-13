@@ -8,6 +8,11 @@ export function useProductSearch(query: string) {
   const [found, setFound] = useState<{ query: string; products: Product[] }>();
   const [error, setError] = useState<string>();
   useEffect(() => {
+    setError(undefined);
+    if (!query) {
+      setFound(undefined);
+      return;
+    }
     let current = true;
     const timer = setTimeout(async () => {
       try {
