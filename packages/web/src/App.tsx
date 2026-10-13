@@ -1,13 +1,78 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { api, ApiError, type Me } from '@/lib/api';
+import { SetupPage } from '@/pages/setup';
+import { SignInPage } from '@/pages/sign-in';
+
+type Session =
+  | { state: 'loading' }
+  | { state: 'setup' }
+  | { state: 'signed-out' }
+  | { state: 'signed-in'; me: Me }
+  | { state: 'blocked'; message: string };
+
+async function loadSession(): Promise<Session> {
+  try {
+    if ((await api.setupStatus()).needsSetup) return { state: 'setup' };
+    return { state: 'signed-in', me: await api.me() };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) return { state: 'signed-out' };
+    if (error instanceof ApiError && error.status === 403) {
+      return { state: 'blocked', message: '你已不属于任何家庭，请联系家庭管理员。' };
+    }
+    return { state: 'blocked', message: '暂时无法连接 StockUp，请稍后再试。' };
+  }
+}
 
 export function App() {
+  const [session, setSession] = useState<Session>({ state: 'loading' });
+  const refresh = useCallback(() => loadSession().then(setSession), []);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  switch (session.state) {
+    case 'loading':
+      return null;
+    case 'setup':
+      return <SetupPage onDone={refresh} />;
+    case 'signed-out':
+      return <SignInPage onDone={refresh} />;
+    case 'signed-in':
+      return <Home me={session.me} onSignOut={() => api.signOut().finally(refresh)} />;
+    case 'blocked':
+      return (
+        <main className="mx-auto flex min-h-svh max-w-sm flex-col items-center justify-center gap-4 p-4 text-center">
+          <p role="alert">{session.message}</p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={refresh}>
+              重试
+            </Button>
+            <Button variant="outline" onClick={() => api.signOut().finally(refresh)}>
+              登出
+            </Button>
+          </div>
+        </main>
+      );
+  }
+}
+
+function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-4 p-6 text-center">
-      <h1 className="text-3xl font-semibold tracking-tight">StockUp</h1>
-      <p className="text-muted-foreground">家庭共享的好价记忆工具</p>
-      <Button asChild variant="outline">
-        <a href="/api/docs">API 文档</a>
-      </Button>
-    </main>
+    <div className="min-h-svh">
+      <header className="flex items-center justify-between border-b px-4 py-3">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight">StockUp</h1>
+          <p className="text-muted-foreground text-sm">{me.household.name}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm">{me.user.name}</span>
+          <Button variant="outline" size="sm" onClick={onSignOut}>
+            登出
+          </Button>
+        </div>
+      </header>
+      <main className="text-muted-foreground p-6 text-center">家庭共享的好价记忆工具</main>
+    </div>
   );
 }

@@ -2,16 +2,30 @@ import path from 'node:path';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic } from 'hono/bun';
+import type { Auth } from './auth';
 import type { Database } from './db';
 import { healthRoutes } from './routes/health';
+import { meRoutes } from './routes/me';
+import { promotionRoutes } from './routes/promotions';
+import { setupRoutes } from './routes/setup';
 
 export interface AppOptions {
   db: Database;
+  auth: Auth;
   webDir?: string;
 }
 
-export function createApp({ db, webDir }: AppOptions) {
-  const app = new OpenAPIHono().route('/api', healthRoutes(db));
+export function createApp({ db, auth, webDir }: AppOptions) {
+  const app = new OpenAPIHono()
+    .route('/api', healthRoutes(db))
+    .route('/api', setupRoutes(db, auth))
+    .route('/api', meRoutes(db, auth))
+    .route('/api', promotionRoutes(db, auth));
+
+  // Households are created and joined only through StockUp's own endpoints, which keep
+  // each member in exactly one household; the organization plugin serves as storage.
+  app.all('/api/auth/organization/*', (c) => c.json({ error: 'not_found' }, 404));
+  app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
   app.doc31('/api/openapi.json', {
     openapi: '3.1.0',

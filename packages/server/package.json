@@ -17,6 +17,7 @@
     "@hono/swagger-ui": "^0.6.1",
     "@hono/zod-openapi": "^1.6.3",
     "@stockup/domain": "workspace:*",
+    "better-auth": "1.7.7",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
     "postgres": "^3.4.9",
