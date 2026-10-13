@@ -1,33 +1,25 @@
-import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
-import { ChevronLeft, Pencil, Plus } from 'lucide-react';
+import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
+import { ChevronLeft, Plus } from 'lucide-react';
 import { isUnit, volumeUnits, weightUnits, type Unit } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { api, ApiError, type CategoryGroup, type Product } from '@/lib/api';
+import {
+  Alert,
+  attempt,
+  DeleteButton,
+  describeError,
+  EditableTitle,
+  NameForm,
+  nameTaken,
+  RetryAlert,
+  type Action,
+} from '@/components/editing';
+import { api, type CategoryGroup, type Product } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const fieldClass =
   'w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm dark:bg-input/30';
-
-// Resolves to an error message for the member, or nothing when the action succeeded.
-type Action = () => Promise<string | void>;
-
-function describeError(error: unknown, messages: Record<string, string> = {}) {
-  if (error instanceof ApiError && error.code && messages[error.code]) return messages[error.code];
-  if (error instanceof ApiError && error.status === 400) return '请检查填写的内容。';
-  return '出错了，请稍后再试。';
-}
-
-async function attempt(run: () => Promise<unknown>, messages?: Record<string, string>) {
-  try {
-    await run();
-  } catch (error) {
-    return describeError(error, messages);
-  }
-}
-
-const nameTaken = { name_taken: '这个名称已经被使用。' };
 
 function formatSize(amount: number, unit: Unit) {
   return `${amount} ${unit.name}`;
@@ -569,154 +561,5 @@ function NoteField({ id, defaultValue }: { id: string; defaultValue?: string }) 
         className={cn(fieldClass, 'py-2')}
       />
     </div>
-  );
-}
-
-function NameForm({
-  label,
-  submitLabel,
-  defaultValue,
-  autoFocus,
-  onSubmit,
-  onCancel,
-}: {
-  label: string;
-  submitLabel: string;
-  defaultValue?: string;
-  autoFocus?: boolean;
-  onSubmit(name: string): Promise<string | void>;
-  onCancel?(): void;
-}) {
-  const [error, setError] = useState<string>();
-  const [pending, setPending] = useState(false);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const name = String(new FormData(form).get('name')).trim();
-    if (!name) return;
-    setPending(true);
-    const message = await onSubmit(name);
-    setError(message ?? undefined);
-    if (!message && !defaultValue) form.reset();
-    setPending(false);
-  }
-
-  return (
-    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-      <div className="flex gap-2">
-        <Input
-          name="name"
-          aria-label={label}
-          placeholder={label}
-          required
-          maxLength={50}
-          defaultValue={defaultValue}
-          autoFocus={autoFocus}
-          onKeyDown={(event) => event.key === 'Escape' && onCancel?.()}
-        />
-        <Button type="submit" variant="outline" disabled={pending}>
-          {submitLabel}
-        </Button>
-        {onCancel && (
-          <Button type="button" variant="ghost" onClick={onCancel}>
-            取消
-          </Button>
-        )}
-      </div>
-      {error && <Alert>{error}</Alert>}
-    </form>
-  );
-}
-
-function EditableTitle({
-  as: Heading,
-  className,
-  name,
-  label,
-  onRename,
-  actions,
-}: {
-  as: 'h2' | 'h3';
-  className?: string;
-  name: string;
-  label: string;
-  onRename(name: string): Promise<string | void>;
-  actions?: ReactNode;
-}) {
-  const [editing, setEditing] = useState(false);
-
-  if (editing) {
-    return (
-      <NameForm
-        label={label}
-        submitLabel="保存"
-        defaultValue={name}
-        autoFocus
-        onCancel={() => setEditing(false)}
-        onSubmit={async (next) => {
-          const error = await onRename(next);
-          if (!error) setEditing(false);
-          return error;
-        }}
-      />
-    );
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-1">
-      <Heading className={cn('mr-auto', className)}>{name}</Heading>
-      <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${name}`} onClick={() => setEditing(true)}>
-        <Pencil />
-      </Button>
-      {actions}
-    </div>
-  );
-}
-
-// Deletion takes a second click on the same button instead of a browser dialog.
-function DeleteButton({ label, onDelete }: { label: string; onDelete: Action }) {
-  const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<string>();
-
-  return (
-    <>
-      <Button
-        variant={confirming ? 'destructive' : 'ghost'}
-        size="xs"
-        aria-label={confirming ? `确认${label}` : label}
-        onBlur={() => setConfirming(false)}
-        onClick={async () => {
-          if (!confirming) {
-            setError(undefined);
-            return setConfirming(true);
-          }
-          setConfirming(false);
-          setError((await onDelete()) ?? undefined);
-        }}
-      >
-        {confirming ? '确认删除' : '删除'}
-      </Button>
-      {error && <Alert className="basis-full">{error}</Alert>}
-    </>
-  );
-}
-
-function RetryAlert({ message, onRetry }: { message: string; onRetry(): void }) {
-  return (
-    <div className="flex items-center gap-2">
-      <Alert>{message}</Alert>
-      <Button variant="outline" size="xs" onClick={onRetry}>
-        重试
-      </Button>
-    </div>
-  );
-}
-
-function Alert({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <p role="alert" className={cn('text-destructive text-sm', className)}>
-      {children}
-    </p>
   );
 }

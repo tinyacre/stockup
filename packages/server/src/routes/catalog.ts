@@ -12,14 +12,12 @@ import {
   findProduct,
   listCatalog,
   listProducts,
-  NameTakenError,
-  NotEmptyError,
-  ParentNotFoundError,
   updateCategory,
   updateCategoryGroup,
   updateProduct,
 } from '../catalog';
 import type { Database } from '../db';
+import { NameTakenError, NotEmptyError, ParentNotFoundError } from '../db/errors';
 import { requireMember } from '../members';
 
 const errorSchema = z.object({ error: z.string() });

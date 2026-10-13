@@ -15,6 +15,13 @@
       "when": 1791878957850,
       "tag": "0001_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791880034362,
+      "tag": "0002_channels",
+      "breakpoints": true
     }
   ]
 }

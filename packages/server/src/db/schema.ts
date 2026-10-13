@@ -100,3 +100,21 @@ export const product = pgTable(
     ),
   ],
 );
+
+// Archiving keeps a channel's row, so price records that name it keep pointing at it.
+export const channel = pgTable(
+  'channel',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    householdId: text('household_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    archivedAt: timestamp('archived_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('channel_household_name_uidx').on(table.householdId, table.name),
+    unique('channel_household_id_unique').on(table.householdId, table.id),
+  ],
+);

@@ -34,6 +34,12 @@ export interface NewProduct {
   note: string;
 }
 
+export interface Channel {
+  id: string;
+  name: string;
+  archived: boolean;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -82,4 +88,10 @@ export const api = {
   updateProduct: (id: string, body: { name?: string; categoryId?: string; note?: string }) =>
     request<Product>(`/api/products/${id}`, { method: 'PATCH', body }),
   deleteProduct: (id: string) => request(`/api/products/${id}`, { method: 'DELETE' }),
+
+  channels: () => request<Channel[]>('/api/channels?includeArchived=true'),
+  createChannel: (body: { name: string }) => request<Channel>('/api/channels', { method: 'POST', body }),
+  updateChannel: (id: string, body: { name?: string; archived?: boolean }) =>
+    request<Channel>(`/api/channels/${id}`, { method: 'PATCH', body }),
+  deleteChannel: (id: string) => request(`/api/channels/${id}`, { method: 'DELETE' }),
 };

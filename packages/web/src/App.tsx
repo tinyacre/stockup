@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { api, ApiError, type Me } from '@/lib/api';
 import { CatalogPage } from '@/pages/catalog';
+import { ChannelsPage } from '@/pages/channels';
 import { SetupPage } from '@/pages/setup';
 import { SignInPage } from '@/pages/sign-in';
 
@@ -58,7 +59,33 @@ export function App() {
   }
 }
 
+const sections = [
+  { path: '/', label: '商品' },
+  { path: '/channels', label: '渠道' },
+] as const;
+
+type SectionPath = (typeof sections)[number]['path'];
+
+function currentSection(): SectionPath {
+  return sections.find((s) => s.path === window.location.pathname)?.path ?? '/';
+}
+
+function useSection() {
+  const [section, setSection] = useState(currentSection);
+  useEffect(() => {
+    const onPopState = () => setSection(currentSection());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+  const navigate = (path: SectionPath) => {
+    if (path !== section) window.history.pushState(null, '', path);
+    setSection(path);
+  };
+  return [section, navigate] as const;
+}
+
 function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
+  const [section, navigate] = useSection();
   return (
     <div className="min-h-svh">
       <header className="flex items-center justify-between border-b px-4 py-3">
@@ -73,9 +100,23 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
           </Button>
         </div>
       </header>
-      <main>
-        <CatalogPage />
-      </main>
+      <nav aria-label="主导航" className="flex gap-1 border-b px-4">
+        {sections.map((s) => (
+          <a
+            key={s.path}
+            href={s.path}
+            aria-current={s.path === section ? 'page' : undefined}
+            className="text-muted-foreground aria-[current]:border-foreground aria-[current]:text-foreground -mb-px border-b-2 border-transparent px-3 py-2 text-sm"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate(s.path);
+            }}
+          >
+            {s.label}
+          </a>
+        ))}
+      </nav>
+      <main>{section === '/channels' ? <ChannelsPage /> : <CatalogPage />}</main>
     </div>
   );
 }
