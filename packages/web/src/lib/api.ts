@@ -26,6 +26,7 @@ export interface Product {
   // Cents per Base Size.
   stockLine: number | null;
   note: string;
+  archived: boolean;
 }
 
 export interface ProductDetail extends Product {
@@ -115,6 +116,8 @@ export const api = {
   createProduct: (body: NewProduct) => request<Product>('/api/products', { method: 'POST', body }),
   updateProduct: (id: string, body: { name?: string; categoryId?: string; note?: string; stockLine?: number | null }) =>
     request<Product>(`/api/products/${id}`, { method: 'PATCH', body }),
+  searchProducts: (query: string) =>
+    request<Product[]>(`/api/products/search?q=${encodeURIComponent(query)}`),
   product: (id: string) => request<ProductDetail>(`/api/products/${id}`),
   deleteProduct: (id: string) => request(`/api/products/${id}`, { method: 'DELETE' }),
 

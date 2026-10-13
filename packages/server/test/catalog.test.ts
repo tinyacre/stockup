@@ -17,6 +17,7 @@ interface Product {
   baseSize: number;
   stockLine: number | null;
   note: string;
+  archived: boolean;
 }
 
 function unique(label: string) {
@@ -200,6 +201,7 @@ describe('products', () => {
       baseSize: 25,
       stockLine: null,
       note: '六种鱼和原味都算',
+      archived: false,
     });
 
     const res = await m.request(`/api/products/${product.id}`);

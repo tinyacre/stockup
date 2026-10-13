@@ -4,6 +4,7 @@ import judgment from './judgment.json';
 import price from './price.json';
 import promotion from './promotion.json';
 import quantity from './quantity.json';
+import search from './search.json';
 import units from './units.json';
 
 // Each fixture expects either a value or the name of the error class the call throws.
@@ -17,6 +18,8 @@ export type PromotionFixture = { name: string; date: string; promotions: Promoti
 export type AllocationFixture = { name: string; total: number; listPrices: number[] } & Outcome<number[]>;
 // Expects null for text that is not a valid Quantity.
 export type QuantityFixture = { name: string; text: string; expected: number | null };
+// Expects the matching names, best match first.
+export type SearchFixture = { name: string; query: string; names: string[]; expected: string[] };
 
 export const unitFixtures = units as UnitFixture[];
 export const priceFixtures = price as PriceFixture[];
@@ -24,3 +27,4 @@ export const judgmentFixtures = judgment as JudgmentFixture[];
 export const promotionFixtures = promotion as PromotionFixture[];
 export const allocationFixtures = allocation as AllocationFixture[];
 export const quantityFixtures = quantity as QuantityFixture[];
+export const searchFixtures = search as SearchFixture[];

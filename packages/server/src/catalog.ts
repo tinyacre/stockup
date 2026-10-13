@@ -1,5 +1,5 @@
-import { and, asc, count, eq } from 'drizzle-orm';
-import type { Unit } from '@stockup/domain';
+import { and, asc, count, eq, isNull, sql } from 'drizzle-orm';
+import { searchByName, type Unit } from '@stockup/domain';
 import type { Database } from './db';
 import { category, categoryGroup, product } from './db/schema';
 import { NotEmptyError, ParentNotFoundError, translate } from './db/errors';
@@ -114,12 +114,17 @@ const productColumns = {
   baseSize: product.baseSize,
   stockLine: product.stockLine,
   note: product.note,
+  archivedAt: product.archivedAt,
 };
 
 type ProductRow = Pick<typeof product.$inferSelect, keyof typeof productColumns>;
 
-function toProduct({ pricingUnitDimension, pricingUnitName, ...rest }: ProductRow) {
-  return { ...rest, pricingUnit: { dimension: pricingUnitDimension, name: pricingUnitName } as Unit };
+function toProduct({ pricingUnitDimension, pricingUnitName, archivedAt, ...rest }: ProductRow) {
+  return {
+    ...rest,
+    pricingUnit: { dimension: pricingUnitDimension, name: pricingUnitName } as Unit,
+    archived: archivedAt !== null,
+  };
 }
 
 export interface NewProduct {
@@ -142,6 +147,22 @@ export async function listProducts(db: Database, scope: CurrentMember, filter: {
     )
     .orderBy(asc(product.name));
   return rows.map(toProduct);
+}
+
+// Ranks with the domain package, a pure function the browser can run as well; a household's
+// catalog stays small enough to load whole.
+export async function searchProducts(
+  db: Database,
+  scope: CurrentMember,
+  input: { query: string; includeArchived: boolean; limit: number },
+) {
+  const rows = await db
+    .select(productColumns)
+    .from(product)
+    .where(
+      and(eq(product.householdId, scope.householdId), input.includeArchived ? undefined : isNull(product.archivedAt)),
+    );
+  return searchByName(rows.map(toProduct), input.query).slice(0, input.limit);
 }
 
 export async function findProduct(db: Database, scope: CurrentMember, id: string) {
@@ -172,12 +193,17 @@ export function updateProduct(
   db: Database,
   scope: CurrentMember,
   id: string,
-  input: { name?: string; categoryId?: string; note?: string; stockLine?: number | null },
+  input: { name?: string; categoryId?: string; note?: string; stockLine?: number | null; archived?: boolean },
 ) {
+  const { archived, ...rest } = input;
   return translate(async () => {
     const [updated] = await db
       .update(product)
-      .set(input)
+      .set({
+        ...rest,
+        // Archiving an archived product keeps the time it was first archived.
+        archivedAt: archived === undefined ? undefined : archived ? sql`coalesce(${product.archivedAt}, now())` : null,
+      })
       .where(and(eq(product.householdId, scope.householdId), eq(product.id, id)))
       .returning(productColumns);
     return updated ? toProduct(updated) : null;

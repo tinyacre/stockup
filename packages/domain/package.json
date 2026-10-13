@@ -12,5 +12,8 @@
   },
   "devDependencies": {
     "@types/bun": "^1.4.3"
+  },
+  "dependencies": {
+    "pinyin-pro": "^3.29.5"
   }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
-import { ChevronLeft, Plus } from 'lucide-react';
+import { ChevronLeft, Plus, Search } from 'lucide-react';
 import { isUnit, volumeUnits, weightUnits, type Unit } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,20 +20,25 @@ import { api, type CategoryGroup, type Product } from '@/lib/api';
 import { formatSize } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-// The selected category lives in the history entry, so returning from a product page shows it again.
-function useSelectedCategory() {
-  const [selectedId, setSelectedId] = useState<string | undefined>(() => window.history.state?.categoryId);
-  const select = useCallback((categoryId: string | undefined) => {
-    window.history.replaceState({ ...window.history.state, categoryId }, '');
-    setSelectedId(categoryId);
-  }, []);
-  return [selectedId, select] as const;
+// The selected category and the search query live in the history entry, so returning from a
+// product page shows them again.
+function useHistoryState<T>(key: string, initial: T) {
+  const [value, setValue] = useState<T>(() => window.history.state?.[key] ?? initial);
+  const update = useCallback(
+    (next: T) => {
+      window.history.replaceState({ ...window.history.state, [key]: next }, '');
+      setValue(next);
+    },
+    [key],
+  );
+  return [value, update] as const;
 }
 
 export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void }) {
   const [groups, setGroups] = useState<CategoryGroup[]>();
   const [loadError, setLoadError] = useState<string>();
-  const [selectedId, setSelectedId] = useSelectedCategory();
+  const [selectedId, setSelectedId] = useHistoryState<string | undefined>('categoryId', undefined);
+  const [query, setQuery] = useHistoryState('query', '');
 
   // A failed refresh keeps the last catalog on screen: the write that triggered it has already succeeded.
   const reload = useCallback(async () => {
@@ -51,33 +56,123 @@ export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void
   const loadAlert = loadError && <RetryAlert message={`大类与品类加载失败：${loadError}`} onRetry={reload} />;
   if (!groups) return loadAlert ? <div className="p-4">{loadAlert}</div> : null;
 
-  const selected = groups.flatMap((g) => g.categories.map((c) => ({ ...c, group: g }))).find((c) => c.id === selectedId);
+  const categories = groups.flatMap((g) => g.categories.map((c) => ({ ...c, group: g })));
+  const selected = categories.find((c) => c.id === selectedId);
 
   return (
     <div className="mx-auto grid max-w-6xl gap-6 p-4 min-[900px]:grid-cols-[20rem_1fr]">
+      <label className="relative min-[900px]:col-span-2">
+        <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+        <Input
+          type="search"
+          aria-label="搜索商品"
+          placeholder="搜索商品：名称或拼音首字母，如 dbcz"
+          className="pl-9"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
       {loadAlert && <div className="min-[900px]:col-span-2">{loadAlert}</div>}
-      <section aria-label="大类与品类" className={cn(selected && 'hidden min-[900px]:block')}>
-        <CategoryTree groups={groups} selectedId={selected?.id} onSelect={setSelectedId} onChange={reload} />
-      </section>
-      <section aria-label="品类详情" className={cn(!selected && 'hidden min-[900px]:block')}>
-        {selected ? (
-          <CategoryPanel
-            key={selected.id}
-            category={selected}
-            groups={groups}
-            onOpenProduct={onOpenProduct}
-            onBack={() => setSelectedId(undefined)}
-            onChange={reload}
-            onDeleted={() => {
-              setSelectedId(undefined);
-              return reload();
-            }}
-          />
-        ) : (
-          <p className="text-muted-foreground py-12 text-center text-sm">选择一个品类查看其中的商品。</p>
-        )}
-      </section>
+      {query.trim() ? (
+        <section aria-label="搜索结果" className="min-[900px]:col-span-2">
+          <SearchResults query={query.trim()} categories={categories} onOpenProduct={onOpenProduct} />
+        </section>
+      ) : (
+        <>
+          <section aria-label="大类与品类" className={cn(selected && 'hidden min-[900px]:block')}>
+            <CategoryTree groups={groups} selectedId={selected?.id} onSelect={setSelectedId} onChange={reload} />
+          </section>
+          <section aria-label="品类详情" className={cn(!selected && 'hidden min-[900px]:block')}>
+            {selected ? (
+              <CategoryPanel
+                key={selected.id}
+                category={selected}
+                groups={groups}
+                onOpenProduct={onOpenProduct}
+                onBack={() => setSelectedId(undefined)}
+                onChange={reload}
+                onDeleted={() => {
+                  setSelectedId(undefined);
+                  return reload();
+                }}
+              />
+            ) : (
+              <p className="text-muted-foreground py-12 text-center text-sm">选择一个品类查看其中的商品。</p>
+            )}
+          </section>
+        </>
+      )}
     </div>
+  );
+}
+
+function SearchResults({
+  query,
+  categories,
+  onOpenProduct,
+}: {
+  query: string;
+  categories: { id: string; name: string; group: CategoryGroup }[];
+  onOpenProduct(id: string): void;
+}) {
+  const [found, setFound] = useState<{ query: string; products: Product[] }>();
+  const [error, setError] = useState<string>();
+
+  // Waits for a pause in typing, and drops responses that arrive after the query has moved on.
+  useEffect(() => {
+    let current = true;
+    const timer = setTimeout(async () => {
+      try {
+        const products = await api.searchProducts(query);
+        if (current) {
+          setFound({ query, products });
+          setError(undefined);
+        }
+      } catch (e) {
+        if (current) setError(describeError(e));
+      }
+    }, 150);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  if (error) return <Alert>{`搜索失败：${error}`}</Alert>;
+  if (!found) return null;
+  // Results for an earlier query stay visible but dimmed and inert until the new ones arrive.
+  const stale = found.query !== query;
+  if (found.products.length === 0) {
+    return (
+      <p aria-busy={stale} className={cn('text-muted-foreground py-12 text-center text-sm', stale && 'opacity-50')}>
+        没有找到「{found.query}」相关的商品。
+      </p>
+    );
+  }
+  return (
+    <ul aria-busy={stale} inert={stale} className={cn('flex flex-col gap-2', stale && 'opacity-50')}>
+      {found.products.map((product) => {
+        const category = categories.find((c) => c.id === product.categoryId);
+        return (
+          <li key={product.id} aria-label={product.name} className="rounded-lg border p-3">
+            <a
+              href={`/products/${encodeURIComponent(product.id)}`}
+              className="font-medium underline-offset-4 hover:underline"
+              onClick={(event) => {
+                event.preventDefault();
+                onOpenProduct(product.id);
+              }}
+            >
+              {product.name}
+            </a>
+            <p className="text-muted-foreground text-sm">
+              {category && `${category.group.name} / ${category.name} · `}基准规格{' '}
+              {formatSize(product.baseSize, product.pricingUnit)}
+            </p>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

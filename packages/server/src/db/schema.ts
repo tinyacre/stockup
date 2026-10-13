@@ -99,6 +99,8 @@ export const product = pgTable(
     // Cents per Base Size; null until the household sets one.
     stockLine: integer('stock_line'),
     note: text('note').notNull().default(''),
+    // Archiving keeps the product and its price records while leaving it out of search.
+    archivedAt: timestamp('archived_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [

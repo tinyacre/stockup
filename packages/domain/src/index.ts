@@ -4,3 +4,4 @@ export * from './judgment';
 export * from './promotion';
 export * from './allocation';
 export * from './quantity';
+export * from './search';

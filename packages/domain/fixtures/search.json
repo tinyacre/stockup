@@ -1,0 +1,98 @@
+[
+  {
+    "name": "Chinese text inside a name, shorter names first",
+    "query": "抽纸",
+    "names": ["得宝抽纸 M 码", "清风抽纸", "维达卷纸", "猫砂"],
+    "expected": ["清风抽纸", "得宝抽纸 M 码"]
+  },
+  {
+    "name": "an exact name, then a prefix, then text inside",
+    "query": "猫砂",
+    "names": ["豆腐猫砂", "猫砂盆", "猫砂"],
+    "expected": ["猫砂", "猫砂盆", "豆腐猫砂"]
+  },
+  {
+    "name": "pinyin initials",
+    "query": "dbcz",
+    "names": ["得宝抽纸 M 码", "清风抽纸", "维达卷纸", "猫砂"],
+    "expected": ["得宝抽纸 M 码"]
+  },
+  {
+    "name": "pinyin initials in upper case",
+    "query": "DBCZ",
+    "names": ["得宝抽纸 M 码", "清风抽纸"],
+    "expected": ["得宝抽纸 M 码"]
+  },
+  {
+    "name": "pinyin initials of part of a name",
+    "query": "cz",
+    "names": ["得宝抽纸 M 码", "清风抽纸", "维达卷纸"],
+    "expected": ["清风抽纸", "得宝抽纸 M 码"]
+  },
+  {
+    "name": "full pinyin",
+    "query": "maosha",
+    "names": ["猫粮", "猫砂"],
+    "expected": ["猫砂"]
+  },
+  {
+    "name": "a homophone typed by mistake",
+    "query": "德宝抽纸",
+    "names": ["得宝抽纸 M 码", "清风抽纸"],
+    "expected": ["得宝抽纸 M 码"]
+  },
+  {
+    "name": "a wrong character",
+    "query": "得宝油纸",
+    "names": ["得宝抽纸 M 码", "清风抽纸", "维达卷纸"],
+    "expected": ["得宝抽纸 M 码"]
+  },
+  {
+    "name": "two characters swapped",
+    "query": "得宝纸抽",
+    "names": ["得宝抽纸 M 码", "维达卷纸"],
+    "expected": ["得宝抽纸 M 码"]
+  },
+  {
+    "name": "a pinyin typo",
+    "query": "debaochouzi",
+    "names": ["得宝抽纸 M 码", "清风抽纸"],
+    "expected": ["得宝抽纸 M 码"]
+  },
+  {
+    "name": "parts of a name in order, ignoring spaces and case",
+    "query": "得宝 m 码",
+    "names": ["得宝抽纸 M 码", "得宝湿巾"],
+    "expected": ["得宝抽纸 M 码"]
+  },
+  {
+    "name": "latin letters in a name",
+    "query": "kirk",
+    "names": ["Kirkland 厨房纸", "柯克兰"],
+    "expected": ["Kirkland 厨房纸"]
+  },
+  {
+    "name": "a single letter only at the start of a syllable",
+    "query": "a",
+    "names": ["猫砂", "面包", "安慕希"],
+    "expected": ["安慕希"]
+  },
+  {
+    "name": "pinyin that only differs from another syllable by a letter",
+    "query": "zhao",
+    "names": ["好丽友", "赵一鸣零食"],
+    "expected": ["赵一鸣零食"]
+  },
+  {
+    "name": "nothing close",
+    "query": "洗衣液",
+    "names": ["得宝抽纸 M 码", "猫砂"],
+    "expected": []
+  },
+  {
+    "name": "a blank query",
+    "query": "  ",
+    "names": ["得宝抽纸 M 码", "猫砂"],
+    "expected": []
+  }
+]

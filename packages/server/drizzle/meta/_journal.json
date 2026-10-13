@@ -36,6 +36,13 @@
       "when": 1791882308020,
       "tag": "0004_stock_line",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791884193811,
+      "tag": "0005_product_archive",
+      "breakpoints": true
     }
   ]
 }

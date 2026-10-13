@@ -12,6 +12,7 @@ import {
   findProduct,
   listCatalog,
   listProducts,
+  searchProducts,
   updateCategory,
   updateCategoryGroup,
   updateProduct,
@@ -64,6 +65,7 @@ const productSchema = z
       .nullable()
       .openapi({ description: 'Unit price, in cents per base size, at or below which a price is worth stocking up' }),
     note: z.string(),
+    archived: z.boolean().openapi({ description: 'Archived products are left out of search by default' }),
   })
   .openapi('Product');
 
@@ -100,6 +102,7 @@ const productChangesSchema = z
       .nullable()
       .optional()
       .openapi({ description: 'Cents per base size; null clears it' }),
+    archived: z.boolean().optional(),
   })
   .refine(atLeastOne, nothingToChange);
 
@@ -241,6 +244,31 @@ export function catalogRoutes(db: Database, auth: Auth) {
     },
   });
 
+  const searchProductsRoute = createRoute({
+    method: 'get',
+    path: '/products/search',
+    tags: ['catalog'],
+    summary: "Search the household's products by name",
+    description:
+      'Matches Chinese text, pinyin initials (dbcz finds 得宝抽纸), full pinyin and near misses such as a homophone or a wrong character, best match first.',
+    middleware,
+    request: {
+      query: z.object({
+        q: z.string().trim().min(1).max(100).openapi({ example: 'dbcz' }),
+        includeArchived: z
+          .enum(['true', 'false'])
+          .optional()
+          .transform((v) => v === 'true')
+          .openapi({ description: 'Also search archived products' }),
+        limit: z.coerce.number().int().min(1).max(100).default(20),
+      }),
+    },
+    responses: {
+      200: { description: 'Matching products', content: { 'application/json': { schema: z.array(productSchema) } } },
+      ...unauthenticated,
+    },
+  });
+
   const getProductRoute = createRoute({
     method: 'get',
     path: '/products/{id}',
@@ -273,7 +301,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
     method: 'patch',
     path: '/products/{id}',
     tags: ['catalog'],
-    summary: 'Rename a product, move it to another category, or change its note or stock line',
+    summary: 'Rename a product, move it to another category, change its note or stock line, or archive it',
     middleware,
     request: { params: idParams, body: json(productChangesSchema) },
     responses: {
@@ -348,6 +376,10 @@ export function catalogRoutes(db: Database, auth: Auth) {
       }
     })
     .openapi(listProductsRoute, async (c) => c.json(await listProducts(db, c.var.member, c.req.valid('query')), 200))
+    .openapi(searchProductsRoute, async (c) => {
+      const { q, includeArchived, limit } = c.req.valid('query');
+      return c.json(await searchProducts(db, c.var.member, { query: q, includeArchived, limit }), 200);
+    })
     .openapi(getProductRoute, async (c) => {
       const { id } = c.req.valid('param');
       const [found, lowest] = await Promise.all([
