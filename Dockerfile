@@ -20,7 +20,9 @@ COPY packages/domain/src packages/domain/src
 COPY packages/server/src packages/server/src
 COPY packages/server/drizzle packages/server/drizzle
 COPY --from=build /app/packages/web/dist web
-ENV NODE_ENV=production \
+# Calendar dates the server fills in, such as a judgment's default date, follow the household's day.
+ENV TZ=Asia/Shanghai \
+    NODE_ENV=production \
     STOCKUP_PORT=8080 \
     STOCKUP_WEB_DIR=/app/web \
     STOCKUP_EVIDENCE_DIR=/data/evidence
