@@ -112,6 +112,7 @@ const productColumns = {
   pricingUnitDimension: product.pricingUnitDimension,
   pricingUnitName: product.pricingUnitName,
   baseSize: product.baseSize,
+  stockLine: product.stockLine,
   note: product.note,
 };
 
@@ -171,7 +172,7 @@ export function updateProduct(
   db: Database,
   scope: CurrentMember,
   id: string,
-  input: { name?: string; categoryId?: string; note?: string },
+  input: { name?: string; categoryId?: string; note?: string; stockLine?: number | null },
 ) {
   return translate(async () => {
     const [updated] = await db

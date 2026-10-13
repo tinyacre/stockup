@@ -96,6 +96,8 @@ export const product = pgTable(
     pricingUnitName: text('pricing_unit_name').notNull(),
     // Expressed in the pricing unit.
     baseSize: doublePrecision('base_size').notNull(),
+    // Cents per Base Size; null until the household sets one.
+    stockLine: integer('stock_line'),
     note: text('note').notNull().default(''),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
@@ -108,6 +110,7 @@ export const product = pgTable(
       foreignColumns: [category.householdId, category.id],
     }),
     check('product_base_size_check', sql`${table.baseSize} > 0`),
+    check('product_stock_line_check', sql`${table.stockLine} > 0`),
     check(
       'product_pricing_unit_dimension_check',
       sql`${table.pricingUnitDimension} in (${sql.raw(unitDimensions.map((d) => `'${d}'`).join(', '))})`,

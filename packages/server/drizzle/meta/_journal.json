@@ -29,6 +29,13 @@
       "when": 1791881339131,
       "tag": "0003_price_records",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791882308020,
+      "tag": "0004_stock_line",
+      "breakpoints": true
     }
   ]
 }

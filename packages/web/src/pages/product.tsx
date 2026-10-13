@@ -3,18 +3,29 @@ import { ChevronLeft, Plus, X } from 'lucide-react';
 import {
   calculatePrice,
   IncompatibleUnitsError,
+  judge,
   parseQuantity,
   volumeUnits,
   weightUnits,
+  type Judgment,
   type Price,
   type Unit,
+  type Verdict,
 } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, attempt, DeleteButton, describeError, fieldClass, RetryAlert } from '@/components/editing';
-import { api, ApiError, type Channel, type PriceRecord, type PriceRecordInput, type Product } from '@/lib/api';
-import { formatSize, formatYuan } from '@/lib/format';
+import {
+  api,
+  ApiError,
+  type Channel,
+  type PriceRecord,
+  type PriceRecordInput,
+  type Product,
+  type ProductDetail,
+} from '@/lib/api';
+import { formatSize, formatStockLineGap, formatYuan } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 function formatUnitPrice(unitPrice: number, product: Product) {
@@ -39,6 +50,17 @@ function unitsLike(unit: Unit): Unit[] {
   return [unit];
 }
 
+const verdictLabels: Record<Verdict, string> = {
+  recordLow: '史低',
+  stockUp: '囤',
+  skip: '不囤',
+  noReference: '暂无参考',
+};
+
+function lowestOf(records: PriceRecord[]) {
+  return records.length ? Math.min(...records.map((r) => r.unitPrice)) : null;
+}
+
 const recordErrors = {
   channel_not_found: '这个渠道已不存在，请重新选择。',
   incompatible_unit: '规格的单位和商品的计价单位不是同一量纲。',
@@ -46,7 +68,7 @@ const recordErrors = {
 };
 
 export function ProductPage({ productId, onBack }: { productId: string; onBack(categoryId?: string): void }) {
-  const [product, setProduct] = useState<Product | null>();
+  const [product, setProduct] = useState<ProductDetail | null>();
   const [records, setRecords] = useState<PriceRecord[]>();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loadError, setLoadError] = useState<string>();
@@ -108,6 +130,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
         {product.note && <p className="text-muted-foreground mt-1 text-sm whitespace-pre-wrap">{product.note}</p>}
       </div>
       {loadAlert}
+      <StockLineSection product={product} records={records ?? []} onSaved={reload} />
 
       <div className="flex items-center justify-between">
         <h3 className="font-medium">价格记录</h3>
@@ -119,7 +142,13 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
         )}
       </div>
       {creating && (
-        <PriceRecordForm product={product} channels={channels} onCancel={() => setCreating(false)} onSaved={saved} />
+        <PriceRecordForm
+          product={product}
+          channels={channels}
+          records={records ?? []}
+          onCancel={() => setCreating(false)}
+          onSaved={saved}
+        />
       )}
       {records?.length === 0 && !creating && <p className="text-muted-foreground text-sm">还没有价格记录。</p>}
       <ul aria-label="价格记录列表" className="flex flex-col gap-2">
@@ -133,6 +162,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
               <PriceRecordForm
                 product={product}
                 channels={channels}
+                records={records ?? []}
                 record={record}
                 onCancel={() => setEditingId(undefined)}
                 onSaved={saved}
@@ -154,6 +184,149 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
         ))}
       </ul>
     </div>
+  );
+}
+
+const recentReferenceCount = 5;
+// The server stores cents in a Postgres integer column.
+const maxCents = 2_000_000_000;
+
+function StockLineSection({
+  product,
+  records,
+  onSaved,
+}: {
+  product: ProductDetail;
+  records: PriceRecord[];
+  onSaved(): Promise<void>;
+}) {
+  const id = useId();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string>();
+  const [pending, setPending] = useState(false);
+  const baseSize = formatSize(product.baseSize, product.pricingUnit);
+
+  function startEditing() {
+    setDraft(product.stockLine === null ? '' : (product.stockLine / 100).toFixed(2));
+    setError(undefined);
+    setEditing(true);
+  }
+
+  async function save(stockLine: number | null) {
+    setPending(true);
+    const message = await attempt(async () => {
+      await api.updateProduct(product.id, { stockLine });
+      await onSaved();
+    });
+    setPending(false);
+    if (message) return setError(message);
+    setEditing(false);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const stockLine = parseYuan(draft);
+    if (stockLine === null || stockLine === 0) return setError('请填写入手价，最多两位小数，必须大于 0。');
+    if (stockLine > maxCents) return setError('入手价太大了。');
+    save(stockLine);
+  }
+
+  return (
+    <section aria-label="入手价" className="flex flex-col gap-3 rounded-lg border p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span>
+          入手价{' '}
+          <span className="font-semibold tabular-nums">
+            {product.stockLine === null ? '未设置' : formatUnitPrice(product.stockLine, product)}
+          </span>
+        </span>
+        <span>
+          历史最低单价{' '}
+          <span className="font-semibold tabular-nums">
+            {product.lowestUnitPrice === null ? '暂无' : formatUnitPrice(product.lowestUnitPrice, product)}
+          </span>
+        </span>
+        {!editing && (
+          <Button variant="ghost" size="xs" className="ml-auto" onClick={startEditing}>
+            {product.stockLine === null ? '设置入手价' : '修改入手价'}
+          </Button>
+        )}
+      </div>
+
+      {editing && (
+        <form aria-label="设置入手价" className="flex flex-col gap-3" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor={`${id}-stock-line`}>入手价（元 / {baseSize}）</Label>
+            <Input
+              id={`${id}-stock-line`}
+              inputMode="decimal"
+              required
+              autoFocus
+              className="max-w-40"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+          </div>
+          <div aria-label="参考单价" className="text-muted-foreground flex flex-col gap-1">
+            {records.length === 0 ? (
+              <p>还没有价格记录可作参考。</p>
+            ) : (
+              <>
+                {product.lowestUnitPrice !== null && (
+                  <p>历史最低单价 {formatUnitPrice(product.lowestUnitPrice, product)}</p>
+                )}
+                <p>最近 {Math.min(records.length, recentReferenceCount)} 条单价：</p>
+                <ul className="flex flex-col gap-0.5 tabular-nums">
+                  {records.slice(0, recentReferenceCount).map((r) => (
+                    <li key={r.id}>
+                      {r.date} {r.channel.name} {formatUnitPrice(r.unitPrice, product)}
+                      {!r.purchased && '（仅记录）'}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+          {error && <Alert>{error}</Alert>}
+          <div className="flex gap-2">
+            <Button type="submit" disabled={pending}>
+              保存入手价
+            </Button>
+            {product.stockLine !== null && (
+              <Button type="button" variant="outline" disabled={pending} onClick={() => save(null)}>
+                清除入手价
+              </Button>
+            )}
+            <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+              取消
+            </Button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
+function JudgmentSummary({ judgment }: { judgment: Judgment }) {
+  const { verdict, stockLineGap } = judgment;
+  return (
+    <span className="flex flex-wrap items-center gap-x-2">
+      {verdict && (
+        <span
+          className={cn(
+            'rounded px-1.5 py-0.5 text-xs font-semibold',
+            verdict === 'recordLow' || verdict === 'stockUp'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted text-muted-foreground',
+          )}
+        >
+          {verdictLabels[verdict]}
+        </span>
+      )}
+      {stockLineGap !== null && <span>{formatStockLineGap(stockLineGap)}</span>}
+      {verdict === null && <span className="text-muted-foreground">未设入手价，不低于历史最低单价</span>}
+    </span>
   );
 }
 
@@ -263,12 +436,14 @@ function preview(input: Parameters<typeof calculatePrice>[0]): Price | string {
 function PriceRecordForm({
   product,
   channels,
+  records,
   record,
   onCancel,
   onSaved,
 }: {
   product: Product;
   channels: Channel[];
+  records: PriceRecord[];
   record?: PriceRecord;
   onCancel(): void;
   onSaved(): Promise<void>;
@@ -298,6 +473,12 @@ function PriceRecordForm({
       ? preview({ ...read.input, pricingUnit: product.pricingUnit, baseSize: product.baseSize })
       : null;
   const parsedQuantity = parseQuantity(quantity);
+  // An edited record is judged against the other records, as its stored price is about to be replaced.
+  const lowest = lowestOf(records.filter((r) => r.id !== record?.id));
+  const judgment =
+    price !== null && typeof price === 'object'
+      ? judge({ unitPrice: price.unitPrice, stockLine: product.stockLine, lowestUnitPrice: lowest })
+      : null;
 
   const updateDiscount = (key: number, change: Partial<DiscountDraft>) =>
     setDiscounts((all) => all.map((d) => (d.key === key ? { ...d, ...change } : d)));
@@ -481,6 +662,10 @@ function PriceRecordForm({
             <span>
               单价 <span className="font-semibold tabular-nums">{formatUnitPrice(price.unitPrice, product)}</span>
             </span>
+            {judgment && <JudgmentSummary judgment={judgment} />}
+            {lowest !== null && (
+              <span className="text-muted-foreground">历史最低单价 {formatUnitPrice(lowest, product)}</span>
+            )}
           </>
         )}
       </output>

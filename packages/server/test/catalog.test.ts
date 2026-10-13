@@ -15,6 +15,7 @@ interface Product {
   categoryId: string;
   pricingUnit: { dimension: string; name: string };
   baseSize: number;
+  stockLine: number | null;
   note: string;
 }
 
@@ -197,12 +198,13 @@ describe('products', () => {
       categoryId: category.id,
       pricingUnit: { dimension: 'weight', name: '磅' },
       baseSize: 25,
+      stockLine: null,
       note: '六种鱼和原味都算',
     });
 
     const res = await m.request(`/api/products/${product.id}`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(product);
+    expect(await res.json()).toEqual({ ...product, lowestUnitPrice: null });
   });
 
   test('default to an empty note', async () => {
@@ -319,6 +321,7 @@ describe('household isolation', () => {
       alice.request(`/api/category-groups/${emptyGroup.id}`, { method: 'DELETE' }),
       alice.request(`/api/categories/${category.id}`, jsonRequest('PATCH', { name: 'hijacked' })),
       alice.request(`/api/products/${product.id}`, jsonRequest('PATCH', { name: 'hijacked' })),
+      alice.request(`/api/products/${product.id}`, jsonRequest('PATCH', { stockLine: 1 })),
       alice.request(`/api/products/${product.id}`, { method: 'DELETE' }),
     ];
     for (const res of await Promise.all(attempts)) expect(res.status).toBe(404);
@@ -326,7 +329,7 @@ describe('household isolation', () => {
     const bobsCatalog = await catalogOf(bob);
     expect(bobsCatalog.find((g) => g.id === group.id)!.name).toBe(group.name);
     expect(bobsCatalog.some((g) => g.id === emptyGroup.id)).toBe(true);
-    expect(await (await bob.request(`/api/products/${product.id}`)).json()).toEqual(product);
+    expect(await (await bob.request(`/api/products/${product.id}`)).json()).toEqual({ ...product, lowestUnitPrice: null });
   });
 
   test("another household's groups and categories cannot be built on", async () => {

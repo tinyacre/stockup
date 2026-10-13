@@ -14,14 +14,17 @@ export class InvalidPriceError extends Error {
   override name = 'InvalidPriceError';
 }
 
-export interface PriceRecordInput {
-  date: string;
-  channelId: string;
-  purchased: boolean;
+export interface PricedInput {
   listPrice: number;
   discounts: Discount[];
   quantity: number;
   size: Size;
+}
+
+export interface PriceRecordInput extends PricedInput {
+  date: string;
+  channelId: string;
+  purchased: boolean;
   note?: string;
 }
 
@@ -132,15 +135,29 @@ export async function findPriceRecord(db: Executor, scope: CurrentMember, id: st
   return found ?? null;
 }
 
-// Checks the input against the product with the domain rules and returns the columns to store.
-function recordValues(pricing: { pricingUnit: Unit; baseSize: number }, input: PriceRecordInput) {
-  const sizeAmount = convert(input.size.amount, input.size.unit, pricing.pricingUnit);
+export async function lowestUnitPrice(db: Database, scope: CurrentMember, productId: string) {
+  const records = await listPriceRecords(db, scope, { productId });
+  return records.length ? Math.min(...records.map((r) => r.unitPrice)) : null;
+}
+
+interface Pricing {
+  pricingUnit: Unit;
+  baseSize: number;
+}
+
+export function priceFor(pricing: Pricing, input: PricedInput) {
   try {
-    calculatePrice({ ...input, ...pricing });
+    return calculatePrice({ ...input, ...pricing });
   } catch (error) {
     if (error instanceof RangeError) throw new InvalidPriceError(error.message);
     throw error;
   }
+}
+
+// Checks the input against the product with the domain rules and returns the columns to store.
+function recordValues(pricing: Pricing, input: PriceRecordInput) {
+  const sizeAmount = convert(input.size.amount, input.size.unit, pricing.pricingUnit);
+  priceFor(pricing, input);
   return {
     date: input.date,
     channelId: input.channelId,
@@ -161,13 +178,22 @@ async function insertDiscounts(db: Executor, priceRecordId: string, discounts: D
   );
 }
 
-async function pricingOf(db: Executor, scope: CurrentMember, productId: string) {
+export async function pricingOf(db: Executor, scope: CurrentMember, productId: string) {
   const [found] = await db
-    .select({ dimension: product.pricingUnitDimension, name: product.pricingUnitName, baseSize: product.baseSize })
+    .select({
+      dimension: product.pricingUnitDimension,
+      name: product.pricingUnitName,
+      baseSize: product.baseSize,
+      stockLine: product.stockLine,
+    })
     .from(product)
     .where(and(eq(product.householdId, scope.householdId), eq(product.id, productId)));
   if (!found) return null;
-  return { pricingUnit: { dimension: found.dimension, name: found.name } as Unit, baseSize: found.baseSize };
+  return {
+    pricingUnit: { dimension: found.dimension, name: found.name } as Unit,
+    baseSize: found.baseSize,
+    stockLine: found.stockLine,
+  };
 }
 
 export function createPriceRecord(db: Database, scope: CurrentMember, input: NewPriceRecord) {

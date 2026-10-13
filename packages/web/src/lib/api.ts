@@ -23,7 +23,13 @@ export interface Product {
   categoryId: string;
   pricingUnit: Unit;
   baseSize: number;
+  // Cents per Base Size.
+  stockLine: number | null;
   note: string;
+}
+
+export interface ProductDetail extends Product {
+  lowestUnitPrice: number | null;
 }
 
 export interface NewProduct {
@@ -107,9 +113,9 @@ export const api = {
   products: (categoryId: string) =>
     request<Product[]>(`/api/products?categoryId=${encodeURIComponent(categoryId)}`),
   createProduct: (body: NewProduct) => request<Product>('/api/products', { method: 'POST', body }),
-  updateProduct: (id: string, body: { name?: string; categoryId?: string; note?: string }) =>
+  updateProduct: (id: string, body: { name?: string; categoryId?: string; note?: string; stockLine?: number | null }) =>
     request<Product>(`/api/products/${id}`, { method: 'PATCH', body }),
-  product: (id: string) => request<Product>(`/api/products/${id}`),
+  product: (id: string) => request<ProductDetail>(`/api/products/${id}`),
   deleteProduct: (id: string) => request(`/api/products/${id}`, { method: 'DELETE' }),
 
   channels: () => request<Channel[]>('/api/channels?includeArchived=true'),

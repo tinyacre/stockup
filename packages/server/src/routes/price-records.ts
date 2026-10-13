@@ -33,7 +33,7 @@ const discountSchema = z
   })
   .openapi('Discount');
 
-const priceRecordInputSchema = z.object({
+export const priceRecordInputSchema = z.object({
   date: z.iso.date(),
   channelId: z.string(),
   purchased: z.boolean().openapi({ description: 'Bought (true) or only seen (false)' }),
@@ -73,7 +73,7 @@ function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };
 }
 
-function respondToError(c: Context, error: unknown) {
+export function respondToError(c: Context, error: unknown) {
   if (error instanceof ProductNotFoundError) return c.json({ error: 'product_not_found' }, 422);
   if (error instanceof ParentNotFoundError) return c.json({ error: 'channel_not_found' }, 422);
   if (error instanceof IncompatibleUnitsError) return c.json({ error: 'incompatible_unit' }, 422);

@@ -19,6 +19,7 @@ import {
 import type { Database } from '../db';
 import { NameTakenError, NotEmptyError, ParentNotFoundError } from '../db/errors';
 import { requireMember } from '../members';
+import { lowestUnitPrice } from '../price-records';
 
 const errorSchema = z.object({ error: z.string() });
 const errorContent = { 'application/json': { schema: errorSchema } };
@@ -57,9 +58,23 @@ const productSchema = z
     categoryId: z.string(),
     pricingUnit: pricingUnitSchema,
     baseSize: z.number().openapi({ description: 'Base Size in the pricing unit', example: 90 }),
+    stockLine: z
+      .number()
+      .int()
+      .nullable()
+      .openapi({ description: 'Unit price, in cents per base size, at or below which a price is worth stocking up' }),
     note: z.string(),
   })
   .openapi('Product');
+
+const productDetailSchema = productSchema
+  .extend({
+    lowestUnitPrice: z
+      .number()
+      .nullable()
+      .openapi({ description: 'Lowest unit price across all its price records, null without any' }),
+  })
+  .openapi('ProductDetail');
 
 const note = z.string().trim().max(500);
 
@@ -72,7 +87,20 @@ const newProductSchema = z.object({
 });
 
 const productChangesSchema = z
-  .object({ name: z.string().trim().min(1).max(100).optional(), categoryId: z.string().optional(), note: note.optional() })
+  .object({
+    name: z.string().trim().min(1).max(100).optional(),
+    categoryId: z.string().optional(),
+    note: note.optional(),
+    // Postgres integer columns hold amounts up to 2^31 - 1.
+    stockLine: z
+      .number()
+      .int()
+      .positive()
+      .max(2_000_000_000)
+      .nullable()
+      .optional()
+      .openapi({ description: 'Cents per base size; null clears it' }),
+  })
   .refine(atLeastOne, nothingToChange);
 
 function json<T extends z.ZodType>(schema: T) {
@@ -217,11 +245,11 @@ export function catalogRoutes(db: Database, auth: Auth) {
     method: 'get',
     path: '/products/{id}',
     tags: ['catalog'],
-    summary: 'Get a product',
+    summary: 'Get a product with its lowest unit price',
     middleware,
     request: { params: idParams },
     responses: {
-      200: { description: 'The product', content: { 'application/json': { schema: productSchema } } },
+      200: { description: 'The product', content: { 'application/json': { schema: productDetailSchema } } },
       ...unauthenticated,
       ...notFound,
     },
@@ -245,7 +273,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
     method: 'patch',
     path: '/products/{id}',
     tags: ['catalog'],
-    summary: "Rename a product, move it to another category or change its note",
+    summary: 'Rename a product, move it to another category, or change its note or stock line',
     middleware,
     request: { params: idParams, body: json(productChangesSchema) },
     responses: {
@@ -321,8 +349,12 @@ export function catalogRoutes(db: Database, auth: Auth) {
     })
     .openapi(listProductsRoute, async (c) => c.json(await listProducts(db, c.var.member, c.req.valid('query')), 200))
     .openapi(getProductRoute, async (c) => {
-      const found = await findProduct(db, c.var.member, c.req.valid('param').id);
-      return found ? c.json(found, 200) : c.json({ error: 'not_found' }, 404);
+      const { id } = c.req.valid('param');
+      const [found, lowest] = await Promise.all([
+        findProduct(db, c.var.member, id),
+        lowestUnitPrice(db, c.var.member, id),
+      ]);
+      return found ? c.json({ ...found, lowestUnitPrice: lowest }, 200) : c.json({ error: 'not_found' }, 404);
     })
     .openapi(createProductRoute, async (c) => {
       try {
