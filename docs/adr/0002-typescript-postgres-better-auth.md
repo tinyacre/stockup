@@ -9,5 +9,5 @@
 
 ## Consequences
 
-- Better Auth 新版默认不开启 OAuth 动态客户端注册，MCP 客户端靠 CIMD 接入；依赖 DCR 的客户端需要实测。
-- organization 成员身份如何映射到 MCP access token，Better Auth 官方没有说明，由本项目自己的测试保证。
+- MCP 客户端只通过 CIMD（Client ID Metadata Document）接入，不开启 OAuth 动态客户端注册（DCR）。Claude 和 Claude Code 都发布了 CIMD 文档，已实测能完成授权并调用工具（APP-93）。开启 DCR 意味着任何人都能匿名注册任意回调地址的客户端，所以只有遇到只支持 DCR 的客户端时才重新评估。
+- MCP access token 只携带用户（`sub`），不携带家庭。每次请求都由用户查 member 表得到所属家庭，成员离开家庭立即生效，不必等 token 过期。Better Auth 的 organization 插件允许一个用户属于多个 organization，单家庭约束由本项目自己保证并用测试覆盖。
