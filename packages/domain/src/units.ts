@@ -45,3 +45,23 @@ function baseFactor(unit: Unit): number {
   if (factor === undefined) throw new RangeError(`Unknown unit ${unit.name} (${unit.dimension})`);
   return factor;
 }
+
+const reservedNames = new Set([...weightUnits, ...volumeUnits].map((name) => name.toLowerCase()));
+
+// A count unit cannot borrow a weight or volume name in any letter case, so "kg" always means the same quantity.
+export function isUnit(unit: { dimension: string; name: string }): unit is Unit {
+  switch (unit.dimension) {
+    case 'weight':
+      return Object.hasOwn(gramsPer, unit.name);
+    case 'volume':
+      return Object.hasOwn(millilitresPer, unit.name);
+    case 'count':
+      return (
+        unit.name.length > 0 &&
+        unit.name.trim() === unit.name &&
+        !reservedNames.has(unit.name.toLowerCase())
+      );
+    default:
+      return false;
+  }
+}

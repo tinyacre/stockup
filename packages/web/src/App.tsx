@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { api, ApiError, type Me } from '@/lib/api';
+import { CatalogPage } from '@/pages/catalog';
 import { SetupPage } from '@/pages/setup';
 import { SignInPage } from '@/pages/sign-in';
 
@@ -72,7 +73,9 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
           </Button>
         </div>
       </header>
-      <main className="text-muted-foreground p-6 text-center">家庭共享的好价记忆工具</main>
+      <main>
+        <CatalogPage />
+      </main>
     </div>
   );
 }

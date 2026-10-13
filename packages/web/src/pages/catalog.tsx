@@ -1,0 +1,722 @@
+import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { ChevronLeft, Pencil, Plus } from 'lucide-react';
+import { isUnit, volumeUnits, weightUnits, type Unit } from '@stockup/domain';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { api, ApiError, type CategoryGroup, type Product } from '@/lib/api';
+import { cn } from '@/lib/utils';
+
+const fieldClass =
+  'w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm dark:bg-input/30';
+
+// Resolves to an error message for the member, or nothing when the action succeeded.
+type Action = () => Promise<string | void>;
+
+function describeError(error: unknown, messages: Record<string, string> = {}) {
+  if (error instanceof ApiError && error.code && messages[error.code]) return messages[error.code];
+  if (error instanceof ApiError && error.status === 400) return '请检查填写的内容。';
+  return '出错了，请稍后再试。';
+}
+
+async function attempt(run: () => Promise<unknown>, messages?: Record<string, string>) {
+  try {
+    await run();
+  } catch (error) {
+    return describeError(error, messages);
+  }
+}
+
+const nameTaken = { name_taken: '这个名称已经被使用。' };
+
+function formatSize(amount: number, unit: Unit) {
+  return `${amount} ${unit.name}`;
+}
+
+export function CatalogPage() {
+  const [groups, setGroups] = useState<CategoryGroup[]>();
+  const [loadError, setLoadError] = useState<string>();
+  const [selectedId, setSelectedId] = useState<string>();
+
+  // A failed refresh keeps the last catalog on screen: the write that triggered it has already succeeded.
+  const reload = useCallback(async () => {
+    try {
+      setGroups(await api.catalog());
+      setLoadError(undefined);
+    } catch (error) {
+      setLoadError(describeError(error));
+    }
+  }, []);
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const loadAlert = loadError && <RetryAlert message={`大类与品类加载失败：${loadError}`} onRetry={reload} />;
+  if (!groups) return loadAlert ? <div className="p-4">{loadAlert}</div> : null;
+
+  const selected = groups.flatMap((g) => g.categories.map((c) => ({ ...c, group: g }))).find((c) => c.id === selectedId);
+
+  return (
+    <div className="mx-auto grid max-w-6xl gap-6 p-4 min-[900px]:grid-cols-[20rem_1fr]">
+      {loadAlert && <div className="min-[900px]:col-span-2">{loadAlert}</div>}
+      <section aria-label="大类与品类" className={cn(selected && 'hidden min-[900px]:block')}>
+        <CategoryTree groups={groups} selectedId={selected?.id} onSelect={setSelectedId} onChange={reload} />
+      </section>
+      <section aria-label="品类详情" className={cn(!selected && 'hidden min-[900px]:block')}>
+        {selected ? (
+          <CategoryPanel
+            key={selected.id}
+            category={selected}
+            groups={groups}
+            onBack={() => setSelectedId(undefined)}
+            onChange={reload}
+            onDeleted={() => {
+              setSelectedId(undefined);
+              return reload();
+            }}
+          />
+        ) : (
+          <p className="text-muted-foreground py-12 text-center text-sm">选择一个品类查看其中的商品。</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function CategoryTree({
+  groups,
+  selectedId,
+  onSelect,
+  onChange,
+}: {
+  groups: CategoryGroup[];
+  selectedId?: string;
+  onSelect(id: string): void;
+  onChange(): Promise<void>;
+}) {
+  return (
+    <div className="flex flex-col gap-6">
+      <NameForm
+        label="新大类名称"
+        submitLabel="新建大类"
+        onSubmit={(name) =>
+          attempt(async () => {
+            await api.createCategoryGroup({ name });
+            await onChange();
+          }, nameTaken)
+        }
+      />
+      {groups.length === 0 && <p className="text-muted-foreground text-sm">还没有大类，比如「宠物」「生活用品」。</p>}
+      {groups.map((group) => (
+        <GroupItem key={group.id} group={group} selectedId={selectedId} onSelect={onSelect} onChange={onChange} />
+      ))}
+    </div>
+  );
+}
+
+function GroupItem({
+  group,
+  selectedId,
+  onSelect,
+  onChange,
+}: {
+  group: CategoryGroup;
+  selectedId?: string;
+  onSelect(id: string): void;
+  onChange(): Promise<void>;
+}) {
+  const [adding, setAdding] = useState(false);
+
+  return (
+    <div role="group" aria-label={`大类 ${group.name}`} className="flex flex-col gap-2">
+      <EditableTitle
+        as="h2"
+        className="text-sm font-semibold"
+        name={group.name}
+        label="大类名称"
+        onRename={(name) =>
+          attempt(async () => {
+            await api.updateCategoryGroup(group.id, { name });
+            await onChange();
+          }, nameTaken)
+        }
+        actions={
+          <>
+            <Button variant="ghost" size="icon-xs" aria-label={`在 ${group.name} 下新建品类`} onClick={() => setAdding(true)}>
+              <Plus />
+            </Button>
+            <DeleteButton
+              label={`删除大类 ${group.name}`}
+              onDelete={() =>
+                attempt(
+                  async () => {
+                    await api.deleteCategoryGroup(group.id);
+                    await onChange();
+                  },
+                  { not_empty: '大类下还有品类，请先删除或移走这些品类。' },
+                )
+              }
+            />
+          </>
+        }
+      />
+      {adding && (
+        <NameForm
+          label="新品类名称"
+          submitLabel="新建品类"
+          autoFocus
+          onCancel={() => setAdding(false)}
+          onSubmit={(name) =>
+            attempt(async () => {
+              const created = await api.createCategory({ categoryGroupId: group.id, name });
+              setAdding(false);
+              await onChange();
+              onSelect(created.id);
+            }, nameTaken)
+          }
+        />
+      )}
+      <ul className="flex flex-col">
+        {group.categories.map((category) => (
+          <li key={category.id}>
+            <button
+              type="button"
+              aria-current={category.id === selectedId ? 'true' : undefined}
+              className="hover:bg-accent aria-[current]:bg-accent flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm"
+              onClick={() => onSelect(category.id)}
+            >
+              <span>{category.name}</span>
+              <span className="text-muted-foreground text-xs">{category.productCount}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function CategoryPanel({
+  category,
+  groups,
+  onBack,
+  onChange,
+  onDeleted,
+}: {
+  category: { id: string; name: string; group: CategoryGroup };
+  groups: CategoryGroup[];
+  onBack(): void;
+  onChange(): Promise<void>;
+  onDeleted(): Promise<void>;
+}) {
+  const [products, setProducts] = useState<Product[]>();
+  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string>();
+  const [moveError, setMoveError] = useState<string>();
+  const [loadError, setLoadError] = useState<string>();
+
+  const reload = useCallback(async () => {
+    try {
+      setProducts(await api.products(category.id));
+      setLoadError(undefined);
+    } catch (error) {
+      setLoadError(describeError(error));
+    }
+  }, [category.id]);
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  // The category tree shows product counts, so it refreshes alongside the product list.
+  const refresh = async () => {
+    await Promise.all([reload(), onChange()]);
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Button variant="ghost" size="sm" className="self-start min-[900px]:hidden" onClick={onBack}>
+        <ChevronLeft />
+        {category.group.name}
+      </Button>
+      <EditableTitle
+        as="h2"
+        className="text-xl font-semibold"
+        name={category.name}
+        label="品类名称"
+        onRename={(name) =>
+          attempt(async () => {
+            await api.updateCategory(category.id, { name });
+            await onChange();
+          }, nameTaken)
+        }
+        actions={
+          <DeleteButton
+            label={`删除品类 ${category.name}`}
+            onDelete={() =>
+              attempt(
+                async () => {
+                  await api.deleteCategory(category.id);
+                  await onDeleted();
+                },
+                { not_empty: '品类下还有商品，请先删除或移走这些商品。' },
+              )
+            }
+          />
+        }
+      />
+      <label className="flex items-center gap-2 text-sm">
+        <span className="text-muted-foreground shrink-0">所属大类</span>
+        <select
+          className={cn(fieldClass, 'h-8 max-w-60')}
+          value={category.group.id}
+          onChange={async (event) => {
+            const categoryGroupId = event.target.value;
+            setMoveError(
+              (await attempt(async () => {
+                await api.updateCategory(category.id, { categoryGroupId });
+                await onChange();
+              })) ?? undefined,
+            );
+          }}
+        >
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {moveError && <Alert>{moveError}</Alert>}
+
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium">商品</h3>
+        {!creating && (
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus />
+            新建商品
+          </Button>
+        )}
+      </div>
+      {creating && (
+        <NewProductForm
+          categoryId={category.id}
+          onCancel={() => setCreating(false)}
+          onCreated={async () => {
+            setCreating(false);
+            await refresh();
+          }}
+        />
+      )}
+      {loadError && <RetryAlert message={`商品加载失败：${loadError}`} onRetry={reload} />}
+      {products?.length === 0 && !creating && (
+        <p className="text-muted-foreground text-sm">这个品类下还没有商品。</p>
+      )}
+      <ul className="flex flex-col gap-2">
+        {products?.map((product) => (
+          <li key={product.id} aria-label={product.name} className="rounded-lg border p-3">
+            {editingId === product.id ? (
+              <ProductEditor
+                product={product}
+                groups={groups}
+                onCancel={() => setEditingId(undefined)}
+                onSaved={async () => {
+                  setEditingId(undefined);
+                  await refresh();
+                }}
+              />
+            ) : (
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{product.name}</p>
+                  <p className="text-muted-foreground text-sm">
+                    基准规格 {formatSize(product.baseSize, product.pricingUnit)}
+                  </p>
+                  {product.note && <p className="text-muted-foreground mt-1 text-sm whitespace-pre-wrap">{product.note}</p>}
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setEditingId(product.id)}>
+                  编辑
+                </Button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// The select's value is "dimension:name"; the count option leaves the name to a separate input.
+const countUnit = 'count:';
+
+function NewProductForm({
+  categoryId,
+  onCancel,
+  onCreated,
+}: {
+  categoryId: string;
+  onCancel(): void;
+  onCreated(): Promise<void>;
+}) {
+  const id = useId();
+  const [unitChoice, setUnitChoice] = useState(countUnit);
+  const [countName, setCountName] = useState('');
+  const [error, setError] = useState<string>();
+  const [pending, setPending] = useState(false);
+
+  const separator = unitChoice.indexOf(':');
+  const dimension = unitChoice.slice(0, separator) as Unit['dimension'];
+  const choiceName = unitChoice.slice(separator + 1);
+  const pricingUnit = { dimension, name: dimension === 'count' ? countName.trim() : choiceName };
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    if (!isUnit(pricingUnit)) {
+      setError('请填写计数单位的名称，比如「抽」「片」，不能和重量或体积单位同名。');
+      return;
+    }
+    const baseSize = Number(data.get('baseSize'));
+    if (!(baseSize > 0)) {
+      setError('基准规格必须大于 0。');
+      return;
+    }
+    setPending(true);
+    setError(
+      (await attempt(async () => {
+        await api.createProduct({
+          categoryId,
+          name: String(data.get('name')),
+          pricingUnit,
+          baseSize,
+          note: String(data.get('note')),
+        });
+        await onCreated();
+      })) ?? undefined,
+    );
+    setPending(false);
+  }
+
+  return (
+    <form aria-label="新建商品" className="flex flex-col gap-3 rounded-lg border p-3" onSubmit={handleSubmit}>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`${id}-name`}>商品名称</Label>
+        <Input id={`${id}-name`} name="name" required maxLength={100} autoFocus placeholder="得宝抽纸 M 码" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={`${id}-unit`}>计价单位</Label>
+          <select
+            id={`${id}-unit`}
+            className={cn(fieldClass, 'h-9')}
+            value={unitChoice}
+            onChange={(event) => setUnitChoice(event.target.value)}
+          >
+            <option value={countUnit}>计数（自定义名称）</option>
+            <optgroup label="重量">
+              {weightUnits.map((name) => (
+                <option key={name} value={`weight:${name}`}>
+                  {name}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="体积">
+              {volumeUnits.map((name) => (
+                <option key={name} value={`volume:${name}`}>
+                  {name}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+        {dimension === 'count' && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor={`${id}-count`}>计数单位名称</Label>
+            <Input
+              id={`${id}-count`}
+              required
+              maxLength={10}
+              placeholder="抽、片、卷、颗"
+              value={countName}
+              onChange={(event) => setCountName(event.target.value)}
+            />
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`${id}-base`}>基准规格</Label>
+        <div className="flex items-center gap-2">
+          <Input id={`${id}-base`} name="baseSize" type="number" inputMode="decimal" min="0" step="any" required className="max-w-40" />
+          <span className="text-muted-foreground text-sm">{pricingUnit.name}</span>
+        </div>
+        <p className="text-muted-foreground text-xs">单价按这个量显示，如 90 抽、25 磅、500 g。</p>
+      </div>
+      <NoteField id={`${id}-note`} />
+      {error && <Alert>{error}</Alert>}
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending}>
+          创建商品
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          取消
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function ProductEditor({
+  product,
+  groups,
+  onCancel,
+  onSaved,
+}: {
+  product: Product;
+  groups: CategoryGroup[];
+  onCancel(): void;
+  onSaved(): Promise<void>;
+}) {
+  const id = useId();
+  const [error, setError] = useState<string>();
+  const [pending, setPending] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  async function run(action: Action) {
+    setPending(true);
+    setError((await action()) ?? undefined);
+    setPending(false);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    run(() =>
+      attempt(async () => {
+        await api.updateProduct(product.id, {
+          name: String(data.get('name')),
+          categoryId: String(data.get('categoryId')),
+          note: String(data.get('note')),
+        });
+        await onSaved();
+      }),
+    );
+  }
+
+  return (
+    <form aria-label={`编辑 ${product.name}`} className="flex flex-col gap-3" onSubmit={handleSubmit}>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`${id}-name`}>商品名称</Label>
+        <Input id={`${id}-name`} name="name" required maxLength={100} defaultValue={product.name} />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`${id}-category`}>所属品类</Label>
+        <select id={`${id}-category`} name="categoryId" className={cn(fieldClass, 'h-9')} defaultValue={product.categoryId}>
+          {groups.map((g) => (
+            <optgroup key={g.id} label={g.name}>
+              {g.categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+      <p className="text-muted-foreground text-sm">
+        计价单位 {product.pricingUnit.name} · 基准规格 {formatSize(product.baseSize, product.pricingUnit)}
+      </p>
+      <NoteField id={`${id}-note`} defaultValue={product.note} />
+      {error && <Alert>{error}</Alert>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={pending}>
+          保存
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          取消
+        </Button>
+        <Button
+          type="button"
+          variant={confirmingDelete ? 'destructive' : 'ghost'}
+          className="ml-auto"
+          disabled={pending}
+          onBlur={() => setConfirmingDelete(false)}
+          onClick={() => {
+            if (!confirmingDelete) return setConfirmingDelete(true);
+            run(() =>
+              attempt(async () => {
+                await api.deleteProduct(product.id);
+                await onSaved();
+              }),
+            );
+          }}
+        >
+          {confirmingDelete ? '确认删除商品' : '删除商品'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function NoteField({ id, defaultValue }: { id: string; defaultValue?: string }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>备注</Label>
+      <textarea
+        id={id}
+        name="note"
+        rows={2}
+        maxLength={500}
+        defaultValue={defaultValue}
+        placeholder="可互换的变体，如香型、颜色"
+        className={cn(fieldClass, 'py-2')}
+      />
+    </div>
+  );
+}
+
+function NameForm({
+  label,
+  submitLabel,
+  defaultValue,
+  autoFocus,
+  onSubmit,
+  onCancel,
+}: {
+  label: string;
+  submitLabel: string;
+  defaultValue?: string;
+  autoFocus?: boolean;
+  onSubmit(name: string): Promise<string | void>;
+  onCancel?(): void;
+}) {
+  const [error, setError] = useState<string>();
+  const [pending, setPending] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const name = String(new FormData(form).get('name')).trim();
+    if (!name) return;
+    setPending(true);
+    const message = await onSubmit(name);
+    setError(message ?? undefined);
+    if (!message && !defaultValue) form.reset();
+    setPending(false);
+  }
+
+  return (
+    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+      <div className="flex gap-2">
+        <Input
+          name="name"
+          aria-label={label}
+          placeholder={label}
+          required
+          maxLength={50}
+          defaultValue={defaultValue}
+          autoFocus={autoFocus}
+          onKeyDown={(event) => event.key === 'Escape' && onCancel?.()}
+        />
+        <Button type="submit" variant="outline" disabled={pending}>
+          {submitLabel}
+        </Button>
+        {onCancel && (
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            取消
+          </Button>
+        )}
+      </div>
+      {error && <Alert>{error}</Alert>}
+    </form>
+  );
+}
+
+function EditableTitle({
+  as: Heading,
+  className,
+  name,
+  label,
+  onRename,
+  actions,
+}: {
+  as: 'h2' | 'h3';
+  className?: string;
+  name: string;
+  label: string;
+  onRename(name: string): Promise<string | void>;
+  actions?: ReactNode;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <NameForm
+        label={label}
+        submitLabel="保存"
+        defaultValue={name}
+        autoFocus
+        onCancel={() => setEditing(false)}
+        onSubmit={async (next) => {
+          const error = await onRename(next);
+          if (!error) setEditing(false);
+          return error;
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <Heading className={cn('mr-auto', className)}>{name}</Heading>
+      <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${name}`} onClick={() => setEditing(true)}>
+        <Pencil />
+      </Button>
+      {actions}
+    </div>
+  );
+}
+
+// Deletion takes a second click on the same button instead of a browser dialog.
+function DeleteButton({ label, onDelete }: { label: string; onDelete: Action }) {
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string>();
+
+  return (
+    <>
+      <Button
+        variant={confirming ? 'destructive' : 'ghost'}
+        size="xs"
+        aria-label={confirming ? `确认${label}` : label}
+        onBlur={() => setConfirming(false)}
+        onClick={async () => {
+          if (!confirming) {
+            setError(undefined);
+            return setConfirming(true);
+          }
+          setConfirming(false);
+          setError((await onDelete()) ?? undefined);
+        }}
+      >
+        {confirming ? '确认删除' : '删除'}
+      </Button>
+      {error && <Alert className="basis-full">{error}</Alert>}
+    </>
+  );
+}
+
+function RetryAlert({ message, onRetry }: { message: string; onRetry(): void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Alert>{message}</Alert>
+      <Button variant="outline" size="xs" onClick={onRetry}>
+        重试
+      </Button>
+    </div>
+  );
+}
+
+function Alert({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <p role="alert" className={cn('text-destructive text-sm', className)}>
+      {children}
+    </p>
+  );
+}

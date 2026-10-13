@@ -8,6 +8,13 @@
       "when": 1791875849959,
       "tag": "0000_households",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791878957850,
+      "tag": "0001_catalog",
+      "breakpoints": true
     }
   ]
 }
