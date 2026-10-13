@@ -37,7 +37,8 @@ export function calculatePrice(input: PriceInput): Price {
   assertPositive(input.baseSize, 'Base Size');
 
   const netPrice = input.listPrice - input.discounts.reduce((sum, d) => sum + d.amount, 0);
-  if (netPrice < 0) throw new RangeError(`Discounts exceed the List Price of ${input.listPrice}`);
+  // A free item is not a price observation, and a zero Unit Price would pin the Lowest Unit Price for good.
+  if (netPrice <= 0) throw new RangeError(`Discounts must leave a positive Net Price, got ${netPrice}`);
 
   const size = convert(input.size.amount, input.size.unit, input.pricingUnit);
   return { netPrice, unitPrice: (netPrice * input.baseSize) / (input.quantity * size) };

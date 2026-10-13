@@ -83,14 +83,14 @@
     }
   },
   {
-    "name": "without a Stock Line, at or above the Lowest Unit Price is skip",
+    "name": "without a Stock Line, at or above the Lowest Unit Price gives no verdict",
     "input": {
       "unitPrice": 260,
       "stockLine": null,
       "lowestUnitPrice": 250
     },
     "expected": {
-      "verdict": "skip",
+      "verdict": null,
       "stockLineGap": null,
       "lowestGap": 10,
       "lastYearPromotionGap": null
@@ -159,6 +159,22 @@
     "input": {
       "unitPrice": 300,
       "lowestUnitPrice": -1
+    },
+    "error": "RangeError"
+  },
+  {
+    "name": "a Lowest Unit Price of zero is rejected",
+    "input": {
+      "unitPrice": 300,
+      "lowestUnitPrice": 0
+    },
+    "error": "RangeError"
+  },
+  {
+    "name": "a Unit Price of zero is rejected",
+    "input": {
+      "unitPrice": 0,
+      "stockLine": 300
     },
     "error": "RangeError"
   }

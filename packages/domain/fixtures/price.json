@@ -5,38 +5,84 @@
       "listPrice": 9900,
       "discounts": [],
       "quantity": 18,
-      "size": { "amount": 130, "unit": { "dimension": "count", "name": "抽" } },
-      "pricingUnit": { "dimension": "count", "name": "抽" },
+      "size": {
+        "amount": 130,
+        "unit": {
+          "dimension": "count",
+          "name": "抽"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "count",
+        "name": "抽"
+      },
       "baseSize": 90
     },
-    "expected": { "netPrice": 9900, "unitPrice": 380.7692307692 }
+    "expected": {
+      "netPrice": 9900,
+      "unitPrice": 380.7692307692
+    }
   },
   {
     "name": "several named discounts are all subtracted",
     "input": {
       "listPrice": 19900,
       "discounts": [
-        { "amount": 10000, "name": "满 199 减 100" },
-        { "amount": 500, "name": "plus 券" }
+        {
+          "amount": 10000,
+          "name": "满 199 减 100"
+        },
+        {
+          "amount": 500,
+          "name": "plus 券"
+        }
       ],
       "quantity": 3,
-      "size": { "amount": 100, "unit": { "dimension": "count", "name": "抽" } },
-      "pricingUnit": { "dimension": "count", "name": "抽" },
+      "size": {
+        "amount": 100,
+        "unit": {
+          "dimension": "count",
+          "name": "抽"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "count",
+        "name": "抽"
+      },
       "baseSize": 90
     },
-    "expected": { "netPrice": 9400, "unitPrice": 2820 }
+    "expected": {
+      "netPrice": 9400,
+      "unitPrice": 2820
+    }
   },
   {
     "name": "a single unnamed discount",
     "input": {
       "listPrice": 5000,
-      "discounts": [{ "amount": 1000 }],
+      "discounts": [
+        {
+          "amount": 1000
+        }
+      ],
       "quantity": 1,
-      "size": { "amount": 5.4, "unit": { "dimension": "weight", "name": "kg" } },
-      "pricingUnit": { "dimension": "weight", "name": "kg" },
+      "size": {
+        "amount": 5.4,
+        "unit": {
+          "dimension": "weight",
+          "name": "kg"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "weight",
+        "name": "kg"
+      },
       "baseSize": 1
     },
-    "expected": { "netPrice": 4000, "unitPrice": 740.7407407407 }
+    "expected": {
+      "netPrice": 4000,
+      "unitPrice": 740.7407407407
+    }
   },
   {
     "name": "size in pounds for a product priced per kilogram",
@@ -44,11 +90,23 @@
       "listPrice": 45900,
       "discounts": [],
       "quantity": 1,
-      "size": { "amount": 25, "unit": { "dimension": "weight", "name": "磅" } },
-      "pricingUnit": { "dimension": "weight", "name": "kg" },
+      "size": {
+        "amount": 25,
+        "unit": {
+          "dimension": "weight",
+          "name": "磅"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "weight",
+        "name": "kg"
+      },
       "baseSize": 1
     },
-    "expected": { "netPrice": 45900, "unitPrice": 4047.6871337143 }
+    "expected": {
+      "netPrice": 45900,
+      "unitPrice": 4047.6871337143
+    }
   },
   {
     "name": "size in jin for a product priced per gram",
@@ -56,11 +114,23 @@
       "listPrice": 3990,
       "discounts": [],
       "quantity": 2,
-      "size": { "amount": 5, "unit": { "dimension": "weight", "name": "斤" } },
-      "pricingUnit": { "dimension": "weight", "name": "g" },
+      "size": {
+        "amount": 5,
+        "unit": {
+          "dimension": "weight",
+          "name": "斤"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "weight",
+        "name": "g"
+      },
       "baseSize": 500
     },
-    "expected": { "netPrice": 3990, "unitPrice": 399 }
+    "expected": {
+      "netPrice": 3990,
+      "unitPrice": 399
+    }
   },
   {
     "name": "a free gift counts towards the quantity",
@@ -68,23 +138,49 @@
       "listPrice": 6000,
       "discounts": [],
       "quantity": 4,
-      "size": { "amount": 1, "unit": { "dimension": "volume", "name": "L" } },
-      "pricingUnit": { "dimension": "volume", "name": "ml" },
+      "size": {
+        "amount": 1,
+        "unit": {
+          "dimension": "volume",
+          "name": "L"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "volume",
+        "name": "ml"
+      },
       "baseSize": 500
     },
-    "expected": { "netPrice": 6000, "unitPrice": 750 }
+    "expected": {
+      "netPrice": 6000,
+      "unitPrice": 750
+    }
   },
   {
-    "name": "discounts covering the whole list price leave a free record",
+    "name": "discounts covering the whole list price are rejected",
     "input": {
       "listPrice": 1500,
-      "discounts": [{ "amount": 1500, "name": "免单" }],
+      "discounts": [
+        {
+          "amount": 1500,
+          "name": "免单"
+        }
+      ],
       "quantity": 1,
-      "size": { "amount": 100, "unit": { "dimension": "count", "name": "片" } },
-      "pricingUnit": { "dimension": "count", "name": "片" },
+      "size": {
+        "amount": 100,
+        "unit": {
+          "dimension": "count",
+          "name": "片"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "count",
+        "name": "片"
+      },
       "baseSize": 10
     },
-    "expected": { "netPrice": 0, "unitPrice": 0 }
+    "error": "RangeError"
   },
   {
     "name": "a size in another count unit is rejected",
@@ -92,8 +188,17 @@
       "listPrice": 9900,
       "discounts": [],
       "quantity": 1,
-      "size": { "amount": 100, "unit": { "dimension": "count", "name": "片" } },
-      "pricingUnit": { "dimension": "count", "name": "抽" },
+      "size": {
+        "amount": 100,
+        "unit": {
+          "dimension": "count",
+          "name": "片"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "count",
+        "name": "抽"
+      },
       "baseSize": 90
     },
     "error": "IncompatibleUnitsError"
@@ -102,10 +207,26 @@
     "name": "discounts larger than the list price are rejected",
     "input": {
       "listPrice": 1000,
-      "discounts": [{ "amount": 800 }, { "amount": 300 }],
+      "discounts": [
+        {
+          "amount": 800
+        },
+        {
+          "amount": 300
+        }
+      ],
       "quantity": 1,
-      "size": { "amount": 1, "unit": { "dimension": "weight", "name": "kg" } },
-      "pricingUnit": { "dimension": "weight", "name": "kg" },
+      "size": {
+        "amount": 1,
+        "unit": {
+          "dimension": "weight",
+          "name": "kg"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "weight",
+        "name": "kg"
+      },
       "baseSize": 1
     },
     "error": "RangeError"
@@ -116,8 +237,17 @@
       "listPrice": 99.5,
       "discounts": [],
       "quantity": 1,
-      "size": { "amount": 1, "unit": { "dimension": "weight", "name": "kg" } },
-      "pricingUnit": { "dimension": "weight", "name": "kg" },
+      "size": {
+        "amount": 1,
+        "unit": {
+          "dimension": "weight",
+          "name": "kg"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "weight",
+        "name": "kg"
+      },
       "baseSize": 1
     },
     "error": "RangeError"
@@ -128,8 +258,17 @@
       "listPrice": 1000,
       "discounts": [],
       "quantity": 0,
-      "size": { "amount": 1, "unit": { "dimension": "weight", "name": "kg" } },
-      "pricingUnit": { "dimension": "weight", "name": "kg" },
+      "size": {
+        "amount": 1,
+        "unit": {
+          "dimension": "weight",
+          "name": "kg"
+        }
+      },
+      "pricingUnit": {
+        "dimension": "weight",
+        "name": "kg"
+      },
       "baseSize": 1
     },
     "error": "RangeError"

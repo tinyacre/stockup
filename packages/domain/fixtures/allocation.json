@@ -64,16 +64,13 @@
     ]
   },
   {
-    "name": "a total equal to the whole order frees every item",
+    "name": "a total that leaves an item free is rejected",
     "total": 4600,
     "listPrices": [
       1200,
       3400
     ],
-    "expected": [
-      1200,
-      3400
-    ]
+    "error": "RangeError"
   },
   {
     "name": "a total larger than the order is rejected",
@@ -100,17 +97,26 @@
     "error": "RangeError"
   },
   {
-    "name": "caps each share at its List Price and passes the excess to the next largest",
-    "total": 2997,
+    "name": "leaves every item at least one cent and passes the excess to the next largest",
+    "total": 2994,
     "listPrices": [
       1000,
       999,
       999
     ],
     "expected": [
-      1000,
       999,
-      998
+      998,
+      997
     ]
+  },
+  {
+    "name": "an item with a zero List Price is rejected",
+    "total": 100,
+    "listPrices": [
+      0,
+      500
+    ],
+    "error": "RangeError"
   }
 ]
