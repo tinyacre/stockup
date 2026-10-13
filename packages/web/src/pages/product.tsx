@@ -1,93 +1,37 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { ChevronLeft, Plus, X } from 'lucide-react';
-import {
-  calculatePrice,
-  IncompatibleUnitsError,
-  judge,
-  matchPromotion,
-  parseQuantity,
-  promotionYear,
-  volumeUnits,
-  weightUnits,
-  type Judgment,
-  type Price,
-  type Unit,
-  type Verdict,
-} from '@stockup/domain';
+import { judge } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, attempt, DeleteButton, describeError, fieldClass, RetryAlert } from '@/components/editing';
+import { JudgmentSummary } from '@/components/verdict';
 import {
   api,
   ApiError,
   type Channel,
   type PriceRecord,
-  type PriceRecordInput,
   type Product,
   type ProductDetail,
   type Promotion,
 } from '@/lib/api';
-import { formatSize, formatStockLineGap, formatYuan } from '@/lib/format';
+import { formatSize, formatYuan } from '@/lib/format';
+import {
+  discountDraft,
+  formatUnitPrice,
+  lastYearPromotionLowest,
+  lowestOf,
+  matchDate,
+  multipliedQuantity,
+  parseYuan,
+  preview,
+  readPriceDraft,
+  recordErrors,
+  today,
+  unitsLike,
+  type DiscountDraft,
+} from '@/lib/pricing';
 import { cn } from '@/lib/utils';
-
-function formatUnitPrice(unitPrice: number, product: Product) {
-  return `${formatYuan(unitPrice)} / ${formatSize(product.baseSize, product.pricingUnit)}`;
-}
-
-function parseYuan(text: string): number | null {
-  const trimmed = text.trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
-  return Math.round(Number(trimmed) * 100);
-}
-
-function today() {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-
-function unitsLike(unit: Unit): Unit[] {
-  if (unit.dimension === 'weight') return weightUnits.map((name) => ({ dimension: 'weight', name }));
-  if (unit.dimension === 'volume') return volumeUnits.map((name) => ({ dimension: 'volume', name }));
-  return [unit];
-}
-
-const verdictLabels: Record<Verdict, string> = {
-  recordLow: '史低',
-  stockUp: '囤',
-  skip: '不囤',
-  noReference: '暂无参考',
-};
-
-function lowestOf(records: PriceRecord[]) {
-  return records.length ? Math.min(...records.map((r) => r.unitPrice)) : null;
-}
-
-// Mirrors the server's judgment: records count by their tag, in the occurrence a year before the date's.
-function lastYearPromotionLowest(date: string, promotion: Promotion, records: PriceRecord[]) {
-  const lastYear = promotionYear(date, promotion) - 1;
-  return lowestOf(
-    records.filter((r) => r.promotion?.id === promotion.id && promotionYear(r.date, promotion) === lastYear),
-  );
-}
-
-function matchDate(date: string, promotions: Promotion[]) {
-  try {
-    return matchPromotion(date, promotions);
-  } catch (error) {
-    // A date input mid-edit holds no valid date yet.
-    if (error instanceof RangeError) return null;
-    throw error;
-  }
-}
-
-const recordErrors = {
-  channel_not_found: '这个渠道已不存在，请重新选择。',
-  promotion_not_found: '这个大促已不存在，请重新选择。',
-  incompatible_unit: '规格的单位和商品的计价单位不是同一量纲。',
-  invalid_price: '优惠之和必须小于原价。',
-};
 
 export function ProductPage({ productId, onBack }: { productId: string; onBack(categoryId?: string): void }) {
   const [product, setProduct] = useState<ProductDetail | null>();
@@ -335,28 +279,6 @@ function StockLineSection({
   );
 }
 
-function JudgmentSummary({ judgment }: { judgment: Judgment }) {
-  const { verdict, stockLineGap } = judgment;
-  return (
-    <span className="flex flex-wrap items-center gap-x-2">
-      {verdict && (
-        <span
-          className={cn(
-            'rounded px-1.5 py-0.5 text-xs font-semibold',
-            verdict === 'recordLow' || verdict === 'stockUp'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-muted-foreground',
-          )}
-        >
-          {verdictLabels[verdict]}
-        </span>
-      )}
-      {stockLineGap !== null && <span>{formatStockLineGap(stockLineGap)}</span>}
-      {verdict === null && <span className="text-muted-foreground">未设入手价，不低于历史最低单价</span>}
-    </span>
-  );
-}
-
 function PriceRecordItem({
   record,
   product,
@@ -416,55 +338,6 @@ function PriceRecordItem({
   );
 }
 
-interface DiscountDraft {
-  key: number;
-  amount: string;
-  name: string;
-}
-
-let nextDiscountKey = 0;
-
-function discountDraft(amount = '', name = ''): DiscountDraft {
-  return { key: nextDiscountKey++, amount, name };
-}
-
-// Reads the drafts into an input, or explains the first field that does not parse.
-function readForm(
-  product: Product,
-  draft: {
-    listPrice: string;
-    discounts: DiscountDraft[];
-    quantity: string;
-    sizeAmount: string;
-    sizeUnitName: string;
-  },
-): { input: Omit<PriceRecordInput, 'date' | 'channelId' | 'purchased' | 'promotionId' | 'note'> } | { error: string } {
-  const listPrice = parseYuan(draft.listPrice);
-  if (listPrice === null || listPrice === 0) return { error: '请填写原价，最多两位小数。' };
-  const discounts = [];
-  for (const d of draft.discounts) {
-    if (!d.amount.trim() && !d.name.trim()) continue;
-    const amount = parseYuan(d.amount);
-    if (amount === null || amount === 0) return { error: '请填写每项优惠的金额，最多两位小数。' };
-    discounts.push(d.name.trim() ? { amount, name: d.name.trim() } : { amount });
-  }
-  const quantity = parseQuantity(draft.quantity);
-  if (quantity === null) return { error: '件数应为正整数，可以写成 3 × 6。' };
-  const sizeAmount = Number(draft.sizeAmount);
-  if (!draft.sizeAmount.trim() || !(sizeAmount > 0)) return { error: '请填写规格，必须大于 0。' };
-  const unit = unitsLike(product.pricingUnit).find((u) => u.name === draft.sizeUnitName) ?? product.pricingUnit;
-  return { input: { listPrice, discounts, quantity, size: { amount: sizeAmount, unit } } };
-}
-
-function preview(input: Parameters<typeof calculatePrice>[0]): Price | string {
-  try {
-    return calculatePrice(input);
-  } catch (error) {
-    if (error instanceof IncompatibleUnitsError) return recordErrors.incompatible_unit;
-    return recordErrors.invalid_price;
-  }
-}
-
 function PriceRecordForm({
   product,
   channels,
@@ -507,12 +380,9 @@ function PriceRecordForm({
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
 
-  const read = readForm(product, { listPrice, discounts, quantity, sizeAmount, sizeUnitName });
-  const price =
-    'input' in read
-      ? preview({ ...read.input, pricingUnit: product.pricingUnit, baseSize: product.baseSize })
-      : null;
-  const parsedQuantity = parseQuantity(quantity);
+  const read = readPriceDraft(product, { listPrice, discounts, quantity, sizeAmount, sizeUnitName });
+  const price = 'input' in read ? preview(product, read.input) : null;
+  const multiplied = multipliedQuantity(quantity);
   // An edited record is judged against the other records, as its stored price is about to be replaced.
   const lowest = lowestOf(records.filter((r) => r.id !== record?.id));
   const datePromotion = matchDate(date, promotions);
@@ -682,7 +552,7 @@ function PriceRecordForm({
             onChange={(e) => setQuantity(e.target.value)}
           />
           <p className="text-muted-foreground text-xs">
-            {parsedQuantity !== null && /[×✕xX*＊]/.test(quantity) ? `共 ${parsedQuantity} 件，` : ''}赠品也计入件数
+            {multiplied !== null ? `共 ${multiplied} 件，` : ''}赠品也计入件数
           </p>
         </div>
         <div className="flex flex-col gap-2">

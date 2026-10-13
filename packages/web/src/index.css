@@ -1,28 +1,41 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource/barlow-condensed/latin-600.css";
+@import "@fontsource/barlow-condensed/latin-700.css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* Gray-green neutrals with white cards; gold marks only primary actions and selection. */
+  --background: #f3f4f0;
+  --foreground: #1e2924;
+  --card: #ffffff;
+  --card-foreground: #1e2924;
+  --popover: #ffffff;
+  --popover-foreground: #1e2924;
+  --primary: #f2c14e;
+  --primary-foreground: #1e2924;
+  --primary-soft: #fcf4dc;
+  --secondary: #e9ebe6;
+  --secondary-foreground: #1e2924;
+  --muted: #e9ebe6;
+  --muted-foreground: #66716b;
+  --accent: #e9ebe6;
+  --accent-foreground: #1e2924;
+  --destructive: #c8473d;
+  --border: #e1e4de;
+  --input: #d5d9d2;
+  --ring: #8a948f;
+  /* Verdict hues share a lightness so none reads as louder than the others. */
+  --record-low: #c8473d;
+  --record-low-soft: #fbebe8;
+  --record-low-zone: #f2c6c0;
+  --stock-up: #2f7d5b;
+  --stock-up-soft: #e4f1ea;
+  --stock-up-zone: #bfdfcd;
+  --skip: #6b7570;
+  --skip-soft: #eef0ed;
 }
 
 .dark {
@@ -69,6 +82,16 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-primary-soft: var(--primary-soft);
+  --color-record-low: var(--record-low);
+  --color-record-low-soft: var(--record-low-soft);
+  --color-record-low-zone: var(--record-low-zone);
+  --color-stock-up: var(--stock-up);
+  --color-stock-up-soft: var(--stock-up-soft);
+  --color-stock-up-zone: var(--stock-up-zone);
+  --color-skip: var(--skip);
+  --color-skip-soft: var(--skip-soft);
+  --font-numeric: "Barlow Condensed", "DIN Alternate", "Arial Narrow", sans-serif;
 }
 
 @layer base {
@@ -77,5 +100,12 @@
   }
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
   }
+}
+
+@utility numeric {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }

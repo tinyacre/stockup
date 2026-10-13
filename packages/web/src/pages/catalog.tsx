@@ -18,21 +18,9 @@ import {
 } from '@/components/editing';
 import { api, type CategoryGroup, type Product } from '@/lib/api';
 import { formatSize } from '@/lib/format';
+import { useHistoryState } from '@/lib/history';
+import { useProductSearch } from '@/lib/search';
 import { cn } from '@/lib/utils';
-
-// The selected category and the search query live in the history entry, so returning from a
-// product page shows them again.
-function useHistoryState<T>(key: string, initial: T) {
-  const [value, setValue] = useState<T>(() => window.history.state?.[key] ?? initial);
-  const update = useCallback(
-    (next: T) => {
-      window.history.replaceState({ ...window.history.state, [key]: next }, '');
-      setValue(next);
-    },
-    [key],
-  );
-  return [value, update] as const;
-}
 
 export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void }) {
   const [groups, setGroups] = useState<CategoryGroup[]>();
@@ -115,28 +103,7 @@ function SearchResults({
   categories: { id: string; name: string; group: CategoryGroup }[];
   onOpenProduct(id: string): void;
 }) {
-  const [found, setFound] = useState<{ query: string; products: Product[] }>();
-  const [error, setError] = useState<string>();
-
-  // Waits for a pause in typing, and drops responses that arrive after the query has moved on.
-  useEffect(() => {
-    let current = true;
-    const timer = setTimeout(async () => {
-      try {
-        const products = await api.searchProducts(query);
-        if (current) {
-          setFound({ query, products });
-          setError(undefined);
-        }
-      } catch (e) {
-        if (current) setError(describeError(e));
-      }
-    }, 150);
-    return () => {
-      current = false;
-      clearTimeout(timer);
-    };
-  }, [query]);
+  const { found, error } = useProductSearch(query);
 
   if (error) return <Alert>{`搜索失败：${error}`}</Alert>;
   if (!found) return null;

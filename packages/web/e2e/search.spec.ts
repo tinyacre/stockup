@@ -8,7 +8,7 @@ test('a member finds a product by its pinyin initials', async ({ page }) => {
   const categoryName = `抽纸 ${suffix}`;
   const productName = `得宝抽纸 ${suffix}`;
 
-  await page.goto('/');
+  await page.goto('/products');
   await page.getByLabel('用户名').fill(founder.username);
   await page.getByLabel('密码').fill(founder.password);
   await page.getByRole('button', { name: '登录' }).click();

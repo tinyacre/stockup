@@ -1,7 +1,7 @@
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import type { Database } from './db';
 import { NotEmptyError, translate } from './db/errors';
-import { channel } from './db/schema';
+import { channel, priceRecord } from './db/schema';
 import type { CurrentMember } from './members';
 
 const columns = { id: channel.id, name: channel.name, archivedAt: channel.archivedAt };
@@ -26,6 +26,24 @@ export async function findChannel(db: Database, scope: CurrentMember, id: string
     .select(columns)
     .from(channel)
     .where(and(eq(channel.householdId, scope.householdId), eq(channel.id, id)));
+  return found ? toChannel(found) : null;
+}
+
+// The channel of the member's most recently entered price record among channels still in use.
+export async function lastUsedChannel(db: Database, scope: CurrentMember) {
+  const [found] = await db
+    .select(columns)
+    .from(priceRecord)
+    .innerJoin(channel, and(eq(channel.householdId, priceRecord.householdId), eq(channel.id, priceRecord.channelId)))
+    .where(
+      and(
+        eq(priceRecord.householdId, scope.householdId),
+        eq(priceRecord.recordedBy, scope.userId),
+        isNull(channel.archivedAt),
+      ),
+    )
+    .orderBy(desc(priceRecord.createdAt))
+    .limit(1);
   return found ? toChannel(found) : null;
 }
 

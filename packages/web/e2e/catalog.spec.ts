@@ -8,7 +8,7 @@ test('a member builds and browses the catalog', async ({ page }) => {
   const categoryName = `猫砂 ${suffix}`;
   const productName = `豆腐猫砂 ${suffix}`;
 
-  await page.goto('/');
+  await page.goto('/products');
   await page.getByLabel('用户名').fill(founder.username);
   await page.getByLabel('密码').fill(founder.password);
   await page.getByRole('button', { name: '登录' }).click();

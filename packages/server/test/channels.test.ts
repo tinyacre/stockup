@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { jsonRequest, signUpHousehold, useTestApp, type SignedInMember } from './support/harness';
+import { joinHousehold, jsonRequest, signUpHousehold, useTestApp, type SignedInMember } from './support/harness';
 
 const ctx = useTestApp();
 
@@ -17,9 +17,9 @@ function createChannel(m: SignedInMember, name = unique('京东')) {
   return m.request('/api/channels', jsonRequest('POST', { name }));
 }
 
-async function created(res: Response): Promise<Channel> {
+async function created<T = Channel>(res: Response): Promise<T> {
   expect(res.status).toBe(201);
-  return (await res.json()) as Channel;
+  return (await res.json()) as T;
 }
 
 function updateChannel(m: SignedInMember, id: string, body: object) {
@@ -105,6 +105,77 @@ describe('channels', () => {
     const channel = await created(await createChannel(m));
     expect((await m.request(`/api/channels/${channel.id}`, { method: 'DELETE' })).status).toBe(204);
     expect((await m.request(`/api/channels/${channel.id}`)).status).toBe(404);
+  });
+});
+
+async function recordPrice(m: SignedInMember, channelId: string) {
+  const post = (path: string, body: object) => m.request(path, jsonRequest('POST', body));
+  const group = await created<{ id: string }>(await post('/api/category-groups', { name: unique('生活用品') }));
+  const category = await created<{ id: string }>(
+    await post('/api/categories', { name: unique('抽纸'), categoryGroupId: group.id }),
+  );
+  const product = await created<{ id: string }>(
+    await post('/api/products', {
+      categoryId: category.id,
+      name: unique('得宝抽纸'),
+      pricingUnit: { dimension: 'count', name: '抽' },
+      baseSize: 90,
+    }),
+  );
+  await created(
+    await post('/api/price-records', {
+      productId: product.id,
+      channelId,
+      date: '2026-01-01',
+      purchased: false,
+      listPrice: 9900,
+      discounts: [],
+      quantity: 1,
+      size: { amount: 90, unit: { dimension: 'count', name: '抽' } },
+    }),
+  );
+}
+
+async function lastUsedOf(m: SignedInMember) {
+  const res = await m.request('/api/channels/last-used');
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { channel: Channel | null }).channel;
+}
+
+describe('last used channel', () => {
+  test("is the channel of the member's latest price record", async () => {
+    const m = await signUpHousehold(ctx);
+    expect(await lastUsedOf(m)).toBeNull();
+
+    const jd = await created(await createChannel(m, '京东'));
+    const sams = await created(await createChannel(m, '山姆'));
+    await recordPrice(m, sams.id);
+    await recordPrice(m, jd.id);
+
+    expect(await lastUsedOf(m)).toEqual(jd);
+  });
+
+  test("ignores other members' records", async () => {
+    const alice = await signUpHousehold(ctx);
+    const bob = await joinHousehold(ctx, alice);
+    const jd = await created(await createChannel(alice, '京东'));
+    const sams = await created(await createChannel(alice, '山姆'));
+    await recordPrice(alice, jd.id);
+    await recordPrice(bob, sams.id);
+
+    expect(await lastUsedOf(alice)).toEqual(jd);
+    expect(await lastUsedOf(bob)).toEqual(sams);
+  });
+
+  test('skips archived channels', async () => {
+    const m = await signUpHousehold(ctx);
+    const jd = await created(await createChannel(m, '京东'));
+    const old = await created(await createChannel(m, '苏宁'));
+    await recordPrice(m, jd.id);
+    await recordPrice(m, old.id);
+    await updateChannel(m, old.id, { archived: true });
+
+    expect(await lastUsedOf(m)).toEqual(jd);
   });
 });
 

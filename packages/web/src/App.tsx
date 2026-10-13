@@ -5,6 +5,7 @@ import { CatalogPage } from '@/pages/catalog';
 import { ChannelsPage } from '@/pages/channels';
 import { ProductPage } from '@/pages/product';
 import { PromotionsPage } from '@/pages/promotions';
+import { QuickPricePage } from '@/pages/quick-price';
 import { SetupPage } from '@/pages/setup';
 import { SignInPage } from '@/pages/sign-in';
 
@@ -62,7 +63,8 @@ export function App() {
 }
 
 const sections = [
-  { path: '/', label: '商品' },
+  { path: '/', label: '算价' },
+  { path: '/products', label: '商品' },
   { path: '/channels', label: '渠道' },
   { path: '/promotions', label: '大促' },
 ] as const;
@@ -78,7 +80,7 @@ interface Route {
 function currentRoute(): Route {
   const path = window.location.pathname;
   const product = /^\/products\/([^/]+)$/.exec(path);
-  if (product) return { section: '/', productId: decodeURIComponent(product[1]!) };
+  if (product) return { section: '/products', productId: decodeURIComponent(product[1]!) };
   return { section: sections.find((s) => s.path === path)?.path ?? '/' };
 }
 
@@ -99,6 +101,7 @@ function useRoute() {
 
 function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
   const [{ section, productId }, navigate] = useRoute();
+  const openProduct = (id: string) => navigate(`/products/${encodeURIComponent(id)}`);
   return (
     <div className="min-h-svh">
       <header className="flex items-center justify-between border-b px-4 py-3">
@@ -134,14 +137,16 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
           <ProductPage
             key={productId}
             productId={productId}
-            onBack={(categoryId) => navigate('/', { categoryId })}
+            onBack={(categoryId) => navigate('/products', { categoryId })}
           />
         ) : section === '/channels' ? (
           <ChannelsPage />
         ) : section === '/promotions' ? (
           <PromotionsPage />
+        ) : section === '/products' ? (
+          <CatalogPage onOpenProduct={openProduct} />
         ) : (
-          <CatalogPage onOpenProduct={(id) => navigate(`/products/${encodeURIComponent(id)}`)} />
+          <QuickPricePage onOpenProduct={openProduct} />
         )}
       </main>
     </div>

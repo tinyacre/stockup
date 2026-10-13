@@ -1,7 +1,7 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import type { Auth } from '../auth';
-import { createChannel, deleteChannel, findChannel, listChannels, updateChannel } from '../channels';
+import { createChannel, deleteChannel, findChannel, lastUsedChannel, listChannels, updateChannel } from '../channels';
 import type { Database } from '../db';
 import { NameTakenError, NotEmptyError } from '../db/errors';
 import { requireMember } from '../members';
@@ -62,6 +62,21 @@ export function channelRoutes(db: Database, auth: Auth) {
     },
   });
 
+  const lastUsedRoute = createRoute({
+    method: 'get',
+    path: '/channels/last-used',
+    tags: ['channels'],
+    summary: "Get the unarchived channel of the signed-in member's most recently entered price record",
+    middleware,
+    responses: {
+      200: {
+        description: 'The channel, or null before the member has recorded a price in an unarchived channel',
+        content: { 'application/json': { schema: z.object({ channel: channelSchema.nullable() }) } },
+      },
+      ...unauthenticated,
+    },
+  });
+
   const getRoute = createRoute({
     method: 'get',
     path: '/channels/{id}',
@@ -117,6 +132,7 @@ export function channelRoutes(db: Database, auth: Auth) {
       const { includeArchived } = c.req.valid('query');
       return c.json(await listChannels(db, c.var.member, { includeArchived }), 200);
     })
+    .openapi(lastUsedRoute, async (c) => c.json({ channel: await lastUsedChannel(db, c.var.member) }, 200))
     .openapi(getRoute, async (c) => {
       const found = await findChannel(db, c.var.member, c.req.valid('param').id);
       return found ? c.json(found, 200) : c.json({ error: 'not_found' }, 404);

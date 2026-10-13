@@ -121,8 +121,8 @@ export const api = {
     request<Category>(`/api/categories/${id}`, { method: 'PATCH', body }),
   deleteCategory: (id: string) => request(`/api/categories/${id}`, { method: 'DELETE' }),
 
-  products: (categoryId: string) =>
-    request<Product[]>(`/api/products?categoryId=${encodeURIComponent(categoryId)}`),
+  products: (categoryId?: string) =>
+    request<Product[]>(categoryId ? `/api/products?categoryId=${encodeURIComponent(categoryId)}` : '/api/products'),
   createProduct: (body: NewProduct) => request<Product>('/api/products', { method: 'POST', body }),
   updateProduct: (id: string, body: { name?: string; categoryId?: string; note?: string; stockLine?: number | null }) =>
     request<Product>(`/api/products/${id}`, { method: 'PATCH', body }),
@@ -132,6 +132,7 @@ export const api = {
   deleteProduct: (id: string) => request(`/api/products/${id}`, { method: 'DELETE' }),
 
   channels: () => request<Channel[]>('/api/channels?includeArchived=true'),
+  lastUsedChannel: () => request<{ channel: Channel | null }>('/api/channels/last-used'),
   createChannel: (body: { name: string }) => request<Channel>('/api/channels', { method: 'POST', body }),
   updateChannel: (id: string, body: { name?: string; archived?: boolean }) =>
     request<Channel>(`/api/channels/${id}`, { method: 'PATCH', body }),

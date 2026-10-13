@@ -1,8 +1,10 @@
 import { afterAll, beforeAll } from 'bun:test';
+import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import { createApp, type AppOptions } from '../../src/app';
 import { createAuth, type Auth } from '../../src/auth';
 import { connect, migrate, type Database } from '../../src/db';
+import { member } from '../../src/db/schema';
 import { createHousehold } from '../../src/households';
 
 const adminUrl =
@@ -83,6 +85,16 @@ export async function signUpHousehold(ctx: TestContext): Promise<SignedInMember>
     cookie,
     request: (path, init) => requestAs(ctx, cookie, path, init),
   };
+}
+
+// Invitations are not built yet, so the new member's membership is moved into the household directly.
+export async function joinHousehold(ctx: TestContext, household: SignedInMember): Promise<SignedInMember> {
+  const joined = await signUpHousehold(ctx);
+  await ctx.database.db
+    .update(member)
+    .set({ organizationId: household.householdId, role: 'member' })
+    .where(eq(member.userId, joined.userId));
+  return { ...joined, householdId: household.householdId };
 }
 
 export async function signIn(ctx: TestContext, username: string, password: string) {
