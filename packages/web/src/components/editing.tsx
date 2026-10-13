@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ApiError } from '@/lib/api';
+import { ApiError, NetworkError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 export const fieldClass =
@@ -14,6 +14,7 @@ export type Action = () => Promise<string | void>;
 export function describeError(error: unknown, messages: Record<string, string> = {}) {
   if (error instanceof ApiError && error.code && messages[error.code]) return messages[error.code];
   if (error instanceof ApiError && error.status === 400) return '请检查填写的内容。';
+  if (error instanceof NetworkError) return '连不上 StockUp，请联网后再试。';
   return '出错了，请稍后再试。';
 }
 

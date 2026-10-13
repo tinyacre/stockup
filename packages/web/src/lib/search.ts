@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { describeError } from '@/components/editing';
 import { api, type Product } from '@/lib/api';
 
@@ -31,4 +31,37 @@ export function useProductSearch(query: string) {
     };
   }, [query]);
   return { found, error };
+}
+
+type SearchByName = typeof import('@stockup/domain/search').searchByName;
+
+let searchModule: Promise<SearchByName> | undefined;
+
+// The pinyin dictionary behind the search is large, so it loads apart from the app.
+function loadSearch() {
+  searchModule ??= import('@stockup/domain/search').then(
+    (m) => m.searchByName,
+    (error) => {
+      // The next search retries the download.
+      searchModule = undefined;
+      throw error;
+    },
+  );
+  return searchModule;
+}
+
+// Searches the products already on the device as the server's product search does, so it works offline.
+// Undefined until the search has loaded.
+export function useLocalProductSearch(products: Product[] | undefined, query: string, limit = 20) {
+  const [searchByName, setSearchByName] = useState<SearchByName>();
+  useEffect(() => {
+    loadSearch().then((search) => setSearchByName(() => search));
+  }, []);
+  return useMemo(
+    () =>
+      searchByName && products && query
+        ? searchByName(products.filter((p) => !p.archived), query).slice(0, limit)
+        : undefined,
+    [searchByName, products, query, limit],
+  );
 }

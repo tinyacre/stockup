@@ -1,5 +1,6 @@
 import { and, asc, count, eq, isNull, sql } from 'drizzle-orm';
-import { searchByName, type Unit } from '@stockup/domain';
+import type { Unit } from '@stockup/domain';
+import { searchByName } from '@stockup/domain/search';
 import type { Database } from './db';
 import { category, categoryGroup, product } from './db/schema';
 import { NotEmptyError, ParentNotFoundError, translate } from './db/errors';

@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ChevronRight, CirclePlus, Search, X } from 'lucide-react';
-import { judge, type Judgment, type Price, type Verdict } from '@stockup/domain';
+import { findLastYearPromotionLowest, judge, type Judgment, type Price, type Verdict } from '@stockup/domain';
 import { Alert, attempt, describeError, RetryAlert } from '@/components/editing';
 import { NewProductForm } from '@/components/product-form';
 import { verdictTone } from '@/components/verdict';
-import { api, type CategoryGroup, type Channel, type PriceRecord, type Product, type Promotion } from '@/lib/api';
+import { api, isFromCache, type CategoryGroup, type Channel, type PriceReferences, type Product, type Promotion } from '@/lib/api';
 import { formatSize, formatStockLineGap, formatYuan } from '@/lib/format';
 import { useHistoryState } from '@/lib/history';
-import { useProductSearch } from '@/lib/search';
+import { useOnline } from '@/lib/online';
+import { useLocalProductSearch } from '@/lib/search';
 import {
   discountDraft,
-  lastYearPromotionLowest,
-  lowestOf,
   matchDate,
   multipliedQuantity,
   preview,
@@ -30,6 +29,7 @@ interface Household {
   channels: Channel[];
   promotions: Promotion[];
   lastUsedChannel: Channel | null;
+  references: PriceReferences[];
 }
 
 const card = 'bg-card rounded-2xl shadow-[0_1px_2px_rgba(30,41,36,.04),0_0_0_1px_rgba(30,41,36,.04)]';
@@ -38,7 +38,6 @@ const rowRule =
   "relative [&:not(:first-child)]:before:bg-border [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:right-0 [&:not(:first-child)]:before:left-4 [&:not(:first-child)]:before:h-px [&:not(:first-child)]:before:content-['']";
 
 type Layout = 'narrow' | 'wide';
-type SearchFound = ReturnType<typeof useProductSearch>['found'];
 
 function yuan(cents: number) {
   return (cents / 100).toFixed(2);
@@ -47,6 +46,8 @@ function yuan(cents: number) {
 function perBase(product: Product) {
   return formatSize(product.baseSize, product.pricingUnit);
 }
+
+const staleRetryDelay = 3000;
 
 const wideScreen = '(min-width: 900px)';
 
@@ -63,6 +64,7 @@ function useWideScreen() {
 
 export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): void }) {
   const wide = useWideScreen();
+  const online = useOnline();
   const [household, setHousehold] = useState<Household>();
   const [loadError, setLoadError] = useState<string>();
   const [productId, setProductId] = useHistoryState<string | undefined>('quickPriceProductId', undefined);
@@ -70,31 +72,52 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
   const [picks, setPicks] = useState(0);
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
-  const { found, error: searchError } = useProductSearch(trimmed);
-  // The query whose first result Enter picks once its results arrive.
-  const [choosing, setChoosing] = useState<string>();
+  // Enter waits for the search to load before it picks the first result.
+  const [choosing, setChoosing] = useState(false);
   // The name a new product starts with, while the member creates it.
   const [creating, setCreating] = useState<string>();
   const searchRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(async () => {
     try {
-      const [groups, products, channels, promotions, lastUsed] = await Promise.all([
+      const fetched = await Promise.all([
         api.catalog(),
         api.products(),
         api.channels(),
         api.promotions(),
         api.lastUsedChannel(),
+        api.priceReferences(),
       ]);
-      setHousehold({ groups, products, channels, promotions, lastUsedChannel: lastUsed.channel });
+      const [groups, products, channels, promotions, lastUsed, references] = fetched;
+      setHousehold({ groups, products, channels, promotions, lastUsedChannel: lastUsed.channel, references });
       setLoadError(undefined);
+      return fetched.some(isFromCache);
     } catch (error) {
       setLoadError(describeError(error));
+      return false;
     }
   }, []);
-  useEffect(() => {
-    reload();
+
+  // Offline, the service worker answers from its cache. The network can still be down for a moment after
+  // the device reports it is back, so cached data is read again until a fresh answer arrives.
+  const mounted = useRef(true);
+  const retry = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const refresh = useCallback(async () => {
+    clearTimeout(retry.current);
+    const fromCache = await reload();
+    clearTimeout(retry.current);
+    if (mounted.current && fromCache && navigator.onLine) retry.current = setTimeout(refresh, staleRetryDelay);
   }, [reload]);
+  useEffect(() => {
+    mounted.current = true;
+    refresh();
+    window.addEventListener('online', refresh);
+    return () => {
+      mounted.current = false;
+      clearTimeout(retry.current);
+      window.removeEventListener('online', refresh);
+    };
+  }, [refresh]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -109,9 +132,10 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
   }, []);
 
   const product = household?.products.find((p) => p.id === productId && !p.archived);
+  const found = useLocalProductSearch(household?.products, trimmed);
   const changeQuery = (next: string) => {
     setQuery(next);
-    setChoosing(undefined);
+    setChoosing(false);
   };
   const pick = (id: string) => {
     setProductId(id);
@@ -123,13 +147,15 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
     setCreating(name);
     changeQuery('');
   };
+  const choose = (results: Product[]) => {
+    if (results[0]) pick(results[0].id);
+    else create(trimmed);
+  };
 
   useEffect(() => {
-    if (choosing === undefined || found?.query !== choosing) return;
-    setChoosing(undefined);
-    const first = found.products[0];
-    if (first) pick(first.id);
-    else create(choosing);
+    if (!choosing || !found) return;
+    setChoosing(false);
+    choose(found);
   }, [found, choosing]);
 
   const search = (
@@ -149,7 +175,8 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
           // Enter while an IME composes commits the composition.
           if (e.key === 'Enter' && !e.nativeEvent.isComposing && trimmed) {
             e.preventDefault();
-            setChoosing(trimmed);
+            if (found) choose(found);
+            else setChoosing(true);
           }
         }}
       />
@@ -165,11 +192,10 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
       )}
     </label>
   );
-  const results = trimmed && household && (
+  const results = trimmed && household && found && (
     <SearchResults
       query={trimmed}
-      found={found}
-      error={searchError}
+      products={found}
       groups={household.groups}
       onPick={pick}
       onCreate={create}
@@ -186,7 +212,7 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
       className={cn(card, 'border-0 p-4')}
       onCancel={() => setCreating(undefined)}
       onCreated={async (created) => {
-        await reload();
+        await refresh();
         pick(created.id);
       }}
     />
@@ -200,6 +226,8 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
         layout={layout}
         product={product}
         household={household}
+        online={online}
+        onSaved={refresh}
         onOpenProduct={() => onOpenProduct(product.id)}
       />
     );
@@ -252,39 +280,30 @@ function categoryLabel(groups: CategoryGroup[], categoryId: string) {
 
 function SearchResults({
   query,
-  found,
-  error,
+  products,
   groups,
   onPick,
   onCreate,
 }: {
   query: string;
-  found: SearchFound;
-  error: string | undefined;
+  products: Product[];
   groups: CategoryGroup[];
   onPick(id: string): void;
   onCreate(name: string): void;
 }) {
-  if (error) return <Alert>{`搜索失败：${error}`}</Alert>;
-  if (!found) return null;
-  const stale = found.query !== query;
   return (
-    <section aria-label="搜索结果" aria-busy={stale} className={cn(card, 'overflow-hidden', stale && 'opacity-50')}>
-      {found.products.length === 0 ? (
-        <div inert={stale} className="flex flex-col items-start gap-1.5 px-4 py-3.5">
-          <p className="text-muted-foreground text-[15px]">没有找到「{found.query}」相关的商品。</p>
-          <button
-            type="button"
-            className="flex h-9 items-center gap-2 text-[15px]"
-            onClick={() => onCreate(found.query)}
-          >
+    <section aria-label="搜索结果" className={cn(card, 'overflow-hidden')}>
+      {products.length === 0 ? (
+        <div className="flex flex-col items-start gap-1.5 px-4 py-3.5">
+          <p className="text-muted-foreground text-[15px]">没有找到「{query}」相关的商品。</p>
+          <button type="button" className="flex h-9 items-center gap-2 text-[15px]" onClick={() => onCreate(query)}>
             <CirclePlus className="text-muted-foreground size-4" />
-            <span className="decoration-primary underline decoration-2 underline-offset-[5px]">新建「{found.query}」</span>
+            <span className="decoration-primary underline decoration-2 underline-offset-[5px]">新建「{query}」</span>
           </button>
         </div>
       ) : (
-        <ul inert={stale}>
-          {found.products.map((p, i) => (
+        <ul>
+          {products.map((p, i) => (
             <li key={p.id} className={rowRule}>
               <button
                 type="button"
@@ -491,18 +510,21 @@ function QuickPrice({
   layout,
   product,
   household,
+  online,
+  onSaved,
   onOpenProduct,
 }: {
   layout: Layout;
   product: Product;
   household: Household;
+  online: boolean;
+  onSaved(): Promise<unknown>;
   onOpenProduct(): void;
 }) {
   const id = useId();
   const { promotions } = household;
   const channels = household.channels.filter((c) => !c.archived);
-  const [records, setRecords] = useState<PriceRecord[]>();
-  const [loadError, setLoadError] = useState<string>();
+  const productReferences = household.references.find((r) => r.productId === product.id);
 
   const [listPrice, setListPrice] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -519,32 +541,22 @@ function QuickPrice({
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState<string>();
 
-  const loadRecords = useCallback(async () => {
-    try {
-      setRecords(await api.priceRecords(product.id));
-      setLoadError(undefined);
-    } catch (e) {
-      setLoadError(describeError(e));
-    }
-  }, [product.id]);
-  useEffect(() => {
-    loadRecords();
-  }, [loadRecords]);
-
   const read = readPriceDraft(product, { listPrice, discounts, quantity, sizeAmount, sizeUnitName });
   const price: Price | string | null = 'input' in read ? preview(product, read.input) : null;
   const priced = price !== null && typeof price === 'object' ? price : null;
 
-  const history = records ?? [];
   const datePromotion = matchDate(date, promotions);
-  const lastYearLowest = datePromotion ? lastYearPromotionLowest(date, datePromotion, history) : null;
+  const lastYearLowest =
+    datePromotion && productReferences
+      ? findLastYearPromotionLowest(date, datePromotion, productReferences.promotionLowests)
+      : null;
   const references: References = {
-    lowest: lowestOf(history),
+    lowest: productReferences?.lowestUnitPrice ?? null,
     stockLine: product.stockLine,
     lastYear: datePromotion && lastYearLowest !== null ? { name: datePromotion.name, lowest: lastYearLowest } : null,
   };
   const judgment: Judgment | null =
-    priced && records
+    priced
       ? judge({
           unitPrice: priced.unitPrice,
           stockLine: product.stockLine,
@@ -557,7 +569,7 @@ function QuickPrice({
   // Sizes this product was recorded in, newest first, so a repeat purchase is one tap away.
   const sizeChoices = [
     ...new Map(
-      [...history.map((r) => r.enteredSize), { amount: product.baseSize, unit: product.pricingUnit }].map(
+      [...(productReferences?.recentSizes ?? []), { amount: product.baseSize, unit: product.pricingUnit }].map(
         (s) => [formatSize(s.amount, s.unit), { amount: String(Number(s.amount.toFixed(3))), unitName: s.unit.name }],
       ),
     ),
@@ -572,10 +584,11 @@ function QuickPrice({
     if (!promotionPicked) setPromotionId(matchDate(next, promotions)?.id ?? '');
   }
 
-  const saveLabel = `存为${purchased ? '已购' : '仅记录'}`;
+  const saveLabel = online ? `存为${purchased ? '已购' : '仅记录'}` : '联网后保存';
 
   async function save() {
     if (pending) return;
+    if (!online) return setError('离线时不能保存，联网后再存，填好的内容会留着。');
     if ('error' in read) return setError(read.error);
     if (!date) return setError('请选择日期。');
     if (typeof price === 'string') return setError(price);
@@ -594,7 +607,7 @@ function QuickPrice({
       setListPrice('');
       setDiscounts([]);
       setSaved(`已${saveLabel}`);
-      await loadRecords();
+      await onSaved();
     }, recordErrors);
     setError(message ?? undefined);
     setPending(false);
@@ -609,12 +622,8 @@ function QuickPrice({
       </button>
     </div>
   );
-  const ruler = loadError ? (
-    <RetryAlert message={`价格记录加载失败：${loadError}`} onRetry={loadRecords} />
-  ) : (
-    records && (
-      <PriceRuler references={references} unitPrice={priced?.unitPrice ?? null} verdictClass={tone?.solid ?? 'bg-skip'} />
-    )
+  const ruler = (
+    <PriceRuler references={references} unitPrice={priced?.unitPrice ?? null} verdictClass={tone?.solid ?? 'bg-skip'} />
   );
 
   const entry = (
@@ -835,6 +844,11 @@ function QuickPrice({
       </button>
     </p>
   );
+  const offlineStatus = !online && (
+    <p role="status" className="bg-muted text-muted-foreground rounded-xl px-4 py-2.5 text-sm">
+      离线中：照常算价，联网后才能保存。
+    </p>
+  );
   const verdictOutput = (
     <output aria-label="判断" className="flex min-w-0 flex-1 items-stretch gap-1">
       <span
@@ -867,7 +881,7 @@ function QuickPrice({
   const saveButton = (className?: string) => (
     <button
       type="button"
-      disabled={!priced || !channelId || pending}
+      disabled={!priced || !channelId || pending || !online}
       className={cn(
         'bg-primary text-primary-foreground disabled:bg-muted disabled:text-muted-foreground shrink-0 rounded-[14px] px-4 text-[15px] font-semibold',
         className,
@@ -891,6 +905,7 @@ function QuickPrice({
           {ruler}
           <div className="flex min-h-[60px] items-stretch">{verdictOutput}</div>
           {saveButton('h-12')}
+          {offlineStatus}
           {savedStatus}
         </section>
       </>
@@ -905,6 +920,7 @@ function QuickPrice({
       </section>
       {entry}
       <div className="fixed inset-x-0 bottom-0 z-20 mx-auto flex w-full max-w-md flex-col gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {offlineStatus}
         {savedStatus}
         <div className="bg-card flex items-stretch gap-1 rounded-[20px] p-1.5 shadow-[0_12px_32px_-8px_rgba(30,41,36,.28),0_0_0_1px_rgba(30,41,36,.05)]">
           {verdictOutput}

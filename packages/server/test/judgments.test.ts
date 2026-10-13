@@ -148,6 +148,76 @@ describe('lowest unit price', () => {
   });
 });
 
+interface References {
+  productId: string;
+  lowestUnitPrice: number;
+  promotionLowests: { promotionId: string; year: number; lowestUnitPrice: number }[];
+  recentSizes: { amount: number; unit: { dimension: string; name: string } }[];
+}
+
+async function referencesOf(m: SignedInMember) {
+  const res = await m.request('/api/price-references');
+  expect(res.status).toBe(200);
+  return (await res.json()) as References[];
+}
+
+describe('price references', () => {
+  test("list each product's lowest, its lowest per promotion and year, and its sizes newest first", async () => {
+    const m = await signUpHousehold(ctx);
+    const { product, channel } = await seed(m);
+    const { product: unrecorded } = await seed(m);
+    const promotions = (await (await m.request('/api/promotions')).json()) as { id: string; name: string }[];
+    const promotion618 = promotions.find((p) => p.name === '618')!;
+
+    await record(m, product.id, channel.id, 320, true, '2025-06-01');
+    await record(m, product.id, channel.id, 280, true, '2025-06-18');
+    await record(m, product.id, channel.id, 260, false, '2026-04-01');
+    await created(
+      await m.request(
+        '/api/price-records',
+        jsonRequest('POST', {
+          productId: product.id,
+          channelId: channel.id,
+          date: '2026-06-18',
+          purchased: true,
+          listPrice: 1100,
+          discounts: [{ amount: 100 }],
+          quantity: 2,
+          size: { amount: 2, unit: sheet },
+        }),
+      ),
+    );
+
+    const references = await referencesOf(m);
+    expect(references.find((r) => r.productId === unrecorded.id)).toBeUndefined();
+    const found = references.find((r) => r.productId === product.id)!;
+    expect(found.lowestUnitPrice).toBe(250);
+    expect(found.promotionLowests).toEqual(
+      expect.arrayContaining([
+        { promotionId: promotion618.id, year: 2025, lowestUnitPrice: 280 },
+        { promotionId: promotion618.id, year: 2026, lowestUnitPrice: 250 },
+      ]),
+    );
+    expect(found.promotionLowests).toHaveLength(2);
+    expect(found.recentSizes).toEqual([
+      { amount: 2, unit: sheet },
+      { amount: 1, unit: sheet },
+    ]);
+  });
+
+  test("leave out another household's products", async () => {
+    const m = await signUpHousehold(ctx);
+    const { product, channel } = await seed(m);
+    await record(m, product.id, channel.id, 300);
+    const other = await signUpHousehold(ctx);
+    expect(await referencesOf(other)).toEqual([]);
+  });
+
+  test('require a signed-in member', async () => {
+    expect((await ctx.app.request('/api/price-references')).status).toBe(401);
+  });
+});
+
 describe('judgments', () => {
   for (const f of judgmentFixtures) {
     if (!('expected' in f)) continue;

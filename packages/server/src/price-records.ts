@@ -134,9 +134,15 @@ function toPriceRecord(row: Row, discounts: Discount[]) {
   };
 }
 
-export async function listPriceRecords(db: Database, scope: CurrentMember, filter: { productId: string }) {
+// Without a product, lists the records of every product in the household.
+export async function listPriceRecords(db: Database, scope: CurrentMember, filter: { productId?: string } = {}) {
   const rows = await selectRecords(db)
-    .where(and(eq(priceRecord.householdId, scope.householdId), eq(priceRecord.productId, filter.productId)))
+    .where(
+      and(
+        eq(priceRecord.householdId, scope.householdId),
+        filter.productId === undefined ? undefined : eq(priceRecord.productId, filter.productId),
+      ),
+    )
     .orderBy(desc(priceRecord.date), desc(priceRecord.createdAt), desc(priceRecord.id));
   return withDiscounts(db, rows);
 }

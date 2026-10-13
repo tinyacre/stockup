@@ -1,9 +1,9 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Auth } from '../auth';
 import type { Database } from '../db';
-import { judgePrice } from '../judgments';
+import { judgePrice, listPriceReferences } from '../judgments';
 import { requireMember } from '../members';
-import { priceRecordInputSchema, respondToError } from './price-records';
+import { priceRecordInputSchema, respondToError, sizeSchema } from './price-records';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 
@@ -45,6 +45,20 @@ const judgmentSchema = z
   })
   .openapi('Judgment');
 
+const priceReferencesSchema = z
+  .object({
+    productId: z.string(),
+    lowestUnitPrice: z.number().openapi({ description: 'Lowest unit price across its price records' }),
+    promotionLowests: z
+      .array(z.object({ promotionId: z.string(), year: z.number().int(), lowestUnitPrice: z.number() }))
+      .openapi({
+        description:
+          'Lowest unit price among the records tagged with each promotion, by the year its occurrence started',
+      }),
+    recentSizes: z.array(sizeSchema).openapi({ description: 'Distinct sizes as entered, newest first, at most five' }),
+  })
+  .openapi('PriceReferences');
+
 export function judgmentRoutes(db: Database, auth: Auth) {
   const judgeRoute = createRoute({
     method: 'post',
@@ -64,11 +78,28 @@ export function judgmentRoutes(db: Database, auth: Auth) {
     },
   });
 
-  return new OpenAPIHono().openapi(judgeRoute, async (c) => {
-    try {
-      return c.json(await judgePrice(db, c.var.member, c.req.valid('json')), 200);
-    } catch (error) {
-      return respondToError(c, error);
-    }
+  const listReferencesRoute = createRoute({
+    method: 'get',
+    path: '/price-references',
+    tags: ['judgments'],
+    summary: 'List what a unit price is judged against, for every product with price records',
+    middleware: requireMember(auth, db),
+    responses: {
+      200: {
+        description: 'References by product',
+        content: { 'application/json': { schema: z.array(priceReferencesSchema) } },
+      },
+      401: { description: 'Not signed in' },
+    },
   });
+
+  return new OpenAPIHono()
+    .openapi(judgeRoute, async (c) => {
+      try {
+        return c.json(await judgePrice(db, c.var.member, c.req.valid('json')), 200);
+      } catch (error) {
+        return respondToError(c, error);
+      }
+    })
+    .openapi(listReferencesRoute, async (c) => c.json(await listPriceReferences(db, c.var.member), 200));
 }

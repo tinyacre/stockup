@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { searchByName } from '../src';
+import { searchByName } from '../src/search';
 import { searchFixtures } from '../fixtures';
 
 describe('searchByName', () => {

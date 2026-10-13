@@ -41,6 +41,24 @@ export function promotionYear(date: string, promotion: PromotionRange): number {
   return wraps && ordinal(monthDay) <= end ? year - 1 : year;
 }
 
+// The lowest Unit Price among the records tagged with a Promotion in one of its occurrences.
+export interface PromotionLowest {
+  promotionId: string;
+  // The year that occurrence started, as promotionYear gives it.
+  year: number;
+  lowestUnitPrice: number;
+}
+
+// Takes the Promotion the date falls in and returns the lowest of its occurrence a year before, or null.
+export function findLastYearPromotionLowest(
+  date: string,
+  promotion: PromotionRange & { id: string },
+  lowests: readonly PromotionLowest[],
+): number | null {
+  const lastYear = promotionYear(date, promotion) - 1;
+  return lowests.find((l) => l.promotionId === promotion.id && l.year === lastYear)?.lowestUnitPrice ?? null;
+}
+
 function parseDate(date: string) {
   const match = /^(\d{4})-(\d{2}-\d{2})$/.exec(date);
   if (!match || !isCalendarDate(Number(match[1]), match[2]!)) throw new RangeError(`Invalid date ${date}`);

@@ -1,4 +1,11 @@
-import { judge, matchPromotion, promotionYear } from '@stockup/domain';
+import {
+  findLastYearPromotionLowest,
+  judge,
+  matchPromotion,
+  promotionYear,
+  type PromotionLowest,
+  type Size,
+} from '@stockup/domain';
 import type { Database } from './db';
 import type { CurrentMember } from './members';
 import { listPriceRecords, priceFor, pricingOf, ProductNotFoundError, type PricedInput } from './price-records';
@@ -16,9 +23,52 @@ function today() {
 }
 
 type Records = Awaited<ReturnType<typeof listPriceRecords>>;
+type Promotions = Awaited<ReturnType<typeof listPromotions>>;
 
-function lowestOf(records: Records) {
-  return records.length ? Math.min(...records.map((r) => r.unitPrice)) : null;
+export interface PriceReferences {
+  productId: string;
+  lowestUnitPrice: number;
+  promotionLowests: PromotionLowest[];
+  recentSizes: Size[];
+}
+
+const recentSizeCount = 5;
+
+// Takes records newest first. A record counts towards the promotion it is tagged with, in the year of
+// that promotion's occurrence, so one tagged by hand outside the range still compares.
+function referencesOf(productId: string, records: Records, promotions: Promotions): PriceReferences {
+  const promotionLowests = new Map<string, PromotionLowest>();
+  const sizes = new Map<string, Size>();
+  for (const r of records) {
+    const promotion = r.promotion && promotions.find((p) => p.id === r.promotion!.id);
+    if (promotion) {
+      const year = promotionYear(r.date, promotion);
+      const key = `${promotion.id}:${year}`;
+      const lowest = promotionLowests.get(key);
+      if (!lowest || r.unitPrice < lowest.lowestUnitPrice) {
+        promotionLowests.set(key, { promotionId: promotion.id, year, lowestUnitPrice: r.unitPrice });
+      }
+    }
+    const size = `${r.enteredSize.amount} ${r.enteredSize.unit.name}`;
+    if (sizes.size < recentSizeCount && !sizes.has(size)) sizes.set(size, r.enteredSize);
+  }
+  return {
+    productId,
+    lowestUnitPrice: Math.min(...records.map((r) => r.unitPrice)),
+    promotionLowests: [...promotionLowests.values()],
+    recentSizes: [...sizes.values()],
+  };
+}
+
+export async function listPriceReferences(db: Database, scope: CurrentMember) {
+  const [records, promotions] = await Promise.all([listPriceRecords(db, scope), listPromotions(db, scope)]);
+  const byProduct = new Map<string, Records>();
+  for (const r of records) {
+    const own = byProduct.get(r.productId);
+    if (own) own.push(r);
+    else byProduct.set(r.productId, [r]);
+  }
+  return [...byProduct].map(([productId, own]) => referencesOf(productId, own, promotions));
 }
 
 export async function judgePrice(db: Database, scope: CurrentMember, input: JudgmentInput) {
@@ -31,13 +81,11 @@ export async function judgePrice(db: Database, scope: CurrentMember, input: Judg
   if (!pricing) throw new ProductNotFoundError();
   const { netPrice, unitPrice } = priceFor(pricing, input);
 
+  const references = records.length ? referencesOf(input.productId, records, promotions) : null;
   const promotion = matchPromotion(date, promotions);
-  // A record counts by the tag it carries, so one tagged by hand outside the range still compares.
-  const lastYear = promotion && promotionYear(date, promotion) - 1;
-  const lastYearPromotionLowest = promotion
-    ? lowestOf(records.filter((r) => r.promotion?.id === promotion.id && promotionYear(r.date, promotion) === lastYear))
-    : null;
-  const lowest = lowestOf(records);
+  const lastYearPromotionLowest =
+    promotion && references ? findLastYearPromotionLowest(date, promotion, references.promotionLowests) : null;
+  const lowest = references?.lowestUnitPrice ?? null;
 
   return {
     netPrice,
