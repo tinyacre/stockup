@@ -1,0 +1,38 @@
+[
+  {
+    "name": "a range within the year belongs to the date's year",
+    "date": "2025-11-01",
+    "promotion": { "name": "双 11", "startsOn": "10-20", "endsOn": "11-11" },
+    "expected": 2025
+  },
+  {
+    "name": "a range across the new year belongs in December to that year",
+    "date": "2025-12-31",
+    "promotion": { "name": "跨年囤货", "startsOn": "12-20", "endsOn": "01-10" },
+    "expected": 2025
+  },
+  {
+    "name": "a range across the new year belongs in January to the year it started",
+    "date": "2026-01-10",
+    "promotion": { "name": "跨年囤货", "startsOn": "12-20", "endsOn": "01-10" },
+    "expected": 2025
+  },
+  {
+    "name": "a date tagged outside a range across the new year after its end belongs to its own year",
+    "date": "2026-07-01",
+    "promotion": { "name": "跨年囤货", "startsOn": "12-20", "endsOn": "01-10" },
+    "expected": 2026
+  },
+  {
+    "name": "a date tagged outside a range within the year belongs to its own year",
+    "date": "2025-07-01",
+    "promotion": { "name": "618", "startsOn": "05-31", "endsOn": "06-20" },
+    "expected": 2025
+  },
+  {
+    "name": "an invalid date is rejected",
+    "date": "2025-02-30",
+    "promotion": { "name": "618", "startsOn": "05-31", "endsOn": "06-20" },
+    "error": "RangeError"
+  }
+]

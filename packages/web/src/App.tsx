@@ -4,6 +4,7 @@ import { api, ApiError, type Me } from '@/lib/api';
 import { CatalogPage } from '@/pages/catalog';
 import { ChannelsPage } from '@/pages/channels';
 import { ProductPage } from '@/pages/product';
+import { PromotionsPage } from '@/pages/promotions';
 import { SetupPage } from '@/pages/setup';
 import { SignInPage } from '@/pages/sign-in';
 
@@ -63,6 +64,7 @@ export function App() {
 const sections = [
   { path: '/', label: '商品' },
   { path: '/channels', label: '渠道' },
+  { path: '/promotions', label: '大促' },
 ] as const;
 
 type SectionPath = (typeof sections)[number]['path'];
@@ -136,6 +138,8 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
           />
         ) : section === '/channels' ? (
           <ChannelsPage />
+        ) : section === '/promotions' ? (
+          <PromotionsPage />
         ) : (
           <CatalogPage onOpenProduct={(id) => navigate(`/products/${encodeURIComponent(id)}`)} />
         )}

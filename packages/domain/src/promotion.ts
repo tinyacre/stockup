@@ -10,11 +10,13 @@ const DAY = 86_400_000;
 const REFERENCE_YEAR = 2000;
 const DAYS_IN_REFERENCE_YEAR = 366;
 
+export function isMonthDay(text: string): boolean {
+  return /^\d{2}-\d{2}$/.test(text) && isCalendarDate(REFERENCE_YEAR, text);
+}
+
 // Takes a calendar date "YYYY-MM-DD" and returns the matching Promotion with the shortest range, or null.
 export function matchPromotion<T extends PromotionRange>(date: string, promotions: readonly T[]): T | null {
-  const match = /^(\d{4})-(\d{2}-\d{2})$/.exec(date);
-  if (!match || !isCalendarDate(Number(match[1]), match[2]!)) throw new RangeError(`Invalid date ${date}`);
-  const day = ordinal(match[2]!);
+  const day = ordinal(parseDate(date).monthDay);
 
   let best: { promotion: T; length: number } | null = null;
   for (const promotion of promotions) {
@@ -29,10 +31,24 @@ export function matchPromotion<T extends PromotionRange>(date: string, promotion
   return best?.promotion ?? null;
 }
 
+// Returns the year in which the occurrence of the Promotion that the date belongs to started, so the
+// January days of a range across the new year count towards the previous year. A date outside the range,
+// as on a record tagged by hand, counts towards its own year unless it falls before the end of a wrapping range.
+export function promotionYear(date: string, promotion: PromotionRange): number {
+  const { year, monthDay } = parseDate(date);
+  const end = ordinal(promotion.endsOn);
+  const wraps = end < ordinal(promotion.startsOn);
+  return wraps && ordinal(monthDay) <= end ? year - 1 : year;
+}
+
+function parseDate(date: string) {
+  const match = /^(\d{4})-(\d{2}-\d{2})$/.exec(date);
+  if (!match || !isCalendarDate(Number(match[1]), match[2]!)) throw new RangeError(`Invalid date ${date}`);
+  return { year: Number(match[1]), monthDay: match[2]! };
+}
+
 function ordinal(monthDay: string): number {
-  if (!/^\d{2}-\d{2}$/.test(monthDay) || !isCalendarDate(REFERENCE_YEAR, monthDay)) {
-    throw new RangeError(`Invalid month-day ${monthDay}`);
-  }
+  if (!isMonthDay(monthDay)) throw new RangeError(`Invalid month-day ${monthDay}`);
   const [month, day] = monthDay.split('-').map(Number) as [number, number];
   return (Date.UTC(REFERENCE_YEAR, month - 1, day) - Date.UTC(REFERENCE_YEAR, 0, 1)) / DAY;
 }

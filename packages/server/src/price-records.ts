@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
-import { calculatePrice, convert, type Discount, type Size, type Unit } from '@stockup/domain';
+import { calculatePrice, convert, matchPromotion, type Discount, type Size, type Unit } from '@stockup/domain';
 import type { Database } from './db';
 import { ParentNotFoundError, translate } from './db/errors';
-import { channel, discount, priceRecord, product, user } from './db/schema';
+import { channel, discount, priceRecord, product, promotion, user } from './db/schema';
 import type { CurrentMember } from './members';
+import { findPromotion, listPromotions } from './promotions';
 
 export class ProductNotFoundError extends Error {
   override name = 'ProductNotFoundError';
@@ -12,6 +13,10 @@ export class ProductNotFoundError extends Error {
 // The record's prices fail the domain rules, such as discounts that leave nothing to pay.
 export class InvalidPriceError extends Error {
   override name = 'InvalidPriceError';
+}
+
+export class PromotionNotFoundError extends Error {
+  override name = 'PromotionNotFoundError';
 }
 
 export interface PricedInput {
@@ -25,6 +30,8 @@ export interface PriceRecordInput extends PricedInput {
   date: string;
   channelId: string;
   purchased: boolean;
+  // Null for none; omitted to tag the Promotion the date falls in on create, or to keep the tag on replace.
+  promotionId?: string | null;
   note?: string;
 }
 
@@ -49,6 +56,8 @@ const columns = {
   channelId: channel.id,
   channelName: channel.name,
   channelArchivedAt: channel.archivedAt,
+  promotionId: promotion.id,
+  promotionName: promotion.name,
   recordedById: user.id,
   recordedByName: user.name,
   pricingUnitDimension: product.pricingUnitDimension,
@@ -63,6 +72,10 @@ function selectRecords(db: Executor) {
     .from(priceRecord)
     .innerJoin(product, and(eq(product.householdId, priceRecord.householdId), eq(product.id, priceRecord.productId)))
     .innerJoin(channel, and(eq(channel.householdId, priceRecord.householdId), eq(channel.id, priceRecord.channelId)))
+    .leftJoin(
+      promotion,
+      and(eq(promotion.householdId, priceRecord.householdId), eq(promotion.id, priceRecord.promotionId)),
+    )
     .leftJoin(user, eq(user.id, priceRecord.recordedBy))
     .$dynamic();
 }
@@ -104,6 +117,7 @@ function toPriceRecord(row: Row, discounts: Discount[]) {
     date: row.date,
     channel: { id: row.channelId, name: row.channelName, archived: row.channelArchivedAt !== null },
     purchased: row.purchased,
+    promotion: row.promotionId === null ? null : { id: row.promotionId, name: row.promotionName! },
     listPrice: row.listPrice,
     discounts,
     quantity: row.quantity,
@@ -154,13 +168,31 @@ export function priceFor(pricing: Pricing, input: PricedInput) {
   }
 }
 
+// Returns undefined to leave a replaced record's tag as it is.
+async function promotionIdFor(db: Executor, scope: CurrentMember, input: PriceRecordInput, replacing: boolean) {
+  if (input.promotionId === null) return null;
+  if (input.promotionId === undefined) {
+    if (replacing) return undefined;
+    return matchPromotion(input.date, await listPromotions(db, scope))?.id ?? null;
+  }
+  if (!(await findPromotion(db, scope, input.promotionId))) throw new PromotionNotFoundError();
+  return input.promotionId;
+}
+
 // Checks the input against the product with the domain rules and returns the columns to store.
-function recordValues(pricing: Pricing, input: PriceRecordInput) {
+async function recordValues(
+  db: Executor,
+  scope: CurrentMember,
+  pricing: Pricing,
+  input: PriceRecordInput,
+  replacing = false,
+) {
   const sizeAmount = convert(input.size.amount, input.size.unit, pricing.pricingUnit);
   priceFor(pricing, input);
   return {
     date: input.date,
     channelId: input.channelId,
+    promotionId: await promotionIdFor(db, scope, input, replacing),
     purchased: input.purchased,
     listPrice: input.listPrice,
     quantity: input.quantity,
@@ -205,7 +237,7 @@ export function createPriceRecord(db: Database, scope: CurrentMember, input: New
         const [created] = await tx
           .insert(priceRecord)
           .values({
-            ...recordValues(pricing, input),
+            ...(await recordValues(tx, scope, pricing, input)),
             householdId: scope.householdId,
             productId: input.productId,
             recordedBy: scope.userId,
@@ -231,7 +263,7 @@ export function replacePriceRecord(db: Database, scope: CurrentMember, id: strin
         const pricing = (await pricingOf(tx, scope, existing.productId))!;
         await tx
           .update(priceRecord)
-          .set(recordValues(pricing, input))
+          .set(await recordValues(tx, scope, pricing, input, true))
           .where(and(eq(priceRecord.householdId, scope.householdId), eq(priceRecord.id, id)));
         await tx.delete(discount).where(eq(discount.priceRecordId, id));
         await insertDiscounts(tx, id, input.discounts);

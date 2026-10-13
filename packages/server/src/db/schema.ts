@@ -35,6 +35,7 @@ export const promotion = pgTable(
   },
   (table) => [
     uniqueIndex('promotion_household_name_uidx').on(table.householdId, table.name),
+    unique('promotion_household_id_unique').on(table.householdId, table.id),
     check('promotion_starts_on_check', sql`${table.startsOn} ~ ${sql.raw(`'${monthDay}'`)}`),
     check('promotion_ends_on_check', sql`${table.endsOn} ~ ${sql.raw(`'${monthDay}'`)}`),
   ],
@@ -140,8 +141,8 @@ export const channel = pgTable(
 
 export const priceRecordSources = ['manual', 'recognition', 'mcp'] as const;
 
-// A record's product and channel are referenced through (household_id, id) like the catalog's
-// parents, so a record cannot point into another household, and both stay while records name them.
+// A record's product, channel and promotion are referenced through (household_id, id) like the catalog's
+// parents, so a record cannot point into another household, and each stays while records name it.
 export const priceRecord = pgTable(
   'price_record',
   {
@@ -160,6 +161,8 @@ export const priceRecord = pgTable(
     sizeAmount: doublePrecision('size_amount').notNull(),
     enteredSizeAmount: doublePrecision('entered_size_amount').notNull(),
     enteredSizeUnitName: text('entered_size_unit_name').notNull(),
+    // Tagged from the date when the record is written unless the member picks one or none.
+    promotionId: text('promotion_id'),
     note: text('note').notNull().default(''),
     // Null once the member's account is gone; the record itself stays with the household.
     recordedBy: text('recorded_by').references(() => user.id, { onDelete: 'set null' }),
@@ -177,6 +180,11 @@ export const priceRecord = pgTable(
       name: 'price_record_channel_fk',
       columns: [table.householdId, table.channelId],
       foreignColumns: [channel.householdId, channel.id],
+    }),
+    foreignKey({
+      name: 'price_record_promotion_fk',
+      columns: [table.householdId, table.promotionId],
+      foreignColumns: [promotion.householdId, promotion.id],
     }),
     check('price_record_list_price_check', sql`${table.listPrice} > 0`),
     check('price_record_quantity_check', sql`${table.quantity} > 0`),

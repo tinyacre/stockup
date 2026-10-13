@@ -4,7 +4,9 @@ import {
   calculatePrice,
   IncompatibleUnitsError,
   judge,
+  matchPromotion,
   parseQuantity,
+  promotionYear,
   volumeUnits,
   weightUnits,
   type Judgment,
@@ -24,6 +26,7 @@ import {
   type PriceRecordInput,
   type Product,
   type ProductDetail,
+  type Promotion,
 } from '@/lib/api';
 import { formatSize, formatStockLineGap, formatYuan } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -61,8 +64,27 @@ function lowestOf(records: PriceRecord[]) {
   return records.length ? Math.min(...records.map((r) => r.unitPrice)) : null;
 }
 
+// Mirrors the server's judgment: records count by their tag, in the occurrence a year before the date's.
+function lastYearPromotionLowest(date: string, promotion: Promotion, records: PriceRecord[]) {
+  const lastYear = promotionYear(date, promotion) - 1;
+  return lowestOf(
+    records.filter((r) => r.promotion?.id === promotion.id && promotionYear(r.date, promotion) === lastYear),
+  );
+}
+
+function matchDate(date: string, promotions: Promotion[]) {
+  try {
+    return matchPromotion(date, promotions);
+  } catch (error) {
+    // A date input mid-edit holds no valid date yet.
+    if (error instanceof RangeError) return null;
+    throw error;
+  }
+}
+
 const recordErrors = {
   channel_not_found: '这个渠道已不存在，请重新选择。',
+  promotion_not_found: '这个大促已不存在，请重新选择。',
   incompatible_unit: '规格的单位和商品的计价单位不是同一量纲。',
   invalid_price: '优惠之和必须小于原价。',
 };
@@ -71,20 +93,23 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
   const [product, setProduct] = useState<ProductDetail | null>();
   const [records, setRecords] = useState<PriceRecord[]>();
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [loadError, setLoadError] = useState<string>();
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string>();
 
   const reload = useCallback(async () => {
     try {
-      const [loadedProduct, loadedRecords, loadedChannels] = await Promise.all([
+      const [loadedProduct, loadedRecords, loadedChannels, loadedPromotions] = await Promise.all([
         api.product(productId),
         api.priceRecords(productId),
         api.channels(),
+        api.promotions(),
       ]);
       setProduct(loadedProduct);
       setRecords(loadedRecords);
       setChannels(loadedChannels);
+      setPromotions(loadedPromotions);
       setLoadError(undefined);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) return setProduct(null);
@@ -145,6 +170,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
         <PriceRecordForm
           product={product}
           channels={channels}
+          promotions={promotions}
           records={records ?? []}
           onCancel={() => setCreating(false)}
           onSaved={saved}
@@ -162,6 +188,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
               <PriceRecordForm
                 product={product}
                 channels={channels}
+                promotions={promotions}
                 records={records ?? []}
                 record={record}
                 onCancel={() => setEditingId(undefined)}
@@ -351,6 +378,11 @@ function PriceRecordItem({
         <span className="tabular-nums">{record.date}</span>
         <span>{record.channel.name}</span>
         <span className="bg-muted rounded px-1.5 py-0.5 text-xs">{record.purchased ? '已购' : '仅记录'}</span>
+        {record.promotion && (
+          <span aria-label="大促" className="rounded border px-1.5 py-0.5 text-xs">
+            {record.promotion.name}
+          </span>
+        )}
         <span className="ml-auto flex items-center gap-1">
           <Button variant="ghost" size="xs" onClick={onEdit}>
             编辑
@@ -406,7 +438,7 @@ function readForm(
     sizeAmount: string;
     sizeUnitName: string;
   },
-): { input: Omit<PriceRecordInput, 'date' | 'channelId' | 'purchased' | 'note'> } | { error: string } {
+): { input: Omit<PriceRecordInput, 'date' | 'channelId' | 'purchased' | 'promotionId' | 'note'> } | { error: string } {
   const listPrice = parseYuan(draft.listPrice);
   if (listPrice === null || listPrice === 0) return { error: '请填写原价，最多两位小数。' };
   const discounts = [];
@@ -436,6 +468,7 @@ function preview(input: Parameters<typeof calculatePrice>[0]): Price | string {
 function PriceRecordForm({
   product,
   channels,
+  promotions,
   records,
   record,
   onCancel,
@@ -443,6 +476,7 @@ function PriceRecordForm({
 }: {
   product: Product;
   channels: Channel[];
+  promotions: Promotion[];
   records: PriceRecord[];
   record?: PriceRecord;
   onCancel(): void;
@@ -454,6 +488,12 @@ function PriceRecordForm({
   const choices = channels.filter((c) => !c.archived || c.id === record?.channel.id);
   const [channelId, setChannelId] = useState(record?.channel.id ?? choices[0]?.id ?? '');
   const [purchased, setPurchased] = useState(record?.purchased ?? true);
+  // A new record's tag follows the date until the member picks a promotion, or none, by hand;
+  // an existing record keeps the tag it has.
+  const [promotionId, setPromotionId] = useState(() =>
+    record ? (record.promotion?.id ?? '') : (matchDate(date, promotions)?.id ?? ''),
+  );
+  const [promotionPicked, setPromotionPicked] = useState(record !== undefined);
   const [listPrice, setListPrice] = useState(record ? (record.listPrice / 100).toFixed(2) : '');
   const [discounts, setDiscounts] = useState<DiscountDraft[]>(() =>
     record?.discounts.length
@@ -475,10 +515,24 @@ function PriceRecordForm({
   const parsedQuantity = parseQuantity(quantity);
   // An edited record is judged against the other records, as its stored price is about to be replaced.
   const lowest = lowestOf(records.filter((r) => r.id !== record?.id));
+  const datePromotion = matchDate(date, promotions);
+  const lastYearLowest = datePromotion
+    ? lastYearPromotionLowest(date, datePromotion, records.filter((r) => r.id !== record?.id))
+    : null;
   const judgment =
     price !== null && typeof price === 'object'
-      ? judge({ unitPrice: price.unitPrice, stockLine: product.stockLine, lowestUnitPrice: lowest })
+      ? judge({
+          unitPrice: price.unitPrice,
+          stockLine: product.stockLine,
+          lowestUnitPrice: lowest,
+          lastYearPromotionLowest: lastYearLowest,
+        })
       : null;
+
+  function changeDate(next: string) {
+    setDate(next);
+    if (!promotionPicked) setPromotionId(matchDate(next, promotions)?.id ?? '');
+  }
 
   const updateDiscount = (key: number, change: Partial<DiscountDraft>) =>
     setDiscounts((all) => all.map((d) => (d.key === key ? { ...d, ...change } : d)));
@@ -488,7 +542,7 @@ function PriceRecordForm({
     if ('error' in read) return setError(read.error);
     if (typeof price === 'string') return setError(price);
     if (!channelId) return setError('请选择渠道。');
-    const input = { ...read.input, date, channelId, purchased, note };
+    const input = { ...read.input, date, channelId, purchased, promotionId: promotionId || null, note };
     setPending(true);
     setError(
       (await attempt(async () => {
@@ -509,7 +563,7 @@ function PriceRecordForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${id}-date`}>日期</Label>
-          <Input id={`${id}-date`} type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+          <Input id={`${id}-date`} type="date" required value={date} onChange={(e) => changeDate(e.target.value)} />
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${id}-channel`}>渠道</Label>
@@ -528,6 +582,26 @@ function PriceRecordForm({
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`${id}-promotion`}>大促</Label>
+        <select
+          id={`${id}-promotion`}
+          className={cn(fieldClass, 'h-9 max-w-60')}
+          value={promotionId}
+          onChange={(e) => {
+            setPromotionId(e.target.value);
+            setPromotionPicked(true);
+          }}
+        >
+          <option value="">无</option>
+          {promotions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <fieldset className="flex gap-4 text-sm">
@@ -665,6 +739,11 @@ function PriceRecordForm({
             {judgment && <JudgmentSummary judgment={judgment} />}
             {lowest !== null && (
               <span className="text-muted-foreground">历史最低单价 {formatUnitPrice(lowest, product)}</span>
+            )}
+            {datePromotion && lastYearLowest !== null && (
+              <span className="text-muted-foreground">
+                去年{datePromotion.name}最低单价 {formatUnitPrice(lastYearLowest, product)}
+              </span>
             )}
           </>
         )}

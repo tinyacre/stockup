@@ -47,10 +47,19 @@ export interface Channel {
   archived: boolean;
 }
 
+export interface Promotion {
+  id: string;
+  name: string;
+  // Month-days "MM-DD"; an end before the start spans the new year.
+  startsOn: string;
+  endsOn: string;
+}
+
 export interface PriceRecordInput {
   date: string;
   channelId: string;
   purchased: boolean;
+  promotionId: string | null;
   listPrice: number;
   discounts: Discount[];
   quantity: number;
@@ -58,10 +67,11 @@ export interface PriceRecordInput {
   note: string;
 }
 
-export interface PriceRecord extends Omit<PriceRecordInput, 'channelId'> {
+export interface PriceRecord extends Omit<PriceRecordInput, 'channelId' | 'promotionId'> {
   id: string;
   productId: string;
   channel: Channel;
+  promotion: { id: string; name: string } | null;
   enteredSize: Size;
   recordedBy: { id: string; name: string } | null;
   source: 'manual' | 'recognition' | 'mcp';
@@ -126,6 +136,11 @@ export const api = {
   updateChannel: (id: string, body: { name?: string; archived?: boolean }) =>
     request<Channel>(`/api/channels/${id}`, { method: 'PATCH', body }),
   deleteChannel: (id: string) => request(`/api/channels/${id}`, { method: 'DELETE' }),
+
+  promotions: () => request<Promotion[]>('/api/promotions'),
+  createPromotion: (body: Omit<Promotion, 'id'>) => request<Promotion>('/api/promotions', { method: 'POST', body }),
+  updatePromotion: (id: string, body: Partial<Omit<Promotion, 'id'>>) =>
+    request<Promotion>(`/api/promotions/${id}`, { method: 'PATCH', body }),
 
   priceRecords: (productId: string) =>
     request<PriceRecord[]>(`/api/price-records?productId=${encodeURIComponent(productId)}`),

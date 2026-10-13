@@ -53,14 +53,21 @@ async function seed(m: SignedInMember, baseSize = 1) {
   return { product, channel };
 }
 
-function record(m: SignedInMember, productId: string, channelId: string, listPrice: number, purchased = true) {
+function record(
+  m: SignedInMember,
+  productId: string,
+  channelId: string,
+  listPrice: number,
+  purchased = true,
+  date = '2026-06-18',
+) {
   return m
     .request(
       '/api/price-records',
       jsonRequest('POST', {
         productId,
         channelId,
-        date: '2026-06-18',
+        date,
         purchased,
         listPrice,
         discounts: [],
@@ -142,22 +149,23 @@ describe('lowest unit price', () => {
 });
 
 describe('judgments', () => {
-  // The endpoint has no Promotion data yet, so fixtures comparing against last year's Promotion are left to it.
-  const fixtures = judgmentFixtures.filter((f) => 'expected' in f && f.input.lastYearPromotionLowest == null);
-
-  for (const f of fixtures) {
+  for (const f of judgmentFixtures) {
     if (!('expected' in f)) continue;
     test(f.name, async () => {
       const m = await signUpHousehold(ctx);
       const { product, channel } = await seed(m);
-      const { unitPrice, stockLine, lowestUnitPrice } = f.input;
+      const { unitPrice, stockLine, lowestUnitPrice, lastYearPromotionLowest } = f.input;
       if (stockLine != null) expect((await setStockLine(m, product.id, stockLine)).status).toBe(200);
       if (lowestUnitPrice != null) {
         await record(m, product.id, channel.id, lowestUnitPrice + 50);
         await record(m, product.id, channel.id, lowestUnitPrice, false);
       }
+      // Tagged 618 a year before the judged date, which falls in 618 too.
+      if (lastYearPromotionLowest != null) {
+        await record(m, product.id, channel.id, lastYearPromotionLowest, true, '2025-06-18');
+      }
 
-      const res = await judge(m, judgmentBody(product.id, { listPrice: unitPrice }));
+      const res = await judge(m, judgmentBody(product.id, { listPrice: unitPrice, date: '2026-06-18' }));
       expect(res.status).toBe(200);
       const judgment = (await res.json()) as Judgment;
       expect(judgment).toMatchObject({
@@ -165,10 +173,10 @@ describe('judgments', () => {
         unitPrice,
         stockLine: stockLine ?? null,
         lowestUnitPrice: lowestUnitPrice ?? null,
-        lastYearPromotionLowest: null,
+        lastYearPromotionLowest: lastYearPromotionLowest ?? null,
         verdict: f.expected.verdict,
         lowestGap: f.expected.lowestGap,
-        lastYearPromotionGap: null,
+        lastYearPromotionGap: f.expected.lastYearPromotionGap,
       });
       if (f.expected.stockLineGap === null) expect(judgment.stockLineGap).toBeNull();
       else expect(judgment.stockLineGap).toBeCloseTo(f.expected.stockLineGap, 9);

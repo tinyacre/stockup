@@ -9,7 +9,13 @@ const errorContent = { 'application/json': { schema: z.object({ error: z.string(
 
 const judgmentInputSchema = priceRecordInputSchema
   .pick({ listPrice: true, discounts: true, quantity: true, size: true })
-  .extend({ productId: z.string() });
+  .extend({
+    productId: z.string(),
+    date: z.iso
+      .date()
+      .optional()
+      .openapi({ description: "Picks the promotion to compare with last year's; defaults to today" }),
+  });
 
 const unitPriceGap = z.number().nullable();
 
@@ -19,10 +25,13 @@ const judgmentSchema = z
     unitPrice: z.number().openapi({ description: 'Net price per base size of the product, in cents' }),
     stockLine: z.number().int().nullable().openapi({ description: "The product's stock line, if set" }),
     lowestUnitPrice: z.number().nullable().openapi({ description: 'Lowest unit price across its price records' }),
-    lastYearPromotionLowest: z
-      .number()
+    promotion: z
+      .object({ id: z.string(), name: z.string() })
       .nullable()
-      .openapi({ description: "Lowest unit price in last year's same promotion; reserved, always null for now" }),
+      .openapi({ description: 'The promotion the date falls in, the shortest of overlapping ones' }),
+    lastYearPromotionLowest: z.number().nullable().openapi({
+      description: "Lowest unit price among last year's price records tagged with the promotion the date falls in",
+    }),
     verdict: z
       .enum(['recordLow', 'stockUp', 'skip', 'noReference'])
       .nullable()

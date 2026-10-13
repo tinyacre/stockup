@@ -1,0 +1,10 @@
+[
+  { "name": "a regular day", "text": "06-18", "expected": true },
+  { "name": "the leap day", "text": "02-29", "expected": true },
+  { "name": "a day past the end of February", "text": "02-30", "expected": false },
+  { "name": "a day past the end of a short month", "text": "04-31", "expected": false },
+  { "name": "a thirteenth month", "text": "13-01", "expected": false },
+  { "name": "a day zero", "text": "01-00", "expected": false },
+  { "name": "a single-digit month", "text": "6-18", "expected": false },
+  { "name": "a full date", "text": "2025-06-18", "expected": false }
+]

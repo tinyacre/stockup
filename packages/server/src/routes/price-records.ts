@@ -12,6 +12,7 @@ import {
   InvalidPriceError,
   listPriceRecords,
   ProductNotFoundError,
+  PromotionNotFoundError,
   replacePriceRecord,
 } from '../price-records';
 import { pricingUnitSchema } from './catalog';
@@ -37,6 +38,10 @@ export const priceRecordInputSchema = z.object({
   date: z.iso.date(),
   channelId: z.string(),
   purchased: z.boolean().openapi({ description: 'Bought (true) or only seen (false)' }),
+  promotionId: z.string().nullable().optional().openapi({
+    description:
+      'Null for none; omit to tag the promotion the date falls in (the shortest of overlapping ones) when creating, or to keep the tag when replacing',
+  }),
   listPrice: cents.openapi({ description: 'Total before discounts, in cents' }),
   discounts: z.array(discountSchema).max(20),
   quantity: z
@@ -56,6 +61,7 @@ const priceRecordSchema = z
     date: z.string(),
     channel: z.object({ id: z.string(), name: z.string(), archived: z.boolean() }),
     purchased: z.boolean(),
+    promotion: z.object({ id: z.string(), name: z.string() }).nullable(),
     listPrice: z.number().int(),
     discounts: z.array(z.object({ amount: z.number().int(), name: z.string().optional() })),
     quantity: z.number().int(),
@@ -76,6 +82,7 @@ function json<T extends z.ZodType>(schema: T) {
 export function respondToError(c: Context, error: unknown) {
   if (error instanceof ProductNotFoundError) return c.json({ error: 'product_not_found' }, 422);
   if (error instanceof ParentNotFoundError) return c.json({ error: 'channel_not_found' }, 422);
+  if (error instanceof PromotionNotFoundError) return c.json({ error: 'promotion_not_found' }, 422);
   if (error instanceof IncompatibleUnitsError) return c.json({ error: 'incompatible_unit' }, 422);
   if (error instanceof InvalidPriceError) return c.json({ error: 'invalid_price' }, 422);
   throw error;
@@ -88,7 +95,7 @@ export function priceRecordRoutes(db: Database, auth: Auth) {
   const unprocessable = {
     422: {
       description:
-        'The product or channel is not in this household (product_not_found, channel_not_found), the size cannot be converted to the pricing unit (incompatible_unit), or the discounts leave nothing to pay (invalid_price)',
+        'The product, channel or promotion is not in this household (product_not_found, channel_not_found, promotion_not_found), the size cannot be converted to the pricing unit (incompatible_unit), or the discounts leave nothing to pay (invalid_price)',
       content: errorContent,
     },
   };

@@ -15,6 +15,7 @@ interface PriceRecord {
   date: string;
   channel: { id: string; name: string; archived: boolean };
   purchased: boolean;
+  promotion: { id: string; name: string } | null;
   listPrice: number;
   discounts: { amount: number; name?: string }[];
   quantity: number;
@@ -115,6 +116,7 @@ describe('price records', () => {
       date: '2026-11-11',
       channel: { id: channel.id, name: channel.name, archived: false },
       purchased: false,
+      promotion: { id: expect.any(String), name: '双 11' },
       listPrice: 19900,
       discounts: [{ amount: 10000, name: '满 199 减 100' }, { amount: 500, name: 'plus 券' }],
       quantity: 3,
