@@ -1,0 +1,6 @@
+# linear cli
+# https://github.com/schpet/linear-cli
+
+workspace = "cyrusx"
+team_id = "APP"
+issue_sort = "priority"
