@@ -1,0 +1,25 @@
+{
+  "name": "@stockup/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "bun test",
+    "db:generate": "drizzle-kit generate"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "drizzle-kit": "^0.31.11"
+  },
+  "dependencies": {
+    "@hono/swagger-ui": "^0.6.1",
+    "@hono/zod-openapi": "^1.6.3",
+    "@stockup/domain": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.13",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.7"
+  }
+}

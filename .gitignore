@@ -1,0 +1,5 @@
+node_modules/
+dist/
+data/
+.env
+packages/web/e2e/.out/

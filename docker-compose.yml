@@ -1,0 +1,37 @@
+services:
+  stockup:
+    build: .
+    image: stockup:local
+    restart: unless-stopped
+    ports:
+      - "${STOCKUP_PORT:-8080}:8080"
+    environment:
+      STOCKUP_DATABASE_URL: postgres://stockup:${POSTGRES_PASSWORD:-stockup}@postgres:5432/stockup
+    volumes:
+      - ${STOCKUP_EVIDENCE_PATH:-./data/evidence}:/data/evidence
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:8080/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stockup
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockup}
+      POSTGRES_DB: stockup
+    volumes:
+      - stockup-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockup -d stockup"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  stockup-postgres:

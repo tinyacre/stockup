@@ -1,0 +1,14 @@
+{
+  "name": "stockup",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev:db": "docker compose -f docker-compose.dev.yml up -d --wait",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test",
+    "build": "bun run --filter @stockup/web build"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
