@@ -183,10 +183,12 @@ export function updateProduct(
   }, ParentNotFoundError);
 }
 
-export async function deleteProduct(db: Database, scope: CurrentMember, id: string) {
-  const deleted = await db
-    .delete(product)
-    .where(and(eq(product.householdId, scope.householdId), eq(product.id, id)))
-    .returning({ id: product.id });
-  return deleted.length > 0;
+export function deleteProduct(db: Database, scope: CurrentMember, id: string) {
+  return translate(async () => {
+    const deleted = await db
+      .delete(product)
+      .where(and(eq(product.householdId, scope.householdId), eq(product.id, id)))
+      .returning({ id: product.id });
+    return deleted.length > 0;
+  }, NotEmptyError);
 }

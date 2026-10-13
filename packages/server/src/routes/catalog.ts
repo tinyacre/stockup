@@ -42,7 +42,7 @@ const categorySchema = z
   .object({ id: z.string(), name: z.string(), categoryGroupId: z.string() })
   .openapi('Category');
 
-const pricingUnitSchema = z
+export const pricingUnitSchema = z
   .object({ dimension: z.enum(['weight', 'volume', 'count']), name: z.string().max(10) })
   .refine(isUnit, { message: 'Not a valid unit for its dimension' })
   .openapi('PricingUnit', {
@@ -260,10 +260,15 @@ export function catalogRoutes(db: Database, auth: Auth) {
     method: 'delete',
     path: '/products/{id}',
     tags: ['catalog'],
-    summary: 'Delete a product',
+    summary: 'Delete a product that has no price records',
     middleware,
     request: { params: idParams },
-    responses: { 204: { description: 'Deleted' }, ...unauthenticated, ...notFound },
+    responses: {
+      204: { description: 'Deleted' },
+      ...unauthenticated,
+      ...notFound,
+      409: { description: 'The product still has price records', content: errorContent },
+    },
   });
 
   return new OpenAPIHono()
@@ -335,7 +340,11 @@ export function catalogRoutes(db: Database, auth: Auth) {
       }
     })
     .openapi(deleteProductRoute, async (c) => {
-      const deleted = await deleteProduct(db, c.var.member, c.req.valid('param').id);
-      return deleted ? c.body(null, 204) : c.json({ error: 'not_found' }, 404);
+      try {
+        const deleted = await deleteProduct(db, c.var.member, c.req.valid('param').id);
+        return deleted ? c.body(null, 204) : c.json({ error: 'not_found' }, 404);
+      } catch (error) {
+        return respondToError(c, error);
+      }
     });
 }

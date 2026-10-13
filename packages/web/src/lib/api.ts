@@ -1,4 +1,4 @@
-import type { Unit } from '@stockup/domain';
+import type { Discount, Size, Unit } from '@stockup/domain';
 
 export interface Me {
   user: { id: string; username: string; name: string; isInstanceAdmin: boolean };
@@ -38,6 +38,28 @@ export interface Channel {
   id: string;
   name: string;
   archived: boolean;
+}
+
+export interface PriceRecordInput {
+  date: string;
+  channelId: string;
+  purchased: boolean;
+  listPrice: number;
+  discounts: Discount[];
+  quantity: number;
+  size: Size;
+  note: string;
+}
+
+export interface PriceRecord extends Omit<PriceRecordInput, 'channelId'> {
+  id: string;
+  productId: string;
+  channel: Channel;
+  enteredSize: Size;
+  recordedBy: { id: string; name: string } | null;
+  source: 'manual' | 'recognition' | 'mcp';
+  netPrice: number;
+  unitPrice: number;
 }
 
 export class ApiError extends Error {
@@ -87,6 +109,7 @@ export const api = {
   createProduct: (body: NewProduct) => request<Product>('/api/products', { method: 'POST', body }),
   updateProduct: (id: string, body: { name?: string; categoryId?: string; note?: string }) =>
     request<Product>(`/api/products/${id}`, { method: 'PATCH', body }),
+  product: (id: string) => request<Product>(`/api/products/${id}`),
   deleteProduct: (id: string) => request(`/api/products/${id}`, { method: 'DELETE' }),
 
   channels: () => request<Channel[]>('/api/channels?includeArchived=true'),
@@ -94,4 +117,12 @@ export const api = {
   updateChannel: (id: string, body: { name?: string; archived?: boolean }) =>
     request<Channel>(`/api/channels/${id}`, { method: 'PATCH', body }),
   deleteChannel: (id: string) => request(`/api/channels/${id}`, { method: 'DELETE' }),
+
+  priceRecords: (productId: string) =>
+    request<PriceRecord[]>(`/api/price-records?productId=${encodeURIComponent(productId)}`),
+  createPriceRecord: (body: PriceRecordInput & { productId: string }) =>
+    request<PriceRecord>('/api/price-records', { method: 'POST', body }),
+  replacePriceRecord: (id: string, body: PriceRecordInput) =>
+    request<PriceRecord>(`/api/price-records/${id}`, { method: 'PUT', body }),
+  deletePriceRecord: (id: string) => request(`/api/price-records/${id}`, { method: 'DELETE' }),
 };

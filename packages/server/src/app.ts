@@ -8,6 +8,7 @@ import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
 import { healthRoutes } from './routes/health';
 import { meRoutes } from './routes/me';
+import { priceRecordRoutes } from './routes/price-records';
 import { promotionRoutes } from './routes/promotions';
 import { setupRoutes } from './routes/setup';
 
@@ -24,7 +25,8 @@ export function createApp({ db, auth, webDir }: AppOptions) {
     .route('/api', meRoutes(db, auth))
     .route('/api', promotionRoutes(db, auth))
     .route('/api', catalogRoutes(db, auth))
-    .route('/api', channelRoutes(db, auth));
+    .route('/api', channelRoutes(db, auth))
+    .route('/api', priceRecordRoutes(db, auth));
 
   // Households are created and joined only through StockUp's own endpoints, which keep
   // each member in exactly one household; the organization plugin serves as storage.

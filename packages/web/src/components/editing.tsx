@@ -5,6 +5,9 @@ import { Input } from '@/components/ui/input';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
+export const fieldClass =
+  'w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm dark:bg-input/30';
+
 // Resolves to an error message for the member, or nothing when the action succeeded.
 export type Action = () => Promise<string | void>;
 

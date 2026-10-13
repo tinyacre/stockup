@@ -44,7 +44,8 @@ test('a member builds and browses the catalog', async ({ page }) => {
   await product.getByRole('button', { name: '保存' }).click();
   await expect(page.getByRole('listitem', { name: `${productName} 加大` })).toBeVisible();
 
+  // The selected category is kept in the history entry, so a reload shows it again.
   await page.reload();
-  await page.getByRole('button', { name: new RegExp(`^${categoryName}`) }).click();
+  await expect(page.getByRole('heading', { name: categoryName })).toBeVisible();
   await expect(page.getByRole('listitem', { name: `${productName} 加大` })).toContainText('基准规格 6 kg');
 });

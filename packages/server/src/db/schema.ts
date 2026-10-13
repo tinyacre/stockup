@@ -1,6 +1,19 @@
-import { check, doublePrecision, foreignKey, index, pgTable, text, timestamp, unique, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  date,
+  doublePrecision,
+  foreignKey,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { organization } from './auth-schema';
+import { organization, user } from './auth-schema';
 
 export * from './auth-schema';
 
@@ -87,6 +100,7 @@ export const product = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
+    unique('product_household_id_unique').on(table.householdId, table.id),
     index('product_household_category_idx').on(table.householdId, table.categoryId),
     foreignKey({
       name: 'product_category_fk',
@@ -116,5 +130,74 @@ export const channel = pgTable(
   (table) => [
     uniqueIndex('channel_household_name_uidx').on(table.householdId, table.name),
     unique('channel_household_id_unique').on(table.householdId, table.id),
+  ],
+);
+
+export const priceRecordSources = ['manual', 'recognition', 'mcp'] as const;
+
+// A record's product and channel are referenced through (household_id, id) like the catalog's
+// parents, so a record cannot point into another household, and both stay while records name them.
+export const priceRecord = pgTable(
+  'price_record',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    householdId: text('household_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    productId: text('product_id').notNull(),
+    channelId: text('channel_id').notNull(),
+    date: date('date', { mode: 'string' }).notNull(),
+    purchased: boolean('purchased').notNull(),
+    // Cents.
+    listPrice: integer('list_price').notNull(),
+    quantity: integer('quantity').notNull(),
+    // Converted to the product's pricing unit; the entered amount and unit are kept as typed.
+    sizeAmount: doublePrecision('size_amount').notNull(),
+    enteredSizeAmount: doublePrecision('entered_size_amount').notNull(),
+    enteredSizeUnitName: text('entered_size_unit_name').notNull(),
+    note: text('note').notNull().default(''),
+    // Null once the member's account is gone; the record itself stays with the household.
+    recordedBy: text('recorded_by').references(() => user.id, { onDelete: 'set null' }),
+    source: text('source', { enum: priceRecordSources }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('price_record_household_product_date_idx').on(table.householdId, table.productId, table.date),
+    foreignKey({
+      name: 'price_record_product_fk',
+      columns: [table.householdId, table.productId],
+      foreignColumns: [product.householdId, product.id],
+    }),
+    foreignKey({
+      name: 'price_record_channel_fk',
+      columns: [table.householdId, table.channelId],
+      foreignColumns: [channel.householdId, channel.id],
+    }),
+    check('price_record_list_price_check', sql`${table.listPrice} > 0`),
+    check('price_record_quantity_check', sql`${table.quantity} > 0`),
+    check('price_record_size_check', sql`${table.sizeAmount} > 0 and ${table.enteredSizeAmount} > 0`),
+    check(
+      'price_record_source_check',
+      sql`${table.source} in (${sql.raw(priceRecordSources.map((s) => `'${s}'`).join(', '))})`,
+    ),
+  ],
+);
+
+export const discount = pgTable(
+  'discount',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    priceRecordId: text('price_record_id')
+      .notNull()
+      .references(() => priceRecord.id, { onDelete: 'cascade' }),
+    // Keeps discounts in the order they were entered.
+    position: integer('position').notNull(),
+    // Cents.
+    amount: integer('amount').notNull(),
+    name: text('name'),
+  },
+  (table) => [
+    uniqueIndex('discount_price_record_position_uidx').on(table.priceRecordId, table.position),
+    check('discount_amount_check', sql`${table.amount} > 0`),
   ],
 );

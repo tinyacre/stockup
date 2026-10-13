@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { api, ApiError, type Me } from '@/lib/api';
 import { CatalogPage } from '@/pages/catalog';
 import { ChannelsPage } from '@/pages/channels';
+import { ProductPage } from '@/pages/product';
 import { SetupPage } from '@/pages/setup';
 import { SignInPage } from '@/pages/sign-in';
 
@@ -66,26 +67,36 @@ const sections = [
 
 type SectionPath = (typeof sections)[number]['path'];
 
-function currentSection(): SectionPath {
-  return sections.find((s) => s.path === window.location.pathname)?.path ?? '/';
+// A product page belongs to the catalog section.
+interface Route {
+  section: SectionPath;
+  productId?: string;
 }
 
-function useSection() {
-  const [section, setSection] = useState(currentSection);
+function currentRoute(): Route {
+  const path = window.location.pathname;
+  const product = /^\/products\/([^/]+)$/.exec(path);
+  if (product) return { section: '/', productId: decodeURIComponent(product[1]!) };
+  return { section: sections.find((s) => s.path === path)?.path ?? '/' };
+}
+
+function useRoute() {
+  const [route, setRoute] = useState(currentRoute);
   useEffect(() => {
-    const onPopState = () => setSection(currentSection());
+    const onPopState = () => setRoute(currentRoute());
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
-  const navigate = (path: SectionPath) => {
-    if (path !== section) window.history.pushState(null, '', path);
-    setSection(path);
+  // The state travels with the history entry, so pages can restore what they showed there.
+  const navigate = (path: string, state: unknown = null) => {
+    if (path !== window.location.pathname) window.history.pushState(state, '', path);
+    setRoute(currentRoute());
   };
-  return [section, navigate] as const;
+  return [route, navigate] as const;
 }
 
 function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
-  const [section, navigate] = useSection();
+  const [{ section, productId }, navigate] = useRoute();
   return (
     <div className="min-h-svh">
       <header className="flex items-center justify-between border-b px-4 py-3">
@@ -116,7 +127,19 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
           </a>
         ))}
       </nav>
-      <main>{section === '/channels' ? <ChannelsPage /> : <CatalogPage />}</main>
+      <main>
+        {productId ? (
+          <ProductPage
+            key={productId}
+            productId={productId}
+            onBack={(categoryId) => navigate('/', { categoryId })}
+          />
+        ) : section === '/channels' ? (
+          <ChannelsPage />
+        ) : (
+          <CatalogPage onOpenProduct={(id) => navigate(`/products/${encodeURIComponent(id)}`)} />
+        )}
+      </main>
     </div>
   );
 }

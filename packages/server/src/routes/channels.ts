@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import type { Auth } from '../auth';
 import { createChannel, deleteChannel, findChannel, listChannels, updateChannel } from '../channels';
 import type { Database } from '../db';
-import { NameTakenError } from '../db/errors';
+import { NameTakenError, NotEmptyError } from '../db/errors';
 import { requireMember } from '../members';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
@@ -30,6 +30,7 @@ function json<T extends z.ZodType>(schema: T) {
 
 function respondToError(c: Context, error: unknown) {
   if (error instanceof NameTakenError) return c.json({ error: 'name_taken' }, 409);
+  if (error instanceof NotEmptyError) return c.json({ error: 'in_use' }, 409);
   throw error;
 }
 
@@ -100,10 +101,15 @@ export function channelRoutes(db: Database, auth: Auth) {
     method: 'delete',
     path: '/channels/{id}',
     tags: ['channels'],
-    summary: 'Delete a channel',
+    summary: 'Delete a channel that no price record names',
     middleware,
     request: { params: idParams },
-    responses: { 204: { description: 'Deleted' }, ...unauthenticated, ...notFound },
+    responses: {
+      204: { description: 'Deleted' },
+      ...unauthenticated,
+      ...notFound,
+      409: { description: 'Price records name this channel; archive it instead', content: errorContent },
+    },
   });
 
   return new OpenAPIHono()
@@ -131,7 +137,11 @@ export function channelRoutes(db: Database, auth: Auth) {
       }
     })
     .openapi(deleteRoute, async (c) => {
-      const deleted = await deleteChannel(db, c.var.member, c.req.valid('param').id);
-      return deleted ? c.body(null, 204) : c.json({ error: 'not_found' }, 404);
+      try {
+        const deleted = await deleteChannel(db, c.var.member, c.req.valid('param').id);
+        return deleted ? c.body(null, 204) : c.json({ error: 'not_found' }, 404);
+      } catch (error) {
+        return respondToError(c, error);
+      }
     });
 }

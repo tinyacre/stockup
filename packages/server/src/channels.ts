@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { Database } from './db';
-import { translate } from './db/errors';
+import { NotEmptyError, translate } from './db/errors';
 import { channel } from './db/schema';
 import type { CurrentMember } from './members';
 
@@ -56,10 +56,13 @@ export function updateChannel(
   });
 }
 
-export async function deleteChannel(db: Database, scope: CurrentMember, id: string) {
-  const deleted = await db
-    .delete(channel)
-    .where(and(eq(channel.householdId, scope.householdId), eq(channel.id, id)))
-    .returning({ id: channel.id });
-  return deleted.length > 0;
+// Fails with NotEmptyError while price records name the channel, which keeps them pointing at it; archiving hides it instead.
+export function deleteChannel(db: Database, scope: CurrentMember, id: string) {
+  return translate(async () => {
+    const deleted = await db
+      .delete(channel)
+      .where(and(eq(channel.householdId, scope.householdId), eq(channel.id, id)))
+      .returning({ id: channel.id });
+    return deleted.length > 0;
+  }, NotEmptyError);
 }

@@ -10,25 +10,30 @@ import {
   DeleteButton,
   describeError,
   EditableTitle,
+  fieldClass,
   NameForm,
   nameTaken,
   RetryAlert,
   type Action,
 } from '@/components/editing';
 import { api, type CategoryGroup, type Product } from '@/lib/api';
+import { formatSize } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-const fieldClass =
-  'w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm dark:bg-input/30';
-
-function formatSize(amount: number, unit: Unit) {
-  return `${amount} ${unit.name}`;
+// The selected category lives in the history entry, so returning from a product page shows it again.
+function useSelectedCategory() {
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => window.history.state?.categoryId);
+  const select = useCallback((categoryId: string | undefined) => {
+    window.history.replaceState({ ...window.history.state, categoryId }, '');
+    setSelectedId(categoryId);
+  }, []);
+  return [selectedId, select] as const;
 }
 
-export function CatalogPage() {
+export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void }) {
   const [groups, setGroups] = useState<CategoryGroup[]>();
   const [loadError, setLoadError] = useState<string>();
-  const [selectedId, setSelectedId] = useState<string>();
+  const [selectedId, setSelectedId] = useSelectedCategory();
 
   // A failed refresh keeps the last catalog on screen: the write that triggered it has already succeeded.
   const reload = useCallback(async () => {
@@ -60,6 +65,7 @@ export function CatalogPage() {
             key={selected.id}
             category={selected}
             groups={groups}
+            onOpenProduct={onOpenProduct}
             onBack={() => setSelectedId(undefined)}
             onChange={reload}
             onDeleted={() => {
@@ -190,12 +196,14 @@ function GroupItem({
 function CategoryPanel({
   category,
   groups,
+  onOpenProduct,
   onBack,
   onChange,
   onDeleted,
 }: {
   category: { id: string; name: string; group: CategoryGroup };
   groups: CategoryGroup[];
+  onOpenProduct(id: string): void;
   onBack(): void;
   onChange(): Promise<void>;
   onDeleted(): Promise<void>;
@@ -318,7 +326,16 @@ function CategoryPanel({
             ) : (
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium">{product.name}</p>
+                  <a
+                    href={`/products/${encodeURIComponent(product.id)}`}
+                    className="font-medium underline-offset-4 hover:underline"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onOpenProduct(product.id);
+                    }}
+                  >
+                    {product.name}
+                  </a>
                   <p className="text-muted-foreground text-sm">
                     基准规格 {formatSize(product.baseSize, product.pricingUnit)}
                   </p>
@@ -536,7 +553,7 @@ function ProductEditor({
               attempt(async () => {
                 await api.deleteProduct(product.id);
                 await onSaved();
-              }),
+              }, { not_empty: '商品还有价格记录，请先删除这些记录。' }),
             );
           }}
         >

@@ -108,7 +108,7 @@ function ChannelItem({ channel, onChange }: { channel: Channel; onChange(): Prom
               attempt(async () => {
                 await api.deleteChannel(channel.id);
                 await onChange();
-              })
+              }, { in_use: '已有价格记录使用这个渠道，可以改为归档。' })
             }
           />
           {error && <Alert className="basis-full">{error}</Alert>}
