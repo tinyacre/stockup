@@ -1,0 +1,82 @@
+[
+  {
+    "name": "a plain number",
+    "text": "18",
+    "expected": 18
+  },
+  {
+    "name": "packs times items with a multiplication sign",
+    "text": "3 × 6",
+    "expected": 18
+  },
+  {
+    "name": "a letter x without spaces",
+    "text": "3x6",
+    "expected": 18
+  },
+  {
+    "name": "a capital X",
+    "text": "3 X 6",
+    "expected": 18
+  },
+  {
+    "name": "an asterisk",
+    "text": "3*6",
+    "expected": 18
+  },
+  {
+    "name": "more than two factors",
+    "text": "2 × 3 × 4",
+    "expected": 24
+  },
+  {
+    "name": "surrounding whitespace",
+    "text": "  3 × 6 ",
+    "expected": 18
+  },
+  {
+    "name": "empty text",
+    "text": "",
+    "expected": null
+  },
+  {
+    "name": "a dangling operator",
+    "text": "3 ×",
+    "expected": null
+  },
+  {
+    "name": "a zero factor",
+    "text": "0 × 6",
+    "expected": null
+  },
+  {
+    "name": "a fractional factor",
+    "text": "1.5 × 2",
+    "expected": null
+  },
+  {
+    "name": "words",
+    "text": "三提",
+    "expected": null
+  },
+  {
+    "name": "unit words after each factor",
+    "text": "3 提 × 6 包",
+    "expected": 18
+  },
+  {
+    "name": "a heavy multiplication x",
+    "text": "3✕6",
+    "expected": 18
+  },
+  {
+    "name": "a full-width asterisk",
+    "text": "3＊6",
+    "expected": 18
+  },
+  {
+    "name": "a unit word without a number",
+    "text": "提 × 6",
+    "expected": null
+  }
+]

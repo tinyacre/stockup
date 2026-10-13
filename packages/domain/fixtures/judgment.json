@@ -1,0 +1,165 @@
+[
+  {
+    "name": "below the Lowest Unit Price is a record low even above the Stock Line",
+    "input": {
+      "unitPrice": 300,
+      "stockLine": 250,
+      "lowestUnitPrice": 320
+    },
+    "expected": {
+      "verdict": "recordLow",
+      "stockLineGap": 20,
+      "lowestGap": -20,
+      "lastYearPromotionGap": null
+    }
+  },
+  {
+    "name": "equal to the Lowest Unit Price is not a record low",
+    "input": {
+      "unitPrice": 300,
+      "stockLine": 300,
+      "lowestUnitPrice": 300
+    },
+    "expected": {
+      "verdict": "stockUp",
+      "stockLineGap": 0,
+      "lowestGap": 0,
+      "lastYearPromotionGap": null
+    }
+  },
+  {
+    "name": "equal to the Lowest Unit Price but above the Stock Line is skip",
+    "input": {
+      "unitPrice": 300,
+      "stockLine": 280,
+      "lowestUnitPrice": 300
+    },
+    "expected": {
+      "verdict": "skip",
+      "stockLineGap": 7.142857142857,
+      "lowestGap": 0,
+      "lastYearPromotionGap": null
+    }
+  },
+  {
+    "name": "equal to the Stock Line is stock up",
+    "input": {
+      "unitPrice": 280,
+      "stockLine": 280,
+      "lowestUnitPrice": 250
+    },
+    "expected": {
+      "verdict": "stockUp",
+      "stockLineGap": 0,
+      "lowestGap": 30,
+      "lastYearPromotionGap": null
+    }
+  },
+  {
+    "name": "above the Stock Line is skip",
+    "input": {
+      "unitPrice": 330,
+      "stockLine": 300,
+      "lowestUnitPrice": 250
+    },
+    "expected": {
+      "verdict": "skip",
+      "stockLineGap": 10,
+      "lowestGap": 80,
+      "lastYearPromotionGap": null
+    }
+  },
+  {
+    "name": "without a Stock Line, below the Lowest Unit Price is a record low",
+    "input": {
+      "unitPrice": 240,
+      "lowestUnitPrice": 250
+    },
+    "expected": {
+      "verdict": "recordLow",
+      "stockLineGap": null,
+      "lowestGap": -10,
+      "lastYearPromotionGap": null
+    }
+  },
+  {
+    "name": "without a Stock Line, at or above the Lowest Unit Price is skip",
+    "input": {
+      "unitPrice": 260,
+      "stockLine": null,
+      "lowestUnitPrice": 250
+    },
+    "expected": {
+      "verdict": "skip",
+      "stockLineGap": null,
+      "lowestGap": 10,
+      "lastYearPromotionGap": null
+    }
+  },
+  {
+    "name": "without any Price Record the Stock Line still judges",
+    "input": {
+      "unitPrice": 200,
+      "stockLine": 250
+    },
+    "expected": {
+      "verdict": "stockUp",
+      "stockLineGap": -20,
+      "lowestGap": null,
+      "lastYearPromotionGap": null
+    }
+  },
+  {
+    "name": "without a Stock Line or any Price Record there is no reference",
+    "input": {
+      "unitPrice": 200,
+      "stockLine": null,
+      "lowestUnitPrice": null
+    },
+    "expected": {
+      "verdict": "noReference",
+      "stockLineGap": null,
+      "lowestGap": null,
+      "lastYearPromotionGap": null
+    }
+  },
+  {
+    "name": "compares against last year's lowest in the same Promotion",
+    "input": {
+      "unitPrice": 300,
+      "stockLine": 320,
+      "lowestUnitPrice": 280,
+      "lastYearPromotionLowest": 350
+    },
+    "expected": {
+      "verdict": "stockUp",
+      "stockLineGap": -6.25,
+      "lowestGap": 20,
+      "lastYearPromotionGap": -50
+    }
+  },
+  {
+    "name": "a Stock Line of zero is rejected",
+    "input": {
+      "unitPrice": 300,
+      "stockLine": 0
+    },
+    "error": "RangeError"
+  },
+  {
+    "name": "a Unit Price that is not a number is rejected",
+    "input": {
+      "unitPrice": null,
+      "stockLine": 300
+    },
+    "error": "RangeError"
+  },
+  {
+    "name": "a negative Lowest Unit Price is rejected",
+    "input": {
+      "unitPrice": 300,
+      "lowestUnitPrice": -1
+    },
+    "error": "RangeError"
+  }
+]

@@ -1,0 +1,26 @@
+import type { Judgment, JudgmentInput, Price, PriceInput, PromotionRange, Unit } from '../src';
+import allocation from './allocation.json';
+import judgment from './judgment.json';
+import price from './price.json';
+import promotion from './promotion.json';
+import quantity from './quantity.json';
+import units from './units.json';
+
+// Each fixture expects either a value or the name of the error class the call throws.
+type Outcome<T> = { expected: T } | { error: string };
+
+export type UnitFixture = { name: string; amount: number; from: Unit; to: Unit } & Outcome<number>;
+export type PriceFixture = { name: string; input: PriceInput } & Outcome<Price>;
+export type JudgmentFixture = { name: string; input: JudgmentInput } & Outcome<Judgment>;
+// Expects the name of the matched Promotion.
+export type PromotionFixture = { name: string; date: string; promotions: PromotionRange[] } & Outcome<string | null>;
+export type AllocationFixture = { name: string; total: number; listPrices: number[] } & Outcome<number[]>;
+// Expects null for text that is not a valid Quantity.
+export type QuantityFixture = { name: string; text: string; expected: number | null };
+
+export const unitFixtures = units as UnitFixture[];
+export const priceFixtures = price as PriceFixture[];
+export const judgmentFixtures = judgment as JudgmentFixture[];
+export const promotionFixtures = promotion as PromotionFixture[];
+export const allocationFixtures = allocation as AllocationFixture[];
+export const quantityFixtures = quantity as QuantityFixture[];

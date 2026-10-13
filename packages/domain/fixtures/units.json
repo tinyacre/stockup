@@ -1,0 +1,132 @@
+[
+  {
+    "name": "pounds to kilograms",
+    "amount": 25,
+    "from": {
+      "dimension": "weight",
+      "name": "磅"
+    },
+    "to": {
+      "dimension": "weight",
+      "name": "kg"
+    },
+    "expected": 11.33980925
+  },
+  {
+    "name": "kilograms to pounds",
+    "amount": 5.4,
+    "from": {
+      "dimension": "weight",
+      "name": "kg"
+    },
+    "to": {
+      "dimension": "weight",
+      "name": "磅"
+    },
+    "expected": 11.904962158
+  },
+  {
+    "name": "jin to grams",
+    "amount": 3,
+    "from": {
+      "dimension": "weight",
+      "name": "斤"
+    },
+    "to": {
+      "dimension": "weight",
+      "name": "g"
+    },
+    "expected": 1500
+  },
+  {
+    "name": "grams to jin",
+    "amount": 250,
+    "from": {
+      "dimension": "weight",
+      "name": "g"
+    },
+    "to": {
+      "dimension": "weight",
+      "name": "斤"
+    },
+    "expected": 0.5
+  },
+  {
+    "name": "litres to millilitres",
+    "amount": 1.5,
+    "from": {
+      "dimension": "volume",
+      "name": "L"
+    },
+    "to": {
+      "dimension": "volume",
+      "name": "ml"
+    },
+    "expected": 1500
+  },
+  {
+    "name": "millilitres to litres",
+    "amount": 750,
+    "from": {
+      "dimension": "volume",
+      "name": "ml"
+    },
+    "to": {
+      "dimension": "volume",
+      "name": "L"
+    },
+    "expected": 0.75
+  },
+  {
+    "name": "a count unit converts to itself",
+    "amount": 130,
+    "from": {
+      "dimension": "count",
+      "name": "抽"
+    },
+    "to": {
+      "dimension": "count",
+      "name": "抽"
+    },
+    "expected": 130
+  },
+  {
+    "name": "count units with different names do not convert",
+    "amount": 130,
+    "from": {
+      "dimension": "count",
+      "name": "抽"
+    },
+    "to": {
+      "dimension": "count",
+      "name": "片"
+    },
+    "error": "IncompatibleUnitsError"
+  },
+  {
+    "name": "weight does not convert to volume",
+    "amount": 1,
+    "from": {
+      "dimension": "weight",
+      "name": "kg"
+    },
+    "to": {
+      "dimension": "volume",
+      "name": "L"
+    },
+    "error": "IncompatibleUnitsError"
+  },
+  {
+    "name": "an unknown weight unit is rejected",
+    "amount": 1,
+    "from": {
+      "dimension": "weight",
+      "name": "lb"
+    },
+    "to": {
+      "dimension": "weight",
+      "name": "kg"
+    },
+    "error": "RangeError"
+  }
+]

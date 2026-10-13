@@ -1,0 +1,178 @@
+[
+  {
+    "name": "a date inside a Promotion",
+    "date": "2025-11-01",
+    "promotions": [
+      {
+        "name": "618",
+        "startsOn": "05-31",
+        "endsOn": "06-20"
+      },
+      {
+        "name": "双 11",
+        "startsOn": "10-20",
+        "endsOn": "11-11"
+      }
+    ],
+    "expected": "双 11"
+  },
+  {
+    "name": "the first day of a range belongs to it",
+    "date": "2025-10-20",
+    "promotions": [
+      {
+        "name": "双 11",
+        "startsOn": "10-20",
+        "endsOn": "11-11"
+      }
+    ],
+    "expected": "双 11"
+  },
+  {
+    "name": "the last day of a range belongs to it",
+    "date": "2025-11-11",
+    "promotions": [
+      {
+        "name": "双 11",
+        "startsOn": "10-20",
+        "endsOn": "11-11"
+      }
+    ],
+    "expected": "双 11"
+  },
+  {
+    "name": "a date outside every Promotion",
+    "date": "2025-07-01",
+    "promotions": [
+      {
+        "name": "618",
+        "startsOn": "05-31",
+        "endsOn": "06-20"
+      },
+      {
+        "name": "双 11",
+        "startsOn": "10-20",
+        "endsOn": "11-11"
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "overlapping Promotions resolve to the shortest range",
+    "date": "2025-11-03",
+    "promotions": [
+      {
+        "name": "双 11",
+        "startsOn": "10-20",
+        "endsOn": "11-11"
+      },
+      {
+        "name": "超市周年庆",
+        "startsOn": "11-01",
+        "endsOn": "11-05"
+      }
+    ],
+    "expected": "超市周年庆"
+  },
+  {
+    "name": "a range across the new year matches in December",
+    "date": "2025-12-31",
+    "promotions": [
+      {
+        "name": "跨年囤货",
+        "startsOn": "12-20",
+        "endsOn": "01-10"
+      }
+    ],
+    "expected": "跨年囤货"
+  },
+  {
+    "name": "a range across the new year matches in January",
+    "date": "2026-01-03",
+    "promotions": [
+      {
+        "name": "跨年囤货",
+        "startsOn": "12-20",
+        "endsOn": "01-10"
+      }
+    ],
+    "expected": "跨年囤货"
+  },
+  {
+    "name": "a range across the new year ends on its last day",
+    "date": "2026-01-11",
+    "promotions": [
+      {
+        "name": "跨年囤货",
+        "startsOn": "12-20",
+        "endsOn": "01-10"
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "a range across the new year counts its length through December",
+    "date": "2026-01-08",
+    "promotions": [
+      {
+        "name": "年货节",
+        "startsOn": "01-05",
+        "endsOn": "01-25"
+      },
+      {
+        "name": "跨年囤货",
+        "startsOn": "12-20",
+        "endsOn": "01-10"
+      }
+    ],
+    "expected": "年货节"
+  },
+  {
+    "name": "the leap day falls inside a range spanning it",
+    "date": "2024-02-29",
+    "promotions": [
+      {
+        "name": "开春",
+        "startsOn": "02-25",
+        "endsOn": "03-05"
+      }
+    ],
+    "expected": "开春"
+  },
+  {
+    "name": "an invalid date is rejected",
+    "date": "2025-13-01",
+    "promotions": [
+      {
+        "name": "双 11",
+        "startsOn": "10-20",
+        "endsOn": "11-11"
+      }
+    ],
+    "error": "RangeError"
+  },
+  {
+    "name": "an invalid range bound is rejected",
+    "date": "2025-11-01",
+    "promotions": [
+      {
+        "name": "双 11",
+        "startsOn": "10-32",
+        "endsOn": "11-11"
+      }
+    ],
+    "error": "RangeError"
+  },
+  {
+    "name": "the leap day of year zero is a valid date",
+    "date": "0000-02-29",
+    "promotions": [
+      {
+        "name": "开春",
+        "startsOn": "02-25",
+        "endsOn": "03-05"
+      }
+    ],
+    "expected": "开春"
+  }
+]

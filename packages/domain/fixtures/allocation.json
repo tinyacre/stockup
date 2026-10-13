@@ -1,0 +1,116 @@
+[
+  {
+    "name": "splits evenly divisible totals exactly in proportion",
+    "total": 5000,
+    "listPrices": [
+      6000,
+      3000,
+      1000
+    ],
+    "expected": [
+      3000,
+      1500,
+      500
+    ]
+  },
+  {
+    "name": "gives the rounding remainder to the largest List Price",
+    "total": 1000,
+    "listPrices": [
+      1001,
+      2999,
+      1999
+    ],
+    "expected": [
+      166,
+      501,
+      333
+    ]
+  },
+  {
+    "name": "gives the remainder to the first of equally large List Prices",
+    "total": 100,
+    "listPrices": [
+      500,
+      500,
+      500
+    ],
+    "expected": [
+      34,
+      33,
+      33
+    ]
+  },
+  {
+    "name": "a single item takes the whole total",
+    "total": 1234,
+    "listPrices": [
+      9900
+    ],
+    "expected": [
+      1234
+    ]
+  },
+  {
+    "name": "a zero total allocates nothing",
+    "total": 0,
+    "listPrices": [
+      1200,
+      3400
+    ],
+    "expected": [
+      0,
+      0
+    ]
+  },
+  {
+    "name": "a total equal to the whole order frees every item",
+    "total": 4600,
+    "listPrices": [
+      1200,
+      3400
+    ],
+    "expected": [
+      1200,
+      3400
+    ]
+  },
+  {
+    "name": "a total larger than the order is rejected",
+    "total": 5000,
+    "listPrices": [
+      1200,
+      3400
+    ],
+    "error": "RangeError"
+  },
+  {
+    "name": "a total with fractions of a cent is rejected",
+    "total": 10.5,
+    "listPrices": [
+      1200,
+      3400
+    ],
+    "error": "RangeError"
+  },
+  {
+    "name": "a positive total over no items is rejected",
+    "total": 100,
+    "listPrices": [],
+    "error": "RangeError"
+  },
+  {
+    "name": "caps each share at its List Price and passes the excess to the next largest",
+    "total": 2997,
+    "listPrices": [
+      1000,
+      999,
+      999
+    ],
+    "expected": [
+      1000,
+      999,
+      998
+    ]
+  }
+]
