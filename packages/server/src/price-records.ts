@@ -2,7 +2,9 @@ import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { calculatePrice, convert, matchPromotion, type Discount, type Size, type Unit } from '@stockup/domain';
 import type { Database } from './db';
 import { ParentNotFoundError, translate } from './db/errors';
-import { channel, discount, priceRecord, product, promotion, user } from './db/schema';
+import { channel, discount, evidence, priceRecord, product, promotion, user } from './db/schema';
+import { evidenceOfRecords, removeEvidenceFiles } from './evidence';
+import type { EvidenceStore } from './evidence-store';
 import type { CurrentMember } from './members';
 import { findPromotion, listPromotions } from './promotions';
 
@@ -82,20 +84,26 @@ function selectRecords(db: Executor) {
 
 type Row = Awaited<ReturnType<typeof selectRecords>>[number];
 
-async function withDiscounts(db: Executor, rows: Row[]) {
+async function withDetails(db: Executor, scope: CurrentMember, rows: Row[]) {
   const ids = rows.map((r) => r.id);
-  const discounts = ids.length
-    ? await db
-        .select({ priceRecordId: discount.priceRecordId, amount: discount.amount, name: discount.name })
-        .from(discount)
-        .where(inArray(discount.priceRecordId, ids))
-        .orderBy(asc(discount.position))
-    : [];
+  const [discounts, evidenceByRecord] = await Promise.all([
+    ids.length
+      ? db
+          .select({ priceRecordId: discount.priceRecordId, amount: discount.amount, name: discount.name })
+          .from(discount)
+          .where(inArray(discount.priceRecordId, ids))
+          .orderBy(asc(discount.position))
+      : [],
+    evidenceOfRecords(db, scope, ids),
+  ]);
   const byRecord = new Map<string, Discount[]>();
   for (const { priceRecordId, amount, name } of discounts) {
     byRecord.set(priceRecordId, [...(byRecord.get(priceRecordId) ?? []), name === null ? { amount } : { amount, name }]);
   }
-  return rows.map((row) => toPriceRecord(row, byRecord.get(row.id) ?? []));
+  return rows.map((row) => ({
+    ...toPriceRecord(row, byRecord.get(row.id) ?? []),
+    evidence: evidenceByRecord.get(row.id) ?? [],
+  }));
 }
 
 // Prices are computed on every read from the product's current Pricing Unit and Base Size,
@@ -161,14 +169,14 @@ export async function listPriceRecords(db: Database, scope: CurrentMember, filte
       ),
     )
     .orderBy(desc(priceRecord.date), desc(priceRecord.createdAt), desc(priceRecord.id));
-  return withDiscounts(db, rows);
+  return withDetails(db, scope, rows);
 }
 
 export async function findPriceRecord(db: Executor, scope: CurrentMember, id: string) {
   const rows = await selectRecords(db).where(
     and(eq(priceRecord.householdId, scope.householdId), eq(priceRecord.id, id)),
   );
-  const [found] = await withDiscounts(db, rows);
+  const [found] = await withDetails(db, scope, rows);
   return found ?? null;
 }
 
@@ -327,10 +335,21 @@ export function replacePriceRecord(db: Database, scope: CurrentMember, id: strin
   );
 }
 
-export async function deletePriceRecord(db: Database, scope: CurrentMember, id: string) {
-  const deleted = await db
-    .delete(priceRecord)
-    .where(and(eq(priceRecord.householdId, scope.householdId), eq(priceRecord.id, id)))
-    .returning({ id: priceRecord.id });
-  return deleted.length > 0;
+// The record's Evidence rows go with it, and their files are removed once it is gone.
+export async function deletePriceRecord(db: Database, store: EvidenceStore, scope: CurrentMember, id: string) {
+  const keys = await db.transaction(async (tx) => {
+    const scoped = and(eq(priceRecord.householdId, scope.householdId), eq(priceRecord.id, id));
+    // Locking the record first waits out an upload in flight, so its Evidence is listed below.
+    const [found] = await tx.select({ id: priceRecord.id }).from(priceRecord).where(scoped).for('update');
+    if (!found) return null;
+    const pieces = await tx
+      .select({ id: evidence.id })
+      .from(evidence)
+      .where(and(eq(evidence.householdId, scope.householdId), eq(evidence.priceRecordId, id)));
+    await tx.delete(priceRecord).where(scoped);
+    return pieces.map((p) => p.id);
+  });
+  if (keys === null) return false;
+  await removeEvidenceFiles(store, keys);
+  return true;
 }

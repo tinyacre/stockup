@@ -26,6 +26,7 @@ interface PriceRecord {
   source: string;
   netPrice: number;
   unitPrice: number;
+  evidence: unknown[];
 }
 
 function unique(label: string) {
@@ -127,6 +128,7 @@ describe('price records', () => {
       source: 'manual',
       netPrice: 9400,
       unitPrice: 2820,
+      evidence: [],
     });
 
     const detail = await m.request(`/api/price-records/${record.id}`);

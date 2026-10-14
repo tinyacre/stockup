@@ -172,6 +172,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
                   record={record}
                   product={product}
                   onEdit={() => setEditingId(record.id)}
+                  onEvidenceChanged={reload}
                   onDelete={() =>
                     attempt(async () => {
                       await api.deletePriceRecord(record.id);
@@ -412,11 +413,13 @@ function PriceRecordItem({
   product,
   onEdit,
   onDelete,
+  onEvidenceChanged,
 }: {
   record: PriceRecord;
   product: Product;
   onEdit(): void;
   onDelete(): Promise<string | void>;
+  onEvidenceChanged(): Promise<void>;
 }) {
   const { enteredSize, size } = record;
   const converted = enteredSize.unit.name !== size.unit.name;
@@ -462,6 +465,79 @@ function PriceRecordItem({
       )}
       {record.note && <p className="whitespace-pre-wrap">{record.note}</p>}
       <p className="text-muted-foreground text-xs">录入人 {record.recordedBy?.name ?? '已离开的成员'}</p>
+      <EvidenceList record={record} onChanged={onEvidenceChanged} />
+    </div>
+  );
+}
+
+const evidenceErrors = {
+  unsupported_evidence_type: '凭证只支持 PNG、JPEG、WebP 或 GIF 图片。',
+  evidence_too_large: '每张凭证不能超过 10 MB。',
+};
+
+function EvidenceList({ record, onChanged }: { record: PriceRecord; onChanged(): Promise<void> }) {
+  const inputId = useId();
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string>();
+  const label = `${record.date} ${record.channel.name}`;
+
+  async function upload(files: File[]) {
+    if (files.length === 0) return;
+    setUploading(true);
+    setError(
+      (await attempt(async () => {
+        await api.uploadEvidence(record.id, files);
+        await onChanged();
+      }, evidenceErrors)) ?? undefined,
+    );
+    setUploading(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <ul aria-label="凭证" className="flex flex-wrap items-end gap-2">
+        {(record.evidence ?? []).map((e, i) => (
+          <li key={e.id} className="flex flex-col items-start gap-0.5">
+            <a href={api.evidenceUrl(e.id)} target="_blank" rel="noreferrer">
+              <img
+                src={api.evidenceUrl(e.id)}
+                alt={`${label} 的凭证 ${i + 1}`}
+                loading="lazy"
+                className="size-20 rounded border object-cover"
+              />
+            </a>
+            <DeleteButton
+              label={`删除 ${label} 的凭证 ${i + 1}`}
+              onDelete={() =>
+                attempt(async () => {
+                  await api.deleteEvidence(e.id);
+                  await onChanged();
+                })
+              }
+            />
+          </li>
+        ))}
+      </ul>
+      <div>
+        <Button variant="outline" size="xs" disabled={uploading} asChild>
+          <label htmlFor={inputId}>{uploading ? '上传中…' : '添加凭证'}</label>
+        </Button>
+        <input
+          id={inputId}
+          type="file"
+          aria-label={`给 ${label} 添加凭证`}
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          className="sr-only"
+          disabled={uploading}
+          onChange={(event) => {
+            const files = [...(event.currentTarget.files ?? [])];
+            event.currentTarget.value = '';
+            void upload(files);
+          }}
+        />
+      </div>
+      {error && <Alert>{error}</Alert>}
     </div>
   );
 }

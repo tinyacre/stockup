@@ -1,8 +1,13 @@
 import { afterAll, beforeAll } from 'bun:test';
+import { mkdtempSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import postgres from 'postgres';
 import { createApp, type AppOptions } from '../../src/app';
 import { createAuth, type Auth } from '../../src/auth';
 import { connect, migrate, type Database } from '../../src/db';
+import { localEvidenceStore } from '../../src/evidence-store';
 import { createHousehold } from '../../src/households';
 
 const adminUrl =
@@ -41,17 +46,28 @@ export interface TestContext {
   app: ReturnType<typeof createApp>;
   auth: Auth;
   database: TestDatabase;
+  evidenceDir: string;
 }
 
-// Registers suite-level hooks that give the calling test file its own migrated database.
-export function useTestApp(options: Omit<AppOptions, 'db' | 'auth'> = {}) {
+// Registers suite-level hooks that give the calling test file its own migrated database
+// and evidence directory.
+export function useTestApp(options: Omit<AppOptions, 'db' | 'auth' | 'evidence'> = {}) {
   const ctx = {} as TestContext;
   beforeAll(async () => {
     ctx.database = await createTestDatabase();
+    ctx.evidenceDir = mkdtempSync(path.join(tmpdir(), 'stockup-evidence-'));
     ctx.auth = createAuth({ db: ctx.database.db, secret: testAuthSecret, baseURL: 'http://localhost' });
-    ctx.app = createApp({ ...options, db: ctx.database.db, auth: ctx.auth });
+    ctx.app = createApp({
+      ...options,
+      db: ctx.database.db,
+      auth: ctx.auth,
+      evidence: localEvidenceStore(ctx.evidenceDir),
+    });
   });
-  afterAll(() => ctx.database.drop());
+  afterAll(async () => {
+    await ctx.database.drop();
+    await rm(ctx.evidenceDir, { recursive: true, force: true });
+  });
   return ctx;
 }
 

@@ -171,6 +171,7 @@ export const priceRecord = pgTable(
   },
   (table) => [
     index('price_record_household_product_date_idx').on(table.householdId, table.productId, table.date),
+    unique('price_record_household_id_unique').on(table.householdId, table.id),
     foreignKey({
       name: 'price_record_product_fk',
       columns: [table.householdId, table.productId],
@@ -212,5 +213,40 @@ export const discount = pgTable(
   (table) => [
     uniqueIndex('discount_price_record_position_uidx').on(table.priceRecordId, table.position),
     check('discount_amount_check', sql`${table.amount} > 0`),
+  ],
+);
+
+export const evidenceContentTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+
+// The file itself sits in the evidence store under the row's id. Rows go with their price record,
+// and whoever deletes the record removes the files.
+export const evidence = pgTable(
+  'evidence',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    // Orders Evidence as it was uploaded; pieces uploaded together share their created_at.
+    sequence: integer('sequence').generatedAlwaysAsIdentity().notNull(),
+    householdId: text('household_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    priceRecordId: text('price_record_id').notNull(),
+    contentType: text('content_type', { enum: evidenceContentTypes }).notNull(),
+    // Bytes.
+    size: integer('size').notNull(),
+    uploadedBy: text('uploaded_by').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('evidence_household_price_record_idx').on(table.householdId, table.priceRecordId),
+    foreignKey({
+      name: 'evidence_price_record_fk',
+      columns: [table.householdId, table.priceRecordId],
+      foreignColumns: [priceRecord.householdId, priceRecord.id],
+    }).onDelete('cascade'),
+    check(
+      'evidence_content_type_check',
+      sql`${table.contentType} in (${sql.raw(evidenceContentTypes.map((t) => `'${t}'`).join(', '))})`,
+    ),
+    check('evidence_size_check', sql`${table.size} > 0`),
   ],
 );

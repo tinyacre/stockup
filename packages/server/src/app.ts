@@ -4,8 +4,10 @@ import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic } from 'hono/bun';
 import type { Auth } from './auth';
 import type { Database } from './db';
+import type { EvidenceStore } from './evidence-store';
 import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
+import { evidenceRoutes } from './routes/evidence';
 import { healthRoutes } from './routes/health';
 import { invitationRoutes } from './routes/invitations';
 import { judgmentRoutes } from './routes/judgments';
@@ -17,10 +19,11 @@ import { setupRoutes } from './routes/setup';
 export interface AppOptions {
   db: Database;
   auth: Auth;
+  evidence: EvidenceStore;
   webDir?: string;
 }
 
-export function createApp({ db, auth, webDir }: AppOptions) {
+export function createApp({ db, auth, evidence, webDir }: AppOptions) {
   const app = new OpenAPIHono()
     .route('/api', healthRoutes(db))
     .route('/api', setupRoutes(db, auth))
@@ -29,7 +32,8 @@ export function createApp({ db, auth, webDir }: AppOptions) {
     .route('/api', promotionRoutes(db, auth))
     .route('/api', catalogRoutes(db, auth))
     .route('/api', channelRoutes(db, auth))
-    .route('/api', priceRecordRoutes(db, auth))
+    .route('/api', priceRecordRoutes(db, auth, evidence))
+    .route('/api', evidenceRoutes(db, auth, evidence))
     .route('/api', judgmentRoutes(db, auth));
 
   // Households are created and joined only through StockUp's own endpoints, which keep

@@ -3,13 +3,14 @@ import { createApp } from './app';
 import { createAuth } from './auth';
 import { loadConfig, type Config } from './config';
 import { connect, migrate } from './db';
+import { localEvidenceStore } from './evidence-store';
 
 export async function bootstrap(config: Config) {
   await mkdir(config.evidenceDir, { recursive: true });
   const { db, close } = connect(config.databaseUrl);
   await migrate(db);
   const auth = createAuth({ db, secret: config.authSecret, baseURL: config.baseUrl });
-  return { app: createApp({ db, auth, webDir: config.webDir }), close };
+  return { app: createApp({ db, auth, evidence: localEvidenceStore(config.evidenceDir), webDir: config.webDir }), close };
 }
 
 if (import.meta.main) {

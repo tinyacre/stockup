@@ -98,6 +98,14 @@ export interface PriceRecordInput {
   note: string;
 }
 
+export interface Evidence {
+  id: string;
+  contentType: string;
+  // Bytes.
+  size: number;
+  createdAt: string;
+}
+
 export interface PriceRecord extends Omit<PriceRecordInput, 'channelId' | 'promotionId'> {
   id: string;
   productId: string;
@@ -108,6 +116,8 @@ export interface PriceRecord extends Omit<PriceRecordInput, 'channelId' | 'promo
   source: 'manual' | 'recognition' | 'mcp';
   netPrice: number;
   unitPrice: number;
+  // Oldest first. Missing from records the service worker cached before Evidence existed.
+  evidence?: Evidence[];
 }
 
 export interface PriceReferences {
@@ -146,10 +156,11 @@ async function clearCachedData() {
 async function request<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   let res: Response;
   try {
+    const json = init?.body !== undefined && !(init.body instanceof FormData);
     res = await fetch(path, {
       method: init?.method ?? 'GET',
-      headers: init?.body === undefined ? undefined : { 'content-type': 'application/json' },
-      body: init?.body === undefined ? undefined : JSON.stringify(init.body),
+      headers: json ? { 'content-type': 'application/json' } : undefined,
+      body: json ? JSON.stringify(init.body) : (init?.body as FormData | undefined),
     });
   } catch (error) {
     throw new NetworkError(String(error), { cause: error });
@@ -242,5 +253,12 @@ export const api = {
   replacePriceRecord: (id: string, body: PriceRecordInput) =>
     request<PriceRecord>(`/api/price-records/${id}`, { method: 'PUT', body }),
   deletePriceRecord: (id: string) => request(`/api/price-records/${id}`, { method: 'DELETE' }),
+  uploadEvidence: (priceRecordId: string, files: File[]) => {
+    const body = new FormData();
+    for (const file of files) body.append('files', file);
+    return request<Evidence[]>(`/api/price-records/${priceRecordId}/evidence`, { method: 'POST', body });
+  },
+  deleteEvidence: (id: string) => request(`/api/evidence/${id}`, { method: 'DELETE' }),
+  evidenceUrl: (id: string) => `/api/evidence/${encodeURIComponent(id)}`,
   priceReferences: () => request<PriceReferences[]>('/api/price-references'),
 };

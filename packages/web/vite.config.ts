@@ -33,8 +33,13 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
-            // Offline, the app opens on the household data it last read. Auth endpoints carry no data worth replaying.
-            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth/'),
+            // Offline, the app opens on the household data it last read. Auth endpoints carry no data worth replaying,
+            // and Evidence images are too large to keep without bound.
+            urlPattern: ({ url, sameOrigin }) =>
+              sameOrigin &&
+              url.pathname.startsWith('/api/') &&
+              !url.pathname.startsWith('/api/auth/') &&
+              !url.pathname.startsWith('/api/evidence/'),
             method: 'GET',
             handler: 'NetworkFirst',
             options: {

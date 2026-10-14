@@ -4,6 +4,7 @@ import type { Context } from 'hono';
 import type { Auth } from '../auth';
 import type { Database } from '../db';
 import { ParentNotFoundError } from '../db/errors';
+import type { EvidenceStore } from '../evidence-store';
 import { requireMember } from '../members';
 import {
   createPriceRecord,
@@ -16,6 +17,7 @@ import {
   replacePriceRecord,
 } from '../price-records';
 import { pricingUnitSchema } from './catalog';
+import { evidenceSchema } from './evidence';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 const idParams = z.object({ id: z.string() });
@@ -72,6 +74,7 @@ const priceRecordSchema = z
     source: z.enum(['manual', 'recognition', 'mcp']),
     netPrice: z.number().int().openapi({ description: 'List price minus discounts, in cents' }),
     unitPrice: z.number().openapi({ description: 'Net price per base size of the product, in cents' }),
+    evidence: z.array(evidenceSchema).openapi({ description: 'Oldest first' }),
   })
   .openapi('PriceRecord');
 
@@ -88,7 +91,7 @@ export function respondToError(c: Context, error: unknown) {
   throw error;
 }
 
-export function priceRecordRoutes(db: Database, auth: Auth) {
+export function priceRecordRoutes(db: Database, auth: Auth, store: EvidenceStore) {
   const middleware = requireMember(auth, db);
   const unauthenticated = { 401: { description: 'Not signed in' } };
   const notFound = { 404: { description: 'No such price record in this household', content: errorContent } };
@@ -168,7 +171,7 @@ export function priceRecordRoutes(db: Database, auth: Auth) {
     method: 'delete',
     path: '/price-records/{id}',
     tags: ['price records'],
-    summary: 'Delete a price record',
+    summary: 'Delete a price record and its evidence',
     middleware,
     request: { params: idParams },
     responses: { 204: { description: 'Deleted' }, ...unauthenticated, ...notFound },
@@ -199,7 +202,7 @@ export function priceRecordRoutes(db: Database, auth: Auth) {
       }
     })
     .openapi(deleteRoute, async (c) => {
-      const deleted = await deletePriceRecord(db, c.var.member, c.req.valid('param').id);
+      const deleted = await deletePriceRecord(db, store, c.var.member, c.req.valid('param').id);
       return deleted ? c.body(null, 204) : c.json({ error: 'not_found' }, 404);
     });
 }
