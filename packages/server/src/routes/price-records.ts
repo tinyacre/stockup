@@ -107,7 +107,22 @@ export function priceRecordRoutes(db: Database, auth: Auth) {
     tags: ['price records'],
     summary: "List a product's price records, newest first",
     middleware,
-    request: { query: z.object({ productId: z.string() }) },
+    request: {
+      query: z.object({
+        productId: z.string(),
+        purchased: z
+          .enum(['true', 'false'])
+          .optional()
+          .transform((v) => (v === undefined ? undefined : v === 'true'))
+          .openapi({ description: 'Only bought (true) or only seen (false) records' }),
+        channelId: z.string().optional(),
+        promotionId: z
+          .string()
+          .optional()
+          .transform((v) => (v === 'none' ? null : v))
+          .openapi({ description: 'Only records tagged with this promotion, or none for the untagged ones' }),
+      }),
+    },
     responses: {
       200: { description: 'Price records', content: { 'application/json': { schema: z.array(priceRecordSchema) } } },
       ...unauthenticated,
@@ -160,7 +175,10 @@ export function priceRecordRoutes(db: Database, auth: Auth) {
   });
 
   return new OpenAPIHono()
-    .openapi(listRoute, async (c) => c.json(await listPriceRecords(db, c.var.member, c.req.valid('query')), 200))
+    .openapi(listRoute, async (c) => {
+      const { productId, ...filter } = c.req.valid('query');
+      return c.json(await listPriceRecords(db, c.var.member, { ...filter, productIds: [productId] }), 200);
+    })
     .openapi(getRoute, async (c) => {
       const found = await findPriceRecord(db, c.var.member, c.req.valid('param').id);
       return found ? c.json(found, 200) : c.json({ error: 'not_found' }, 404);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { ChevronLeft, Plus, X } from 'lucide-react';
 import { judge } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,11 @@ import {
 } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 
+// Recharts is most of the bundle's weight, so only the product page loads it.
+const UnitPriceChart = lazy(() =>
+  import('@/components/unit-price-chart').then((m) => ({ default: m.UnitPriceChart })),
+);
+
 export function ProductPage({ productId, onBack }: { productId: string; onBack(categoryId?: string): void }) {
   const [product, setProduct] = useState<ProductDetail | null>();
   const [records, setRecords] = useState<PriceRecord[]>();
@@ -41,6 +46,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
   const [loadError, setLoadError] = useState<string>();
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string>();
+  const [filter, setFilter] = useState<RecordFilter>({});
 
   const reload = useCallback(async () => {
     try {
@@ -82,6 +88,9 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
   }
   if (!product) return loadAlert ? <div className="p-4">{loadAlert}</div> : null;
 
+  const filtering = Object.values(filter).some((v) => v !== undefined);
+  const shown = records?.filter((r) => matches(r, filter));
+
   const saved = async () => {
     setCreating(false);
     setEditingId(undefined);
@@ -121,39 +130,156 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
         />
       )}
       {records?.length === 0 && !creating && <p className="text-muted-foreground text-sm">还没有价格记录。</p>}
-      <ul aria-label="价格记录列表" className="flex flex-col gap-2">
-        {records?.map((record) => (
-          <li
-            key={record.id}
-            aria-label={`${record.date} ${record.channel.name}`}
-            className="rounded-lg border p-3"
-          >
-            {editingId === record.id ? (
-              <PriceRecordForm
-                product={product}
-                channels={channels}
-                promotions={promotions}
-                records={records ?? []}
-                record={record}
-                onCancel={() => setEditingId(undefined)}
-                onSaved={saved}
-              />
-            ) : (
-              <PriceRecordItem
-                record={record}
-                product={product}
-                onEdit={() => setEditingId(record.id)}
-                onDelete={() =>
-                  attempt(async () => {
-                    await api.deletePriceRecord(record.id);
-                    await reload();
-                  })
-                }
-              />
-            )}
-          </li>
-        ))}
-      </ul>
+      {((records && records.length > 0) || filtering) && (
+        <RecordFilters
+          records={records ?? []}
+          channels={channels}
+          promotions={promotions}
+          filter={filter}
+          onChange={setFilter}
+        />
+      )}
+      <div className="flex flex-col gap-4">
+        {shown && shown.length > 0 && (
+          <Suspense fallback={<div className="h-72 rounded-lg border" />}>
+            <UnitPriceChart records={shown} product={product} />
+          </Suspense>
+        )}
+        {filtering && shown?.length === 0 && records?.length !== 0 && (
+          <p className="text-muted-foreground text-sm">没有符合筛选条件的价格记录。</p>
+        )}
+        <ul aria-label="价格记录列表" className="flex flex-col gap-2">
+          {shown?.map((record) => (
+            <li
+              key={record.id}
+              aria-label={`${record.date} ${record.channel.name}`}
+              className="rounded-lg border p-3"
+            >
+              {editingId === record.id ? (
+                <PriceRecordForm
+                  product={product}
+                  channels={channels}
+                  promotions={promotions}
+                  records={records ?? []}
+                  record={record}
+                  onCancel={() => setEditingId(undefined)}
+                  onSaved={saved}
+                />
+              ) : (
+                <PriceRecordItem
+                  record={record}
+                  product={product}
+                  onEdit={() => setEditingId(record.id)}
+                  onDelete={() =>
+                    attempt(async () => {
+                      await api.deletePriceRecord(record.id);
+                      await reload();
+                    })
+                  }
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// Each field narrows the list when present; a null promotion keeps the records without one.
+interface RecordFilter {
+  purchased?: boolean;
+  channelId?: string;
+  promotionId?: string | null;
+}
+
+function matches(record: PriceRecord, { purchased, channelId, promotionId }: RecordFilter) {
+  return (
+    (purchased === undefined || record.purchased === purchased) &&
+    (channelId === undefined || record.channel.id === channelId) &&
+    (promotionId === undefined || (record.promotion?.id ?? null) === promotionId)
+  );
+}
+
+const promotionNone = 'none';
+
+// Offers only the channels and promotions the product's records use, plus whichever is already chosen.
+function RecordFilters({
+  records,
+  channels,
+  promotions,
+  filter,
+  onChange,
+}: {
+  records: PriceRecord[];
+  channels: Channel[];
+  promotions: Promotion[];
+  filter: RecordFilter;
+  onChange(filter: RecordFilter): void;
+}) {
+  const id = useId();
+  const used = new Set<string | null | undefined>([filter.channelId, filter.promotionId]);
+  for (const r of records) used.add(r.channel.id).add(r.promotion?.id);
+  const channelChoices = channels.filter((c) => used.has(c.id));
+  const promotionChoices = promotions.filter((p) => used.has(p.id));
+  const change = (next: RecordFilter) => onChange({ ...filter, ...next });
+
+  return (
+    <div role="group" aria-label="筛选价格记录" className="flex flex-wrap items-end gap-3 text-sm">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`${id}-purchased`}>购买情况</Label>
+        <select
+          id={`${id}-purchased`}
+          className={cn(fieldClass, 'h-8 w-28')}
+          value={filter.purchased === undefined ? '' : String(filter.purchased)}
+          onChange={(e) => change({ purchased: e.target.value ? e.target.value === 'true' : undefined })}
+        >
+          <option value="">全部</option>
+          <option value="true">已购</option>
+          <option value="false">仅记录</option>
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`${id}-channel`}>渠道</Label>
+        <select
+          id={`${id}-channel`}
+          className={cn(fieldClass, 'h-8 w-36')}
+          value={filter.channelId ?? ''}
+          onChange={(e) => change({ channelId: e.target.value || undefined })}
+        >
+          <option value="">全部渠道</option>
+          {channelChoices.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`${id}-promotion`}>大促</Label>
+        <select
+          id={`${id}-promotion`}
+          className={cn(fieldClass, 'h-8 w-36')}
+          value={filter.promotionId === null ? promotionNone : (filter.promotionId ?? '')}
+          onChange={(e) => {
+            const value = e.target.value;
+            change({ promotionId: value === promotionNone ? null : value || undefined });
+          }}
+        >
+          <option value="">全部</option>
+          <option value={promotionNone}>非大促</option>
+          {promotionChoices.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {Object.values(filter).some((v) => v !== undefined) && (
+        <Button variant="ghost" size="sm" onClick={() => onChange({})}>
+          清除筛选
+        </Button>
+      )}
     </div>
   );
 }

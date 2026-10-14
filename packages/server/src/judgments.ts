@@ -75,7 +75,7 @@ export async function judgePrice(db: Database, scope: CurrentMember, input: Judg
   const date = input.date ?? today();
   const [pricing, records, promotions] = await Promise.all([
     pricingOf(db, scope, input.productId),
-    listPriceRecords(db, scope, { productId: input.productId }),
+    listPriceRecords(db, scope, { productIds: [input.productId] }),
     listPromotions(db, scope),
   ]);
   if (!pricing) throw new ProductNotFoundError();

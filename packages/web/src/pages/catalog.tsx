@@ -16,8 +16,9 @@ import {
   type Action,
 } from '@/components/editing';
 import { NewProductForm, NoteField } from '@/components/product-form';
-import { api, type CategoryGroup, type Product } from '@/lib/api';
+import { api, type CategoryGroup, type Product, type ProductSummary } from '@/lib/api';
 import { formatSize } from '@/lib/format';
+import { formatUnitPrice } from '@/lib/pricing';
 import { useHistoryState } from '@/lib/history';
 import { useProductSearch } from '@/lib/search';
 import { cn } from '@/lib/utils';
@@ -270,7 +271,7 @@ function CategoryPanel({
   onChange(): Promise<void>;
   onDeleted(): Promise<void>;
 }) {
-  const [products, setProducts] = useState<Product[]>();
+  const [products, setProducts] = useState<ProductSummary[]>();
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string>();
   const [moveError, setMoveError] = useState<string>();
@@ -386,8 +387,8 @@ function CategoryPanel({
                 }}
               />
             ) : (
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <a
                     href={`/products/${encodeURIComponent(product.id)}`}
                     className="font-medium underline-offset-4 hover:underline"
@@ -406,12 +407,43 @@ function CategoryPanel({
                 <Button variant="outline" size="sm" onClick={() => setEditingId(product.id)}>
                   编辑
                 </Button>
+                <PriceSummary product={product} />
               </div>
             )}
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+// Unit prices sit side by side for browsing only: products in a category are never priced against each other.
+function PriceSummary({ product }: { product: ProductSummary }) {
+  const { stockLine, lowestUnitPrice, latestPrice } = product;
+  return (
+    <dl aria-label="价格概览" className="grid w-full grid-cols-3 gap-2 text-sm">
+      <div>
+        <dt className="text-muted-foreground text-xs">入手价</dt>
+        <dd className="tabular-nums">{stockLine === null ? '未设置' : formatUnitPrice(stockLine, product)}</dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground text-xs">历史最低单价</dt>
+        <dd className="tabular-nums">{lowestUnitPrice === null ? '暂无' : formatUnitPrice(lowestUnitPrice, product)}</dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground text-xs">最近单价</dt>
+        <dd className="tabular-nums">
+          {latestPrice === null ? (
+            '暂无'
+          ) : (
+            <>
+              {formatUnitPrice(latestPrice.unitPrice, product)}{' '}
+              <span className="text-muted-foreground text-xs">{latestPrice.date}</span>
+            </>
+          )}
+        </dd>
+      </div>
+    </dl>
   );
 }
 

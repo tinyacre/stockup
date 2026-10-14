@@ -33,6 +33,10 @@ export interface ProductDetail extends Product {
   lowestUnitPrice: number | null;
 }
 
+export interface ProductSummary extends ProductDetail {
+  latestPrice: { date: string; unitPrice: number } | null;
+}
+
 export interface NewProduct {
   categoryId: string;
   name: string;
@@ -166,7 +170,9 @@ export const api = {
   deleteCategory: (id: string) => request(`/api/categories/${id}`, { method: 'DELETE' }),
 
   products: (categoryId?: string) =>
-    request<Product[]>(categoryId ? `/api/products?categoryId=${encodeURIComponent(categoryId)}` : '/api/products'),
+    request<ProductSummary[]>(
+      categoryId ? `/api/products?categoryId=${encodeURIComponent(categoryId)}` : '/api/products',
+    ),
   createProduct: (body: NewProduct) => request<Product>('/api/products', { method: 'POST', body }),
   updateProduct: (id: string, body: { name?: string; categoryId?: string; note?: string; stockLine?: number | null }) =>
     request<Product>(`/api/products/${id}`, { method: 'PATCH', body }),

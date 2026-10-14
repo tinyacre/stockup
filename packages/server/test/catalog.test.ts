@@ -268,7 +268,44 @@ describe('products', () => {
 
     const res = await m.request(`/api/products?categoryId=${category.id}`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([product]);
+    expect(await res.json()).toEqual([{ ...product, lowestUnitPrice: null, latestPrice: null }]);
+  });
+
+  test('are listed with their stock line, lowest and latest unit prices', async () => {
+    const m = await signUpHousehold(ctx);
+    const { category, product } = await seed(m);
+    const plain = await created<Product>(await createProduct(m, category.id, { name: '维达抽纸' }));
+    const channel = await created<{ id: string }>(
+      await m.request('/api/channels', jsonRequest('POST', { name: unique('京东') })),
+    );
+    await m.request(`/api/products/${product.id}`, jsonRequest('PATCH', { stockLine: 5000 }));
+    // One piece of the 90-sheet base size, so the unit price equals the list price.
+    for (const [date, listPrice, purchased] of [
+      ['2026-06-18', 9000, true],
+      ['2026-01-01', 4500, true],
+      ['2026-10-01', 6000, false],
+    ] as const) {
+      const res = await m.request(
+        '/api/price-records',
+        jsonRequest('POST', {
+          productId: product.id,
+          channelId: channel.id,
+          date,
+          purchased,
+          listPrice,
+          discounts: [],
+          quantity: 1,
+          size: { amount: 90, unit: { dimension: 'count', name: '抽' } },
+        }),
+      );
+      expect(res.status).toBe(201);
+    }
+
+    const res = await m.request(`/api/products?categoryId=${category.id}`);
+    expect(await res.json()).toEqual([
+      { ...product, stockLine: 5000, lowestUnitPrice: 4500, latestPrice: { date: '2026-10-01', unitPrice: 6000 } },
+      { ...plain, lowestUnitPrice: null, latestPrice: null },
+    ]);
   });
 
   test('are renamed, moved to another category and given a note', async () => {

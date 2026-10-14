@@ -84,8 +84,8 @@ function replaceRecord(m: SignedInMember, id: string, body: object) {
   return m.request(`/api/price-records/${id}`, jsonRequest('PUT', body));
 }
 
-async function recordsOf(m: SignedInMember, productId: string) {
-  const res = await m.request(`/api/price-records?productId=${productId}`);
+async function recordsOf(m: SignedInMember, productId: string, filter: Record<string, string> = {}) {
+  const res = await m.request(`/api/price-records?${new URLSearchParams({ productId, ...filter })}`);
   expect(res.status).toBe(200);
   return (await res.json()) as PriceRecord[];
 }
@@ -235,6 +235,34 @@ describe('price records', () => {
     // Records on the same day are listed in reverse order of entry.
     expect(listed.map((r) => r.id).slice(1, 3)).toEqual([ids[3]!, ids[0]!]);
     expect(await recordsOf(m, (await createProduct(m)).id)).toEqual([]);
+  });
+
+  test('are filtered by purchase, channel and promotion', async () => {
+    const m = await signUpHousehold(ctx);
+    const { product, channel } = await seed(m);
+    const other = await createChannel(m);
+    const add = async (overrides: Record<string, unknown>) =>
+      (await created<PriceRecord>(await createRecord(m, recordBody(product.id, channel.id, overrides)))).id;
+    const bought618 = await add({ date: '2026-06-18', purchased: true });
+    const seenElsewhere = await add({ date: '2026-03-03', purchased: false, channelId: other.id, promotionId: null });
+    const seen1111 = await add({ date: '2026-11-11', purchased: false });
+    const ids = async (filter: Record<string, string>) => (await recordsOf(m, product.id, filter)).map((r) => r.id);
+    const [promotion618] = (await recordsOf(m, product.id, { purchased: 'true' })).map((r) => r.promotion!.id);
+
+    expect(await ids({ purchased: 'true' })).toEqual([bought618]);
+    expect(await ids({ purchased: 'false' })).toEqual([seen1111, seenElsewhere]);
+    expect(await ids({ channelId: channel.id })).toEqual([seen1111, bought618]);
+    expect(await ids({ promotionId: promotion618! })).toEqual([bought618]);
+    expect(await ids({ promotionId: 'none' })).toEqual([seenElsewhere]);
+    expect(await ids({ purchased: 'false', channelId: channel.id })).toEqual([seen1111]);
+    expect(await ids({ channelId: crypto.randomUUID() })).toEqual([]);
+  });
+
+  test('reject a malformed purchase filter', async () => {
+    const m = await signUpHousehold(ctx);
+    const { product } = await seed(m);
+    const res = await m.request(`/api/price-records?productId=${product.id}&purchased=yes`);
+    expect(res.status).toBe(400);
   });
 
   test('are replaced as a whole', async () => {

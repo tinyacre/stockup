@@ -20,7 +20,7 @@ import {
 import type { Database } from '../db';
 import { NameTakenError, NotEmptyError, ParentNotFoundError } from '../db/errors';
 import { requireMember } from '../members';
-import { lowestUnitPrice } from '../price-records';
+import { lowestUnitPrice, summarizePrices } from '../price-records';
 
 const errorSchema = z.object({ error: z.string() });
 const errorContent = { 'application/json': { schema: errorSchema } };
@@ -77,6 +77,15 @@ const productDetailSchema = productSchema
       .openapi({ description: 'Lowest unit price across all its price records, null without any' }),
   })
   .openapi('ProductDetail');
+
+const productSummarySchema = productDetailSchema
+  .extend({
+    latestPrice: z
+      .object({ date: z.string(), unitPrice: z.number() })
+      .nullable()
+      .openapi({ description: 'Date and unit price of its newest price record, null without any' }),
+  })
+  .openapi('ProductSummary');
 
 const note = z.string().trim().max(500);
 
@@ -235,11 +244,11 @@ export function catalogRoutes(db: Database, auth: Auth) {
     method: 'get',
     path: '/products',
     tags: ['catalog'],
-    summary: "List the household's products",
+    summary: "List the household's products with their lowest and latest unit prices",
     middleware,
     request: { query: z.object({ categoryId: z.string().optional() }) },
     responses: {
-      200: { description: 'Products', content: { 'application/json': { schema: z.array(productSchema) } } },
+      200: { description: 'Products', content: { 'application/json': { schema: z.array(productSummarySchema) } } },
       ...unauthenticated,
     },
   });
@@ -375,7 +384,11 @@ export function catalogRoutes(db: Database, auth: Auth) {
         return respondToError(c, error);
       }
     })
-    .openapi(listProductsRoute, async (c) => c.json(await listProducts(db, c.var.member, c.req.valid('query')), 200))
+    .openapi(listProductsRoute, async (c) => {
+      const products = await listProducts(db, c.var.member, c.req.valid('query'));
+      const summaries = await summarizePrices(db, c.var.member, products.map((p) => p.id));
+      return c.json(products.map((p) => ({ ...p, ...summaries.get(p.id)! })), 200);
+    })
     .openapi(searchProductsRoute, async (c) => {
       const { q, includeArchived, limit } = c.req.valid('query');
       return c.json(await searchProducts(db, c.var.member, { query: q, includeArchived, limit }), 200);
