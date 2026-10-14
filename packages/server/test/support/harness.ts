@@ -9,6 +9,7 @@ import { createAuth, type Auth } from '../../src/auth';
 import { connect, migrate, type Database } from '../../src/db';
 import { localEvidenceStore } from '../../src/evidence-store';
 import { createHousehold } from '../../src/households';
+import { fetchClaudeMetadata } from './claude-metadata';
 
 const adminUrl =
   process.env.STOCKUP_TEST_DATABASE_URL ?? 'postgres://stockup:stockup@127.0.0.1:55432/postgres';
@@ -44,19 +45,30 @@ export const testAuthSecret = 'stockup-test-secret-stockup-test-secret';
 
 export interface TestContext {
   app: ReturnType<typeof createApp>;
+  baseUrl: string;
   auth: Auth;
   database: TestDatabase;
   evidenceDir: string;
 }
 
 // Registers suite-level hooks that give the calling test file its own migrated database
-// and evidence directory.
-export function useTestApp(options: Omit<AppOptions, 'db' | 'auth' | 'evidence'> = {}) {
+// and evidence directory. With `listen`, the app also serves HTTP on a free port, which the MCP endpoint
+// needs because it fetches the signing keys from its own base URL.
+export function useTestApp({ listen = false, ...options }: Omit<AppOptions, 'db' | 'auth' | 'evidence'> & { listen?: boolean } = {}) {
   const ctx = {} as TestContext;
+  let server: ReturnType<typeof Bun.serve> | undefined;
   beforeAll(async () => {
     ctx.database = await createTestDatabase();
     ctx.evidenceDir = mkdtempSync(path.join(tmpdir(), 'stockup-evidence-'));
-    ctx.auth = createAuth({ db: ctx.database.db, secret: testAuthSecret, baseURL: 'http://localhost' });
+    server = listen ? Bun.serve({ port: 0, fetch: (req) => ctx.app.fetch(req) }) : undefined;
+    ctx.baseUrl = server?.url.origin ?? 'http://localhost';
+    ctx.auth = createAuth({
+      db: ctx.database.db,
+      secret: testAuthSecret,
+      baseURL: ctx.baseUrl,
+      fetchClientMetadataResource: fetchClaudeMetadata,
+    });
+    await ctx.auth.$context;
     ctx.app = createApp({
       ...options,
       db: ctx.database.db,
@@ -65,6 +77,7 @@ export function useTestApp(options: Omit<AppOptions, 'db' | 'auth' | 'evidence'>
     });
   });
   afterAll(async () => {
+    await server?.stop(true);
     await ctx.database.drop();
     await rm(ctx.evidenceDir, { recursive: true, force: true });
   });

@@ -55,7 +55,7 @@ export const pricingUnitSchema = z
     example: { dimension: 'count', name: '抽' },
   });
 
-const productSchema = z
+export const productSchema = z
   .object({
     id: z.string(),
     name: z.string(),

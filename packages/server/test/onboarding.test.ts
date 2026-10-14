@@ -29,12 +29,12 @@ describe('first member onboarding', () => {
       ctx.app.request('/api/setup', jsonRequest('POST', { ...founder, username: 'intruder' })),
     ]);
     expect([a.status, b.status].sort()).toEqual([201, 409]);
-    const winner = a.status === 201 ? a : b;
+    const [winner, username] = a.status === 201 ? [a, 'founder'] : [b, 'intruder'];
 
     const me = await requestAs(ctx, sessionCookie(winner), '/api/me');
     expect(me.status).toBe(200);
     expect(await me.json()).toMatchObject({
-      user: { username: 'founder', name: '爸爸', isInstanceAdmin: true },
+      user: { username, name: '爸爸', isInstanceAdmin: true },
       household: { name: '我们家', role: 'admin' },
     });
   });

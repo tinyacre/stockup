@@ -30,7 +30,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2,svg,png}'],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/\.well-known\//, /^\/mcp$/],
         runtimeCaching: [
           {
             // Offline, the app opens on the household data it last read. Auth endpoints carry no data worth replaying,
@@ -73,6 +73,10 @@ export default defineConfig({
     alias: { '@': path.resolve(import.meta.dirname, 'src') },
   },
   server: {
-    proxy: { '/api': 'http://127.0.0.1:8080' },
+    proxy: {
+      '/api': 'http://127.0.0.1:8080',
+      '/.well-known': 'http://127.0.0.1:8080',
+      '/mcp': 'http://127.0.0.1:8080',
+    },
   },
 });

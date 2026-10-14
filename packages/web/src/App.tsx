@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { api, ApiError, type Me } from '@/lib/api';
 import { CatalogPage } from '@/pages/catalog';
 import { ChannelsPage } from '@/pages/channels';
+import { ConsentPage } from '@/pages/consent';
 import { HouseholdsPage } from '@/pages/households';
 import { InvitationsPage } from '@/pages/invitations';
 import { JoinPage } from '@/pages/join';
@@ -39,6 +40,13 @@ function invitationInPath() {
   return /^\/join\/([^/]+)$/.exec(window.location.pathname)?.[1];
 }
 
+// Better Auth sends an MCP client's authorization request here with a signed query, which these pages hand back.
+function authorizationPage() {
+  const { pathname, search } = window.location;
+  if (pathname === '/oauth/sign-in') return { page: 'sign-in' as const, oauthQuery: search.slice(1) };
+  if (pathname === '/oauth/consent') return { page: 'consent' as const, oauthQuery: search.slice(1) };
+}
+
 export function App() {
   const [session, setSession] = useState<Session>({ state: 'loading' });
   // An invitee who already has an account signs in before using the invitation with it.
@@ -53,6 +61,10 @@ export function App() {
     refresh();
   };
   const invitationId = invitationInPath();
+  const authorization = authorizationPage();
+
+  if (authorization?.page === 'sign-in') return <SignInPage oauthQuery={authorization.oauthQuery} onDone={refresh} />;
+  if (authorization?.page === 'consent') return <ConsentPage oauthQuery={authorization.oauthQuery} />;
 
   switch (session.state) {
     case 'loading':

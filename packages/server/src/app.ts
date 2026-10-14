@@ -2,9 +2,10 @@ import path from 'node:path';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic } from 'hono/bun';
-import type { Auth } from './auth';
+import { mcpAvailable, type Auth } from './auth';
 import type { Database } from './db';
 import type { EvidenceStore } from './evidence-store';
+import { mcpRoutes } from './mcp';
 import type { ScreenshotRecognizer } from './recognizer';
 import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
@@ -51,6 +52,11 @@ export function createApp({ db, auth, evidence, recognizer, webDir }: AppOptions
   // Members rename themselves through PATCH /api/me, which applies StockUp's name rules; usernames are fixed.
   app.all('/api/auth/update-user', (c) => c.json({ error: 'not_found' }, 404));
   app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+  if (mcpAvailable(auth.options.baseURL)) {
+    // Discovery documents live outside /api/auth, where the mcp() plugin serves them only through auth.handler.
+    app.on(['GET', 'HEAD'], '/.well-known/*', (c) => auth.handler(c.req.raw));
+    app.route('/', mcpRoutes(db, auth));
+  }
 
   app.doc31('/api/openapi.json', {
     openapi: '3.1.0',

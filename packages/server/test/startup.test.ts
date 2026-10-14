@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,23 +6,36 @@ import { loadConfig } from '../src/config';
 import { bootstrap } from '../src/main';
 import { createTestDatabase, jsonRequest, sessionCookie, testAuthSecret } from './support/harness';
 
-const required = { STOCKUP_DATABASE_URL: 'postgres://x/y', STOCKUP_AUTH_SECRET: testAuthSecret };
+const required = {
+  STOCKUP_DATABASE_URL: 'postgres://x/y',
+  STOCKUP_AUTH_SECRET: testAuthSecret,
+  STOCKUP_BASE_URL: 'https://stockup.example.com',
+};
 
 describe('loadConfig', () => {
   test('requires a database URL', () => {
-    expect(() => loadConfig({ STOCKUP_AUTH_SECRET: testAuthSecret })).toThrow('STOCKUP_DATABASE_URL');
+    expect(() => loadConfig({ ...required, STOCKUP_DATABASE_URL: undefined })).toThrow('STOCKUP_DATABASE_URL');
   });
 
   test('requires a long enough auth secret', () => {
-    expect(() => loadConfig({ STOCKUP_DATABASE_URL: 'postgres://x/y' })).toThrow('STOCKUP_AUTH_SECRET');
+    expect(() => loadConfig({ ...required, STOCKUP_AUTH_SECRET: undefined })).toThrow('STOCKUP_AUTH_SECRET');
     expect(() => loadConfig({ ...required, STOCKUP_AUTH_SECRET: 'too-short' })).toThrow('STOCKUP_AUTH_SECRET');
+  });
+
+  test('requires the public base URL', () => {
+    expect(() => loadConfig({ ...required, STOCKUP_BASE_URL: undefined })).toThrow('STOCKUP_BASE_URL');
+    expect(() => loadConfig({ ...required, STOCKUP_BASE_URL: 'stockup.example.com' })).toThrow('STOCKUP_BASE_URL');
+  });
+
+  test('accepts a plain-HTTP base URL on the local network', () => {
+    expect(loadConfig({ ...required, STOCKUP_BASE_URL: 'http://192.168.1.10:8080' }).baseUrl).toBe('http://192.168.1.10:8080');
   });
 
   test('applies defaults for optional settings', () => {
     expect(loadConfig(required)).toEqual({
       databaseUrl: 'postgres://x/y',
       authSecret: testAuthSecret,
-      baseUrl: undefined,
+      baseUrl: 'https://stockup.example.com',
       port: 8080,
       evidenceDir: path.resolve('data/evidence'),
       webDir: undefined,
@@ -33,7 +46,6 @@ describe('loadConfig', () => {
     expect(
       loadConfig({
         ...required,
-        STOCKUP_BASE_URL: 'https://stockup.example.com',
         STOCKUP_PORT: '3000',
         STOCKUP_EVIDENCE_DIR: '/srv/evidence',
         STOCKUP_WEB_DIR: '/srv/web',
@@ -76,7 +88,7 @@ describe('bootstrap', () => {
     const config = {
       databaseUrl: await emptyDatabaseUrl(),
       authSecret: testAuthSecret,
-      baseUrl: undefined,
+      baseUrl: 'http://localhost',
       port: 0,
       evidenceDir,
       webDir: undefined,
@@ -97,7 +109,7 @@ describe('bootstrap', () => {
     const config = {
       databaseUrl: await emptyDatabaseUrl(),
       authSecret: testAuthSecret,
-      baseUrl: undefined,
+      baseUrl: 'http://localhost',
       port: 0,
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
@@ -123,5 +135,24 @@ describe('bootstrap', () => {
     cleanups.push(second.close);
     const res = await second.app.request(`/api/recognitions/${id}`, { headers: { cookie } });
     expect(await res.json()).toMatchObject({ status: 'failed', error: 'recognition_interrupted' });
+  });
+
+  test('serves without MCP when the base URL is plain HTTP off loopback', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    const { app, close } = await bootstrap({
+      databaseUrl: await emptyDatabaseUrl(),
+      authSecret: testAuthSecret,
+      baseUrl: 'http://192.168.1.10:8080',
+      port: 0,
+      evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
+      webDir: undefined,
+    });
+    cleanups.push(close);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('MCP'));
+    warn.mockRestore();
+
+    expect((await app.request('/api/health')).status).toBe(200);
+    expect((await app.request('/mcp', { method: 'POST' })).status).toBe(404);
+    expect((await app.request('/.well-known/oauth-protected-resource/mcp')).status).toBe(404);
   });
 });

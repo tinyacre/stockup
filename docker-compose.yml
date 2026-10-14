@@ -8,9 +8,9 @@ services:
     environment:
       STOCKUP_DATABASE_URL: postgres://stockup:${POSTGRES_PASSWORD:-stockup}@postgres:5432/stockup
       STOCKUP_AUTH_SECRET: ${STOCKUP_AUTH_SECRET:?set STOCKUP_AUTH_SECRET to a random string of at least 32 characters, e.g. openssl rand -base64 32}
-      # The public URL members open, e.g. https://stockup.example.com. Required behind an HTTPS reverse
-      # proxy: otherwise the base URL is derived from the plain-HTTP request and sign-in fails the origin check.
-      STOCKUP_BASE_URL: ${STOCKUP_BASE_URL:-}
+      # MCP is served only over HTTPS. The server then fetches its own signing keys from this URL, so it has
+      # to be reachable from the container too.
+      STOCKUP_BASE_URL: ${STOCKUP_BASE_URL:?set STOCKUP_BASE_URL to the public URL members open, e.g. https://stockup.example.com}
     volumes:
       - ${STOCKUP_EVIDENCE_PATH:-./data/evidence}:/data/evidence
     healthcheck:
