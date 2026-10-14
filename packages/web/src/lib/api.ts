@@ -37,6 +37,18 @@ export interface ProductSummary extends ProductDetail {
   latestPrice: { date: string; unitPrice: number } | null;
 }
 
+export interface ProductChanges {
+  name?: string;
+  categoryId?: string;
+  note?: string;
+  // Only to another unit of the same dimension.
+  pricingUnit?: Unit;
+  // In the new pricing unit when that changes too.
+  baseSize?: number;
+  stockLine?: number | null;
+  archived?: boolean;
+}
+
 export interface NewProduct {
   categoryId: string;
   name: string;
@@ -169,13 +181,17 @@ export const api = {
     request<Category>(`/api/categories/${id}`, { method: 'PATCH', body }),
   deleteCategory: (id: string) => request(`/api/categories/${id}`, { method: 'DELETE' }),
 
-  products: (categoryId?: string) =>
-    request<ProductSummary[]>(
-      categoryId ? `/api/products?categoryId=${encodeURIComponent(categoryId)}` : '/api/products',
-    ),
+  products: (categoryId?: string, { includeArchived = false } = {}) => {
+    const query = new URLSearchParams();
+    if (categoryId) query.set('categoryId', categoryId);
+    if (includeArchived) query.set('includeArchived', 'true');
+    return request<ProductSummary[]>(query.size ? `/api/products?${query}` : '/api/products');
+  },
   createProduct: (body: NewProduct) => request<Product>('/api/products', { method: 'POST', body }),
-  updateProduct: (id: string, body: { name?: string; categoryId?: string; note?: string; stockLine?: number | null }) =>
+  updateProduct: (id: string, body: ProductChanges) =>
     request<Product>(`/api/products/${id}`, { method: 'PATCH', body }),
+  mergeProduct: (keptId: string, mergedId: string) =>
+    request<Product>(`/api/products/${keptId}/merge`, { method: 'POST', body: { productId: mergedId } }),
   searchProducts: (query: string) =>
     request<Product[]>(`/api/products/search?q=${encodeURIComponent(query)}`),
   product: (id: string) => request<ProductDetail>(`/api/products/${id}`),

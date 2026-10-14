@@ -413,7 +413,42 @@ function CategoryPanel({
           </li>
         ))}
       </ul>
+      <ArchivedProducts categoryId={category.id} onOpenProduct={onOpenProduct} />
     </div>
+  );
+}
+
+// Archived products are restored from their own page.
+function ArchivedProducts({ categoryId, onOpenProduct }: { categoryId: string; onOpenProduct(id: string): void }) {
+  const [archived, setArchived] = useState<Product[]>([]);
+  useEffect(() => {
+    api.products(categoryId, { includeArchived: true }).then(
+      (products) => setArchived(products.filter((p) => p.archived)),
+      () => setArchived([]),
+    );
+  }, [categoryId]);
+
+  if (archived.length === 0) return null;
+  return (
+    <details className="text-sm">
+      <summary className="text-muted-foreground cursor-pointer">已归档的商品（{archived.length}）</summary>
+      <ul aria-label="已归档的商品列表" className="mt-2 flex flex-col gap-1">
+        {archived.map((product) => (
+          <li key={product.id} aria-label={product.name}>
+            <a
+              href={`/products/${encodeURIComponent(product.id)}`}
+              className="text-muted-foreground underline-offset-4 hover:underline"
+              onClick={(event) => {
+                event.preventDefault();
+                onOpenProduct(product.id);
+              }}
+            >
+              {product.name}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

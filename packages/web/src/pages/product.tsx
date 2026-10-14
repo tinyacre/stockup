@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, attempt, DeleteButton, describeError, fieldClass, RetryAlert } from '@/components/editing';
+import { ProductMaintenance } from '@/components/product-maintenance';
 import { JudgmentSummary } from '@/components/verdict';
 import {
   api,
@@ -107,6 +108,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
         </p>
         {product.note && <p className="text-muted-foreground mt-1 text-sm whitespace-pre-wrap">{product.note}</p>}
       </div>
+      <ProductMaintenance product={product} onChanged={reload} />
       {loadAlert}
       <StockLineSection product={product} records={records ?? []} onSaved={reload} />
 

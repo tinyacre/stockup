@@ -249,8 +249,9 @@ async function insertDiscounts(db: Executor, priceRecordId: string, discounts: D
   );
 }
 
-export async function pricingOf(db: Executor, scope: CurrentMember, productId: string) {
-  const [found] = await db
+// Writers lock the product so a change of pricing unit or a merge waits until the record is written.
+export async function pricingOf(db: Executor, scope: CurrentMember, productId: string, { lock = false } = {}) {
+  const query = db
     .select({
       dimension: product.pricingUnitDimension,
       name: product.pricingUnitName,
@@ -258,7 +259,9 @@ export async function pricingOf(db: Executor, scope: CurrentMember, productId: s
       stockLine: product.stockLine,
     })
     .from(product)
-    .where(and(eq(product.householdId, scope.householdId), eq(product.id, productId)));
+    .where(and(eq(product.householdId, scope.householdId), eq(product.id, productId)))
+    .$dynamic();
+  const [found] = await (lock ? query.for('share') : query);
   if (!found) return null;
   return {
     pricingUnit: { dimension: found.dimension, name: found.name } as Unit,
@@ -271,7 +274,7 @@ export function createPriceRecord(db: Database, scope: CurrentMember, input: New
   return translate(
     () =>
       db.transaction(async (tx) => {
-        const pricing = await pricingOf(tx, scope, input.productId);
+        const pricing = await pricingOf(tx, scope, input.productId, { lock: true });
         if (!pricing) throw new ProductNotFoundError();
         const [created] = await tx
           .insert(priceRecord)
@@ -294,12 +297,24 @@ export function replacePriceRecord(db: Database, scope: CurrentMember, id: strin
   return translate(
     () =>
       db.transaction(async (tx) => {
-        const [existing] = await tx
-          .select({ productId: priceRecord.productId })
-          .from(priceRecord)
-          .where(and(eq(priceRecord.householdId, scope.householdId), eq(priceRecord.id, id)));
-        if (!existing) return null;
-        const pricing = (await pricingOf(tx, scope, existing.productId))!;
+        const productIdOf = async () => {
+          const [found] = await tx
+            .select({ productId: priceRecord.productId })
+            .from(priceRecord)
+            .where(and(eq(priceRecord.householdId, scope.householdId), eq(priceRecord.id, id)));
+          return found?.productId;
+        };
+        // A merge can move the record to another product while this waits for the product's lock,
+        // so the record's product is read again once the lock is held.
+        let productId = await productIdOf();
+        let pricing;
+        while (productId !== undefined) {
+          pricing = await pricingOf(tx, scope, productId, { lock: true });
+          const current = await productIdOf();
+          if (pricing && current === productId) break;
+          productId = current;
+        }
+        if (productId === undefined || !pricing) return null;
         await tx
           .update(priceRecord)
           .set(await recordValues(tx, scope, pricing, input, true))

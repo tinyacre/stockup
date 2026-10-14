@@ -1,5 +1,5 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
-import { isUnit, volumeUnits, weightUnits } from '@stockup/domain';
+import { IncompatibleUnitsError, isUnit, volumeUnits, weightUnits } from '@stockup/domain';
 import type { Context } from 'hono';
 import type { Auth } from '../auth';
 import {
@@ -12,6 +12,9 @@ import {
   findProduct,
   listCatalog,
   listProducts,
+  mergeProducts,
+  MergedProductNotFoundError,
+  SameProductError,
   searchProducts,
   updateCategory,
   updateCategoryGroup,
@@ -102,6 +105,14 @@ const productChangesSchema = z
     name: z.string().trim().min(1).max(100).optional(),
     categoryId: z.string().optional(),
     note: note.optional(),
+    pricingUnit: pricingUnitSchema.optional().openapi({
+      description:
+        "Another unit of the same dimension; every price record's size is converted to it, keeping unit prices",
+    }),
+    baseSize: z.number().positive().finite().optional().openapi({
+      description:
+        'In the new pricing unit when that changes too; without a new stock line, the stock line scales along',
+    }),
     // Postgres integer columns hold amounts up to 2^31 - 1.
     stockLine: z
       .number()
@@ -123,6 +134,9 @@ function json<T extends z.ZodType>(schema: T) {
 function respondToError(c: Context, error: unknown, missingParent?: string) {
   if (error instanceof NameTakenError) return c.json({ error: 'name_taken' }, 409);
   if (error instanceof NotEmptyError) return c.json({ error: 'not_empty' }, 409);
+  if (error instanceof IncompatibleUnitsError) return c.json({ error: 'incompatible_unit' }, 422);
+  if (error instanceof SameProductError) return c.json({ error: 'same_product' }, 422);
+  if (error instanceof MergedProductNotFoundError) return c.json({ error: 'product_not_found' }, 422);
   if (error instanceof ParentNotFoundError && missingParent) return c.json({ error: missingParent }, 422);
   throw error;
 }
@@ -246,7 +260,16 @@ export function catalogRoutes(db: Database, auth: Auth) {
     tags: ['catalog'],
     summary: "List the household's products with their lowest and latest unit prices",
     middleware,
-    request: { query: z.object({ categoryId: z.string().optional() }) },
+    request: {
+      query: z.object({
+        categoryId: z.string().optional(),
+        includeArchived: z
+          .enum(['true', 'false'])
+          .optional()
+          .transform((v) => v === 'true')
+          .openapi({ description: 'Also list archived products' }),
+      }),
+    },
     responses: {
       200: { description: 'Products', content: { 'application/json': { schema: z.array(productSummarySchema) } } },
       ...unauthenticated,
@@ -310,14 +333,43 @@ export function catalogRoutes(db: Database, auth: Auth) {
     method: 'patch',
     path: '/products/{id}',
     tags: ['catalog'],
-    summary: 'Rename a product, move it to another category, change its note or stock line, or archive it',
+    summary:
+      'Rename a product, move it to another category, change its note, pricing unit, base size or stock line, or archive it',
     middleware,
     request: { params: idParams, body: json(productChangesSchema) },
     responses: {
       200: { description: 'Updated', content: { 'application/json': { schema: productSchema } } },
       ...unauthenticated,
       ...notFound,
-      422: { description: 'No such category in this household', content: errorContent },
+      422: {
+        description:
+          'No such category in this household (category_not_found), or the pricing unit is of another dimension or count unit, so a new product is needed (incompatible_unit)',
+        content: errorContent,
+      },
+    },
+  });
+
+  const mergeProductRoute = createRoute({
+    method: 'post',
+    path: '/products/{id}/merge',
+    tags: ['catalog'],
+    summary: 'Merge a duplicate product into this one',
+    description:
+      "Moves every price record of the duplicate to this product, converting sizes to this product's pricing unit, then deletes the duplicate.",
+    middleware,
+    request: {
+      params: idParams,
+      body: json(z.object({ productId: z.string().openapi({ description: 'The duplicate to merge and delete' }) })),
+    },
+    responses: {
+      200: { description: 'The kept product', content: { 'application/json': { schema: productSchema } } },
+      ...unauthenticated,
+      ...notFound,
+      422: {
+        description:
+          'The duplicate is not in this household (product_not_found), is this product (same_product), or has a pricing unit of another dimension or count unit (incompatible_unit)',
+        content: errorContent,
+      },
     },
   });
 
@@ -414,6 +466,14 @@ export function catalogRoutes(db: Database, auth: Auth) {
         return updated ? c.json(updated, 200) : c.json({ error: 'not_found' }, 404);
       } catch (error) {
         return respondToError(c, error, 'category_not_found');
+      }
+    })
+    .openapi(mergeProductRoute, async (c) => {
+      try {
+        const kept = await mergeProducts(db, c.var.member, c.req.valid('param').id, c.req.valid('json').productId);
+        return kept ? c.json(kept, 200) : c.json({ error: 'not_found' }, 404);
+      } catch (error) {
+        return respondToError(c, error);
       }
     })
     .openapi(deleteProductRoute, async (c) => {
