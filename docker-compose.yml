@@ -11,6 +11,9 @@ services:
       # The public URL members open, e.g. https://stockup.example.com. Required behind an HTTPS reverse
       # proxy: otherwise the base URL is derived from the plain-HTTP request and sign-in fails the origin check.
       STOCKUP_BASE_URL: ${STOCKUP_BASE_URL:-}
+      # Screenshot recognition stays unavailable without an Anthropic API key; the model defaults to claude-haiku-5-5.
+      STOCKUP_ANTHROPIC_API_KEY: ${STOCKUP_ANTHROPIC_API_KEY:-}
+      STOCKUP_ANTHROPIC_MODEL: ${STOCKUP_ANTHROPIC_MODEL:-}
     volumes:
       - ${STOCKUP_EVIDENCE_PATH:-./data/evidence}:/data/evidence
     healthcheck:

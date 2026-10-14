@@ -42,3 +42,21 @@ test('a screenshot that is not an image is refused', async ({ page }) => {
   await page.getByLabel('上传截图').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
   await expect(page.getByRole('alert')).toHaveText('截图只支持 PNG、JPEG、WebP 或 GIF 图片。');
 });
+
+test.describe('without a recognizer', () => {
+  // The e2e server always has the fake recognizer, so the server's answer is stood in for here;
+  // the service worker would otherwise serve the request out of reach of page.route.
+  test.use({ serviceWorkers: 'block' });
+
+  test('recognition shows as unavailable', async ({ page }) => {
+    await page.route('**/api/recognizer', (route) => route.fulfill({ json: { available: false } }));
+    await page.goto('/');
+    await page.getByLabel('用户名').fill(founder.username);
+    await page.getByLabel('密码').fill(founder.password);
+    await page.getByRole('button', { name: '登录' }).click();
+
+    await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '识别' }).click();
+    await expect(page.getByRole('alert')).toHaveText('还没有配置识别服务，暂时不能识别截图。');
+    await expect(page.getByLabel('上传截图')).toBeDisabled();
+  });
+});

@@ -1,4 +1,6 @@
 import { mkdir } from 'node:fs/promises';
+import Anthropic from '@anthropic-ai/sdk';
+import { anthropicRecognizer } from './anthropic-recognizer';
 import { createApp } from './app';
 import { createAuth } from './auth';
 import { loadConfig, type Config } from './config';
@@ -7,8 +9,14 @@ import { localEvidenceStore } from './evidence-store';
 import { failInterruptedRecognitions } from './recognitions';
 import type { ScreenshotRecognizer } from './recognizer';
 
-// The screenshot recognizer stays unset until a real one is configured, which leaves recognition unavailable.
-export async function bootstrap(config: Config, { recognizer }: { recognizer?: ScreenshotRecognizer } = {}) {
+// Recognitions give up after two minutes, so a slow call retries once at most and stops by then.
+function configuredRecognizer({ apiKey, model }: NonNullable<Config['recognizer']>) {
+  return anthropicRecognizer(new Anthropic({ apiKey, timeout: 55_000, maxRetries: 1 }), model);
+}
+
+// A recognizer passed in takes the place of the one the config describes.
+export async function bootstrap(config: Config, options: { recognizer?: ScreenshotRecognizer } = {}) {
+  const recognizer = options.recognizer ?? (config.recognizer && configuredRecognizer(config.recognizer));
   await mkdir(config.evidenceDir, { recursive: true });
   const { db, close } = connect(config.databaseUrl);
   await migrate(db);

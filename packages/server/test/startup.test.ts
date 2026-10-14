@@ -26,6 +26,7 @@ describe('loadConfig', () => {
       port: 8080,
       evidenceDir: path.resolve('data/evidence'),
       webDir: undefined,
+      recognizer: undefined,
     });
   });
 
@@ -37,6 +38,8 @@ describe('loadConfig', () => {
         STOCKUP_PORT: '3000',
         STOCKUP_EVIDENCE_DIR: '/srv/evidence',
         STOCKUP_WEB_DIR: '/srv/web',
+        STOCKUP_ANTHROPIC_API_KEY: 'sk-ant-test',
+        STOCKUP_ANTHROPIC_MODEL: 'claude-sonnet-5-5',
       }),
     ).toEqual({
       databaseUrl: 'postgres://x/y',
@@ -45,7 +48,19 @@ describe('loadConfig', () => {
       port: 3000,
       evidenceDir: '/srv/evidence',
       webDir: '/srv/web',
+      recognizer: { apiKey: 'sk-ant-test', model: 'claude-sonnet-5-5' },
     });
+  });
+
+  test('recognizes screenshots with Claude Haiku 5.5 unless another model is set', () => {
+    expect(loadConfig({ ...required, STOCKUP_ANTHROPIC_API_KEY: 'sk-ant-test' }).recognizer).toEqual({
+      apiKey: 'sk-ant-test',
+      model: 'claude-haiku-5-5',
+    });
+  });
+
+  test('leaves recognition unconfigured without an API key', () => {
+    expect(loadConfig({ ...required, STOCKUP_ANTHROPIC_MODEL: 'claude-sonnet-5-5' }).recognizer).toBeUndefined();
   });
 
   test('treats a blank setting as unset', () => {
@@ -80,6 +95,7 @@ describe('bootstrap', () => {
       port: 0,
       evidenceDir,
       webDir: undefined,
+      recognizer: undefined,
     };
 
     const first = await bootstrap(config);
@@ -93,6 +109,38 @@ describe('bootstrap', () => {
     expect((await second.app.request('/api/health')).status).toBe(200);
   });
 
+  test('makes recognition available once an Anthropic API key is configured', async () => {
+    const config = {
+      databaseUrl: await emptyDatabaseUrl(),
+      authSecret: testAuthSecret,
+      baseUrl: undefined,
+      port: 0,
+      evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
+      webDir: undefined,
+      recognizer: undefined,
+    };
+    const without = await bootstrap(config);
+    cleanups.push(without.close);
+    const configured = await bootstrap({ ...config, recognizer: { apiKey: 'sk-ant-test', model: 'claude-haiku-5-5' } });
+    cleanups.push(configured.close);
+
+    const username = `member_${crypto.randomUUID().slice(0, 8)}`;
+    const password = 'password-recognizer';
+    await without.app.request(
+      '/api/setup',
+      jsonRequest('POST', { householdName: 'Home', username, password, name: 'Member' }),
+    );
+    const signedIn = await without.app.request('/api/auth/sign-in/username', jsonRequest('POST', { username, password }));
+    const cookie = sessionCookie(signedIn);
+
+    expect(await (await without.app.request('/api/recognizer', { headers: { cookie } })).json()).toEqual({
+      available: false,
+    });
+    expect(await (await configured.app.request('/api/recognizer', { headers: { cookie } })).json()).toEqual({
+      available: true,
+    });
+  });
+
   test('fails recognitions that a restart cut off', async () => {
     const config = {
       databaseUrl: await emptyDatabaseUrl(),
@@ -101,6 +149,7 @@ describe('bootstrap', () => {
       port: 0,
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
+      recognizer: undefined,
     };
     const stuck = { recognize: () => new Promise<never>(() => {}) };
     const first = await bootstrap(config, { recognizer: stuck });
