@@ -1,5 +1,7 @@
+import { count, desc, eq } from 'drizzle-orm';
 import type { Auth } from './auth';
 import type { Database } from './db';
+import { translate } from './db/errors';
 import { account, member, organization, promotion, user } from './db/schema';
 
 export const HOUSEHOLD_ADMIN_ROLE = 'admin';
@@ -74,21 +76,38 @@ export async function insertMember(
   return userId;
 }
 
+// Fails with NameTakenError when the admin's username is in use.
 export async function createHousehold(db: Executor, auth: Auth, input: NewHousehold) {
   const householdId = crypto.randomUUID();
   const passwordHash = await hashPassword(auth, input.admin.password);
-  return db.transaction(async (tx) => {
-    await tx
-      .insert(organization)
-      .values({ id: householdId, name: input.householdName, slug: householdId, createdAt: new Date() });
-    await tx.insert(promotion).values(PRESET_PROMOTIONS.map((p) => ({ ...p, householdId })));
-    const userId = await insertMember(tx, {
-      account: input.admin,
-      passwordHash,
-      householdId,
-      role: HOUSEHOLD_ADMIN_ROLE,
-      instanceAdmin: input.instanceAdmin,
-    });
-    return { userId, householdId };
-  });
+  return translate(() =>
+    db.transaction(async (tx) => {
+      await tx
+        .insert(organization)
+        .values({ id: householdId, name: input.householdName, slug: householdId, createdAt: new Date() });
+      await tx.insert(promotion).values(PRESET_PROMOTIONS.map((p) => ({ ...p, householdId })));
+      const userId = await insertMember(tx, {
+        account: input.admin,
+        passwordHash,
+        householdId,
+        role: HOUSEHOLD_ADMIN_ROLE,
+        instanceAdmin: input.instanceAdmin,
+      });
+      return { userId, householdId };
+    }),
+  );
+}
+
+export async function listHouseholds(db: Database) {
+  return db
+    .select({
+      id: organization.id,
+      name: organization.name,
+      memberCount: count(member.id),
+      createdAt: organization.createdAt,
+    })
+    .from(organization)
+    .leftJoin(member, eq(member.organizationId, organization.id))
+    .groupBy(organization.id)
+    .orderBy(desc(organization.createdAt));
 }

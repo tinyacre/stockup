@@ -1,8 +1,8 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { Auth } from './auth';
 import type { Database } from './db';
-import { translate } from './db/errors';
-import { invitation, organization, user } from './db/schema';
+import { NameTakenError, translate } from './db/errors';
+import { invitation, member, organization, user } from './db/schema';
 import { hashPassword, HOUSEHOLD_MEMBER_ROLE, insertMember, type NewAccount } from './households';
 import type { CurrentMember } from './members';
 
@@ -124,35 +124,71 @@ export async function describeInvitation(db: Database, id: string) {
   return { householdName: found.householdName, invitedBy: found.invitedBy };
 }
 
-// Every invitee gets a new account, so nobody who already belongs to a household can use one to switch.
+export class AlreadyMemberError extends Error {
+  override name = 'AlreadyMemberError';
+}
+
+type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+// Runs `admit` for a usable invitation and marks it used. The row lock lets exactly one of several
+// simultaneous invitees through.
+async function useInvitation<T>(
+  tx: Transaction,
+  id: string,
+  admit: (invited: { householdId: string; role: string }) => Promise<T>,
+) {
+  const [found] = await tx
+    .select({
+      householdId: invitation.organizationId,
+      role: invitation.role,
+      status: invitation.status,
+      expiresAt: invitation.expiresAt,
+    })
+    .from(invitation)
+    .where(eq(invitation.id, id))
+    .for('update');
+  if (!found) throw new InvitationNotFoundError();
+  const status = statusOf(found);
+  if (status !== 'pending') throw new InvitationUnusableError(status);
+
+  const admitted = await admit({ householdId: found.householdId, role: found.role ?? HOUSEHOLD_MEMBER_ROLE });
+  await tx.update(invitation).set({ status: STORED_ACCEPTED }).where(eq(invitation.id, id));
+  return admitted;
+}
+
+// A new account cannot belong to a household yet, so nobody who already does can use an invitation to switch.
 // Fails with NameTakenError when the username is in use.
 export async function acceptInvitation(db: Database, auth: Auth, id: string, account: NewAccount) {
   const passwordHash = await hashPassword(auth, account.password);
   return translate(() =>
-    db.transaction(async (tx) => {
-      // The row lock lets exactly one of several simultaneous invitees through.
-      const [found] = await tx
-        .select({
-          householdId: invitation.organizationId,
-          role: invitation.role,
-          status: invitation.status,
-          expiresAt: invitation.expiresAt,
-        })
-        .from(invitation)
-        .where(eq(invitation.id, id))
-        .for('update');
-      if (!found) throw new InvitationNotFoundError();
-      const status = statusOf(found);
-      if (status !== 'pending') throw new InvitationUnusableError(status);
-
-      const userId = await insertMember(tx, {
-        account,
-        passwordHash,
-        householdId: found.householdId,
-        role: found.role ?? HOUSEHOLD_MEMBER_ROLE,
-      });
-      await tx.update(invitation).set({ status: STORED_ACCEPTED }).where(eq(invitation.id, id));
-      return { userId, householdId: found.householdId };
-    }),
+    db.transaction((tx) =>
+      useInvitation(tx, id, async ({ householdId, role }) => {
+        const userId = await insertMember(tx, { account, passwordHash, householdId, role });
+        return { userId, householdId };
+      }),
+    ),
   );
+}
+
+// An account left without a household, as after being removed from one, joins under its own name,
+// so the price records it entered stay attributed to it.
+export async function rejoinThroughInvitation(db: Database, id: string, userId: string) {
+  try {
+    return await translate(() =>
+      db.transaction(async (tx) => {
+        const [current] = await tx.select({ id: member.id }).from(member).where(eq(member.userId, userId));
+        if (current) throw new AlreadyMemberError();
+        return useInvitation(tx, id, async ({ householdId, role }) => {
+          await tx
+            .insert(member)
+            .values({ id: crypto.randomUUID(), organizationId: householdId, userId, role, createdAt: new Date() });
+          return { userId, householdId };
+        });
+      }),
+    );
+  } catch (error) {
+    // The unique index on member.user_id refuses the second of two invitations used at once.
+    if (error instanceof NameTakenError) throw new AlreadyMemberError();
+    throw error;
+  }
 }

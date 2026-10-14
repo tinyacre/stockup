@@ -16,7 +16,9 @@ export const accountSchema = z.object({
   name: z.string().trim().min(1).max(50),
 });
 
-const founderSchema = accountSchema.extend({ householdName: z.string().trim().min(1).max(50) });
+export const householdNameSchema = z.string().trim().min(1).max(50);
+
+const founderSchema = accountSchema.extend({ householdName: householdNameSchema });
 
 const statusRoute = createRoute({
   method: 'get',

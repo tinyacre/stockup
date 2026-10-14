@@ -75,6 +75,7 @@ export interface SignedInMember {
   userId: string;
   householdId: string;
   username: string;
+  name: string;
   password: string;
   cookie: string;
   request(path: string, init?: RequestInit): Promise<Response>;
@@ -82,19 +83,21 @@ export interface SignedInMember {
 
 // Each call creates a separate household whose admin is signed in, so a test can pit
 // a member of one household against another household's data.
-export async function signUpHousehold(ctx: TestContext): Promise<SignedInMember> {
+export async function signUpHousehold(ctx: TestContext, { instanceAdmin = false } = {}): Promise<SignedInMember> {
   const suffix = crypto.randomUUID().slice(0, 8);
   const username = `member_${suffix}`;
   const password = `password-${suffix}`;
   const { userId, householdId } = await createHousehold(ctx.database.db, ctx.auth, {
     householdName: `Household ${suffix}`,
     admin: { username, password, name: `Member ${suffix}` },
+    instanceAdmin,
   });
   const cookie = await signIn(ctx, username, password);
   return {
     userId,
     householdId,
     username,
+    name: `Member ${suffix}`,
     password,
     cookie,
     request: (path, init) => requestAs(ctx, cookie, path, init),
@@ -119,6 +122,7 @@ export async function joinHousehold(ctx: TestContext, admin: SignedInMember): Pr
     userId,
     householdId,
     username,
+    name: account.name,
     password,
     cookie,
     request: (path, init) => requestAs(ctx, cookie, path, init),
@@ -145,4 +149,42 @@ export async function requestAs(ctx: TestContext, cookie: string, path: string, 
 
 export function jsonRequest(method: string, body: unknown): RequestInit {
   return { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) };
+}
+
+// Records one purchase of a fresh product on a fresh channel, as the given member.
+export async function recordPrice(m: SignedInMember) {
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const post = async (path: string, body: unknown) => {
+    const res = await m.request(path, jsonRequest('POST', body));
+    if (res.status !== 201) throw new Error(`${path} failed with ${res.status}: ${await res.text()}`);
+    return (await res.json()) as { id: string };
+  };
+  const group = await post('/api/category-groups', { name: `Group ${suffix}` });
+  const category = await post('/api/categories', { categoryGroupId: group.id, name: `Category ${suffix}` });
+  const product = await post('/api/products', {
+    categoryId: category.id,
+    name: `Product ${suffix}`,
+    pricingUnit: { dimension: 'count', name: '抽' },
+    baseSize: 90,
+  });
+  const channel = await post('/api/channels', { name: `Channel ${suffix}` });
+  await post('/api/price-records', {
+    productId: product.id,
+    date: '2026-10-01',
+    channelId: channel.id,
+    purchased: true,
+    listPrice: 9900,
+    discounts: [],
+    quantity: 18,
+    size: { amount: 130, unit: { dimension: 'count', name: '抽' } },
+    note: '',
+  });
+  return { productId: product.id };
+}
+
+export async function recordersOf(m: SignedInMember, productId: string) {
+  const res = await m.request(`/api/price-records?productId=${productId}`);
+  if (res.status !== 200) throw new Error(`listing price records failed with ${res.status}`);
+  const records = (await res.json()) as { recordedBy: { id: string; name: string } | null }[];
+  return records.map((r) => r.recordedBy);
 }

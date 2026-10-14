@@ -131,8 +131,18 @@ export function EditableTitle({
   );
 }
 
-// Deletion takes a second click on the same button instead of a browser dialog.
-export function DeleteButton({ label, onDelete }: { label: string; onDelete: Action }) {
+// Destructive actions take a second click on the same button instead of a browser dialog.
+export function ConfirmButton({
+  label,
+  confirmLabel,
+  ariaLabel = label,
+  onConfirm,
+}: {
+  label: string;
+  confirmLabel: string;
+  ariaLabel?: string;
+  onConfirm: Action;
+}) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -141,7 +151,7 @@ export function DeleteButton({ label, onDelete }: { label: string; onDelete: Act
       <Button
         variant={confirming ? 'destructive' : 'ghost'}
         size="xs"
-        aria-label={confirming ? `确认${label}` : label}
+        aria-label={confirming ? `确认${ariaLabel}` : ariaLabel}
         onBlur={() => setConfirming(false)}
         onClick={async () => {
           if (!confirming) {
@@ -149,14 +159,18 @@ export function DeleteButton({ label, onDelete }: { label: string; onDelete: Act
             return setConfirming(true);
           }
           setConfirming(false);
-          setError((await onDelete()) ?? undefined);
+          setError((await onConfirm()) ?? undefined);
         }}
       >
-        {confirming ? '确认删除' : '删除'}
+        {confirming ? confirmLabel : label}
       </Button>
       {error && <Alert className="basis-full">{error}</Alert>}
     </>
   );
+}
+
+export function DeleteButton({ label, onDelete }: { label: string; onDelete: Action }) {
+  return <ConfirmButton label="删除" confirmLabel="确认删除" ariaLabel={label} onConfirm={onDelete} />;
 }
 
 export function RetryAlert({ message, onRetry }: { message: string; onRetry(): void }) {

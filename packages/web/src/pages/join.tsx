@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AuthForm, AuthLayout } from '@/components/auth-form';
+import { Button } from '@/components/ui/button';
 import { describeError } from '@/components/editing';
 import { api, ApiError } from '@/lib/api';
 
@@ -15,7 +16,18 @@ type Invitation =
   | { state: 'ready'; householdName: string; invitedBy: string }
   | { state: 'error'; message: string };
 
-export function JoinPage({ invitationId, onDone }: { invitationId: string; onDone(): void }) {
+// A signed-in account without a household joins as itself; anyone else registers a new account.
+export function JoinPage({
+  invitationId,
+  signedIn = false,
+  onDone,
+  onSignIn,
+}: {
+  invitationId: string;
+  signedIn?: boolean;
+  onDone(): void;
+  onSignIn?(): void;
+}) {
   const [invitation, setInvitation] = useState<Invitation>({ state: 'loading' });
   useEffect(() => {
     api.describeInvitation(invitationId).then(
@@ -35,10 +47,32 @@ export function JoinPage({ invitationId, onDone }: { invitationId: string; onDon
     );
   }
 
+  const title = `加入「${invitation.householdName}」`;
+  if (signedIn) {
+    return (
+      <AuthLayout>
+        <AuthForm
+          title={title}
+          description={`${invitation.invitedBy} 邀请你加入。你会用当前账号加入，以前录入的价格记录仍然显示你的名字。`}
+          submitLabel="用当前账号加入"
+          fields={[]}
+          onSubmit={async () => {
+            try {
+              await api.rejoin(invitationId);
+            } catch (error) {
+              return describeError(error, { ...unusable, already_member: '你已经是某个家庭的成员了。' });
+            }
+            onDone();
+          }}
+        />
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout>
       <AuthForm
-        title={`加入「${invitation.householdName}」`}
+        title={title}
         description={`${invitation.invitedBy} 邀请你加入。注册后就能和家人一起记录和查看价格。`}
         submitLabel="注册并加入"
         fields={[
@@ -60,6 +94,11 @@ export function JoinPage({ invitationId, onDone }: { invitationId: string; onDon
           onDone();
         }}
       />
+      {onSignIn && (
+        <Button variant="link" className="mt-4 self-center" onClick={onSignIn}>
+          已有账号？登录后用它加入
+        </Button>
+      )}
     </AuthLayout>
   );
 }
