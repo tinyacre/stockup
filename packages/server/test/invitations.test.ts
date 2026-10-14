@@ -4,6 +4,8 @@ import { invitation } from '../src/db/schema';
 import {
   joinHousehold,
   jsonRequest,
+  recordersOf,
+  recordPrice,
   requestAs,
   sessionCookie,
   signIn,
@@ -236,5 +238,93 @@ describe('one household per member', () => {
     expect(await (await dave.request('/api/me')).json()).toMatchObject({
       household: { id: bob.householdId, role: 'member' },
     });
+  });
+});
+
+describe('rejoining with an existing account', () => {
+  function rejoin(cookie: string, id: string) {
+    return requestAs(ctx, cookie, `/api/join/${id}/rejoin`, { method: 'POST' });
+  }
+
+  async function removed(admin: SignedInMember) {
+    const member = await joinHousehold(ctx, admin);
+    expect((await admin.request(`/api/members/${member.userId}`, { method: 'DELETE' })).status).toBe(204);
+    return { ...member, cookie: await signIn(ctx, member.username, member.password) };
+  }
+
+  test('a removed member rejoins under their own account and keeps their price records', async () => {
+    const admin = await signUpHousehold(ctx);
+    const member = await joinHousehold(ctx, admin);
+    const { productId } = await recordPrice(member);
+    await admin.request(`/api/members/${member.userId}`, { method: 'DELETE' });
+    const cookie = await signIn(ctx, member.username, member.password);
+    const { id } = await invite(admin);
+
+    const res = await rejoin(cookie, id);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ userId: member.userId, householdId: admin.householdId });
+
+    expect(await (await requestAs(ctx, cookie, '/api/me')).json()).toMatchObject({
+      user: { id: member.userId, username: member.username },
+      household: { id: admin.householdId, role: 'member' },
+    });
+    expect(await recordersOf(admin, productId)).toEqual([{ id: member.userId, name: member.name }]);
+    const [used] = (await (await admin.request('/api/invitations')).json()) as Invitation[];
+    expect(used?.status).toBe('accepted');
+  });
+
+  test("a removed member may join another household", async () => {
+    const member = await removed(await signUpHousehold(ctx));
+    const other = await signUpHousehold(ctx);
+    const { id } = await invite(other);
+    expect((await rejoin(member.cookie, id)).status).toBe(201);
+    expect(await (await requestAs(ctx, member.cookie, '/api/me')).json()).toMatchObject({
+      household: { id: other.householdId },
+    });
+  });
+
+  test('a member of a household cannot use an invitation with their account', async () => {
+    const alice = await signUpHousehold(ctx);
+    const bob = await signUpHousehold(ctx);
+    const { id } = await invite(bob);
+
+    const res = await rejoin(alice.cookie, id);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'already_member' });
+    expect(await (await alice.request('/api/me')).json()).toMatchObject({ household: { id: alice.householdId } });
+    expect((await ctx.app.request(`/api/join/${id}`)).status).toBe(200);
+  });
+
+  test('an unusable invitation is refused', async () => {
+    const admin = await signUpHousehold(ctx);
+    const member = await removed(admin);
+    const { id } = await invite(admin);
+    await admin.request(`/api/invitations/${id}/revoke`, { method: 'POST' });
+
+    const res = await rejoin(member.cookie, id);
+    expect(res.status).toBe(410);
+    expect(await res.json()).toEqual({ error: 'invitation_revoked' });
+    expect((await rejoin(member.cookie, crypto.randomUUID())).status).toBe(404);
+  });
+
+  test('one invitation admits one account, even when a removed member and a newcomer race', async () => {
+    const admin = await signUpHousehold(ctx);
+    const member = await removed(admin);
+    const { id } = await invite(admin);
+    const results = await Promise.all([rejoin(member.cookie, id), join(id)]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 410]);
+  });
+
+  test('an account using two invitations at once joins only one household', async () => {
+    const admin = await signUpHousehold(ctx);
+    const member = await removed(admin);
+    const [first, second] = [await invite(admin), await invite(await signUpHousehold(ctx))];
+    const results = await Promise.all([rejoin(member.cookie, first.id), rejoin(member.cookie, second.id)]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+  });
+
+  test('requires a signed-in account', async () => {
+    const { id } = await invite(await signUpHousehold(ctx));
+    expect((await ctx.app.request(`/api/join/${id}/rejoin`, { method: 'POST' })).status).toBe(401);
   });
 });

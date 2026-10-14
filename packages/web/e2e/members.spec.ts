@@ -42,19 +42,24 @@ async function newHousehold(page: Page) {
   return { householdName, admin };
 }
 
-async function invite(page: Page, browser: Browser) {
+async function generateLink(page: Page) {
   await openSection(page, '邀请');
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.url().endsWith('/api/invitations') && r.request().method() === 'POST'),
     page.getByRole('button', { name: '生成邀请链接' }).click(),
   ]);
   const { id } = (await response.json()) as { id: string };
+  return `/join/${id}`;
+}
+
+async function invite(page: Page, browser: Browser) {
+  const link = await generateLink(page);
 
   const id2 = suffix();
   const account = { name: `家人${id2}`, username: `family_${id2}`, password: `password-${id2}` };
   const context = await browser.newContext();
   const other = await context.newPage();
-  await other.goto(`/join/${id}`);
+  await other.goto(link);
   await other.getByLabel('显示名称').fill(account.name);
   await other.getByLabel('用户名').fill(account.username);
   await other.getByLabel('密码').fill(account.password);
@@ -72,7 +77,7 @@ test('the instance admin creates a household that starts with the preset promoti
   await expect(page.getByText('双 11').first()).toBeVisible();
 });
 
-test('a household admin removes a member, who is signed out at once', async ({ page, browser }) => {
+test('a removed member is signed out at once and rejoins later with the same account', async ({ page, browser }) => {
   const { admin } = await newHousehold(page);
   await signIn(page, admin.username, admin.password);
   const member = await invite(page, browser);
@@ -86,6 +91,37 @@ test('a household admin removes a member, who is signed out at once', async ({ p
 
   await member.page.reload();
   await expect(member.page.getByRole('button', { name: '登录' })).toBeVisible();
+  await member.page.getByLabel('用户名').fill(member.username);
+  await member.page.getByLabel('密码').fill(member.password);
+  await member.page.getByRole('button', { name: '登录' }).click();
+  await expect(member.page.getByRole('alert')).toContainText('你已不属于任何家庭');
+
+  const link = await generateLink(page);
+  await member.page.goto(link);
+  await member.page.getByRole('button', { name: '用当前账号加入' }).click();
+  await expect(member.page.getByRole('navigation', { name: '主导航' })).toBeVisible();
+  await openSection(page, '成员');
+  await expect(list).toContainText(member.name);
+});
+
+test('a signed-out invitee with an account signs in and joins with it', async ({ page, browser }) => {
+  const { admin } = await newHousehold(page);
+  await signIn(page, admin.username, admin.password);
+  const member = await invite(page, browser);
+  await openSection(page, '成员');
+  await page.getByRole('button', { name: `移除 ${member.name}` }).click();
+  await page.getByRole('button', { name: `确认移除 ${member.name}` }).click();
+  await expect(page.getByRole('list', { name: '家庭成员' })).not.toContainText(member.name);
+
+  const link = await generateLink(page);
+  await member.page.goto(link);
+  await member.page.getByRole('button', { name: '已有账号？登录后用它加入' }).click();
+  await member.page.getByLabel('用户名').fill(member.username);
+  await member.page.getByLabel('密码').fill(member.password);
+  await member.page.getByRole('button', { name: '登录' }).click();
+  await member.page.getByRole('button', { name: '用当前账号加入' }).click();
+  await expect(member.page.getByRole('navigation', { name: '主导航' })).toBeVisible();
+  await expect(member.page).toHaveURL(/\/$/);
 });
 
 test('a household admin hands the admin role to another member', async ({ page, browser }) => {

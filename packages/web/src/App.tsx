@@ -19,6 +19,7 @@ type Session =
   | { state: 'setup' }
   | { state: 'signed-out' }
   | { state: 'signed-in'; me: Me }
+  | { state: 'no-household' }
   | { state: 'blocked'; message: string };
 
 async function loadSession(): Promise<Session> {
@@ -27,9 +28,7 @@ async function loadSession(): Promise<Session> {
     return { state: 'signed-in', me: await api.me() };
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return { state: 'signed-out' };
-    if (error instanceof ApiError && error.status === 403) {
-      return { state: 'blocked', message: '你已不属于任何家庭，请联系家庭管理员。' };
-    }
+    if (error instanceof ApiError && error.code === 'no_household') return { state: 'no-household' };
     return { state: 'blocked', message: '暂时无法连接 StockUp，请稍后再试。' };
   }
 }
@@ -41,6 +40,8 @@ function invitationInPath() {
 
 export function App() {
   const [session, setSession] = useState<Session>({ state: 'loading' });
+  // An invitee who already has an account signs in before using the invitation with it.
+  const [signingInToJoin, setSigningInToJoin] = useState(false);
   const refresh = useCallback(() => loadSession().then(setSession), []);
   useEffect(() => {
     refresh();
@@ -58,7 +59,9 @@ export function App() {
     case 'setup':
       return <SetupPage onDone={refresh} />;
     case 'signed-out':
-      if (invitationId) return <JoinPage invitationId={invitationId} onDone={leaveInvitation} />;
+      if (invitationId && !signingInToJoin) {
+        return <JoinPage invitationId={invitationId} onDone={leaveInvitation} onSignIn={() => setSigningInToJoin(true)} />;
+      }
       return <SignInPage onDone={refresh} />;
     case 'signed-in':
       if (invitationId) {
@@ -79,6 +82,21 @@ export function App() {
         );
       }
       return <Home me={session.me} onSignOut={signOut} onSessionChange={refresh} />;
+    case 'no-household':
+      if (invitationId) return <JoinPage invitationId={invitationId} signedIn onDone={leaveInvitation} />;
+      return (
+        <main className="mx-auto flex min-h-svh max-w-sm flex-col items-center justify-center gap-4 p-4 text-center">
+          <p role="alert">你已不属于任何家庭。向家庭管理员要一个邀请链接，打开后可以用当前账号重新加入。</p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={refresh}>
+              重试
+            </Button>
+            <Button variant="outline" onClick={signOut}>
+              登出
+            </Button>
+          </div>
+        </main>
+      );
     case 'blocked':
       return (
         <main className="mx-auto flex min-h-svh max-w-sm flex-col items-center justify-center gap-4 p-4 text-center">

@@ -5,11 +5,13 @@ import type { Database } from '../db';
 import { NameTakenError } from '../db/errors';
 import {
   acceptInvitation,
+  AlreadyMemberError,
   createInvitation,
   describeInvitation,
   InvitationNotFoundError,
   InvitationUnusableError,
   listInvitations,
+  rejoinThroughInvitation,
   revokeInvitation,
 } from '../invitations';
 import { requireMember } from '../members';
@@ -133,6 +135,26 @@ export function invitationRoutes(db: Database, auth: Auth) {
     },
   });
 
+  const rejoinRoute = createRoute({
+    method: 'post',
+    path: '/join/{id}/rejoin',
+    tags: ['invitations'],
+    summary: "Join the invitation's household with the signed-in account",
+    description:
+      'For an account that belongs to no household, as after being removed from one. It keeps its username and price records.',
+    request: { params: idParams },
+    responses: {
+      201: {
+        description: 'The account joined the household',
+        content: { 'application/json': { schema: z.object({ userId: z.string(), householdId: z.string() }) } },
+      },
+      401: { description: 'Not signed in' },
+      ...notFound,
+      409: { description: 'The account already belongs to a household: already_member', content: errorContent },
+      ...unusable,
+    },
+  });
+
   return new OpenAPIHono()
     .openapi(listRoute, async (c) => c.json(await listInvitations(db, c.var.member), 200))
     .openapi(createInvitationRoute, async (c) =>
@@ -169,5 +191,15 @@ export function invitationRoutes(db: Database, auth: Auth) {
       });
       for (const cookie of headers.getSetCookie()) c.header('set-cookie', cookie, { append: true });
       return c.json(joined, 201);
+    })
+    .openapi(rejoinRoute, async (c) => {
+      const session = await auth.api.getSession({ headers: c.req.raw.headers });
+      if (!session) return c.json({ error: 'unauthenticated' }, 401);
+      try {
+        return c.json(await rejoinThroughInvitation(db, c.req.valid('param').id, session.user.id), 201);
+      } catch (error) {
+        if (error instanceof AlreadyMemberError) return c.json({ error: 'already_member' }, 409);
+        return respondToError(c, error);
+      }
     });
 }

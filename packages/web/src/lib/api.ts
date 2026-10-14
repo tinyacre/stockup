@@ -218,6 +218,7 @@ export const api = {
     request<Invitation>(`/api/invitations/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
   describeInvitation: (id: string) =>
     request<{ householdName: string; invitedBy: string }>(`/api/join/${encodeURIComponent(id)}`),
+  rejoin: (id: string) => request(`/api/join/${encodeURIComponent(id)}/rejoin`, { method: 'POST' }),
   join: async (id: string, body: NewAccount) => {
     await request(`/api/join/${encodeURIComponent(id)}`, { method: 'POST', body });
     await clearCachedData();
