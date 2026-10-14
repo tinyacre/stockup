@@ -14,6 +14,22 @@ export interface Invitation {
   invitedBy: { id: string; name: string };
 }
 
+export interface Member {
+  // The user ID, as in a price record's recordedBy.
+  id: string;
+  name: string;
+  username: string;
+  role: 'admin' | 'member';
+  joinedAt: string;
+}
+
+export interface Household {
+  id: string;
+  name: string;
+  memberCount: number;
+  createdAt: string;
+}
+
 export interface NewAccount {
   username: string;
   password: string;
@@ -181,6 +197,19 @@ export const api = {
     await request('/api/auth/sign-out', { method: 'POST', body: {} });
     await clearCachedData();
   },
+
+  rename: (body: { name: string }) => request<Me>('/api/me', { method: 'PATCH', body }),
+  changePassword: (body: { currentPassword: string; newPassword: string }) =>
+    request('/api/me/password', { method: 'POST', body }),
+  signOutOthers: () => request('/api/me/sign-out-others', { method: 'POST' }),
+
+  members: () => request<Member[]>('/api/members'),
+  removeMember: (id: string) => request(`/api/members/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  makeAdmin: (id: string) => request(`/api/members/${encodeURIComponent(id)}/make-admin`, { method: 'POST' }),
+
+  households: () => request<Household[]>('/api/households'),
+  createHousehold: (body: { householdName: string; admin: NewAccount }) =>
+    request<{ householdId: string; userId: string }>('/api/households', { method: 'POST', body }),
 
   invitations: () => request<Invitation[]>('/api/invitations'),
   createInvitation: (body: { expiresInDays: number }) =>

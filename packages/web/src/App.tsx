@@ -3,11 +3,14 @@ import { Button } from '@/components/ui/button';
 import { api, ApiError, type Me } from '@/lib/api';
 import { CatalogPage } from '@/pages/catalog';
 import { ChannelsPage } from '@/pages/channels';
+import { HouseholdsPage } from '@/pages/households';
 import { InvitationsPage } from '@/pages/invitations';
 import { JoinPage } from '@/pages/join';
+import { MembersPage } from '@/pages/members';
 import { ProductPage } from '@/pages/product';
 import { PromotionsPage } from '@/pages/promotions';
 import { QuickPricePage } from '@/pages/quick-price';
+import { SettingsPage } from '@/pages/settings';
 import { SetupPage } from '@/pages/setup';
 import { SignInPage } from '@/pages/sign-in';
 
@@ -75,7 +78,7 @@ export function App() {
           </main>
         );
       }
-      return <Home me={session.me} onSignOut={signOut} />;
+      return <Home me={session.me} onSignOut={signOut} onSessionChange={refresh} />;
     case 'blocked':
       return (
         <main className="mx-auto flex min-h-svh max-w-sm flex-col items-center justify-center gap-4 p-4 text-center">
@@ -98,10 +101,21 @@ const sections = [
   { path: '/products', label: '商品' },
   { path: '/channels', label: '渠道' },
   { path: '/promotions', label: '大促' },
+  { path: '/members', label: '成员', householdAdmin: true },
   { path: '/invitations', label: '邀请', householdAdmin: true },
+  { path: '/households', label: '家庭', instanceAdmin: true },
+  { path: '/settings', label: '设置' },
 ] as const;
 
-type SectionPath = (typeof sections)[number]['path'];
+type Section = (typeof sections)[number];
+
+function canSee(me: Me, section: Section) {
+  if ('householdAdmin' in section) return me.household.role === 'admin';
+  if ('instanceAdmin' in section) return me.user.isInstanceAdmin;
+  return true;
+}
+
+type SectionPath = Section['path'];
 
 // A product page belongs to the catalog section.
 interface Route {
@@ -131,9 +145,12 @@ function useRoute() {
   return [route, navigate] as const;
 }
 
-function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
-  const [{ section, productId }, navigate] = useRoute();
-  const visibleSections = sections.filter((s) => !('householdAdmin' in s) || me.household.role === 'admin');
+function Home({ me, onSignOut, onSessionChange }: { me: Me; onSignOut(): void; onSessionChange(): void }) {
+  const [route, navigate] = useRoute();
+  const { productId } = route;
+  const visibleSections = sections.filter((s) => canSee(me, s));
+  // A section the member may no longer see, as after handing over the admin role, shows quick price.
+  const section = visibleSections.some((s) => s.path === route.section) ? route.section : '/';
   const openProduct = (id: string) => navigate(`/products/${encodeURIComponent(id)}`);
   return (
     <div className="min-h-svh">
@@ -149,7 +166,7 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
           </Button>
         </div>
       </header>
-      <nav aria-label="主导航" className="flex gap-1 border-b px-4">
+      <nav aria-label="主导航" className="flex gap-1 overflow-x-auto border-b px-4 whitespace-nowrap">
         {visibleSections.map((s) => (
           <a
             key={s.path}
@@ -176,8 +193,14 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
           <ChannelsPage />
         ) : section === '/promotions' ? (
           <PromotionsPage />
-        ) : section === '/invitations' && me.household.role === 'admin' ? (
+        ) : section === '/members' ? (
+          <MembersPage meId={me.user.id} onRoleHandedOver={onSessionChange} />
+        ) : section === '/invitations' ? (
           <InvitationsPage />
+        ) : section === '/households' ? (
+          <HouseholdsPage />
+        ) : section === '/settings' ? (
+          <SettingsPage me={me} onRenamed={onSessionChange} />
         ) : section === '/products' ? (
           <CatalogPage onOpenProduct={openProduct} />
         ) : (

@@ -1,9 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { createMiddleware } from 'hono/factory';
 import type { Auth } from './auth';
 import type { Database } from './db';
-import { member, organization } from './db/schema';
-import { HOUSEHOLD_ADMIN_ROLE, INSTANCE_ADMIN_ROLE } from './households';
+import { member, organization, session, user } from './db/schema';
+import { HOUSEHOLD_ADMIN_ROLE, HOUSEHOLD_MEMBER_ROLE, INSTANCE_ADMIN_ROLE } from './households';
 
 // The member a request acts as. Household-scoped services take it instead of a household ID,
 // so callers can only ever reach their own household's data.
@@ -22,7 +22,11 @@ export type MemberEnv = { Variables: { member: CurrentMember } };
 
 // The household is looked up on every request rather than cached in the session,
 // so removing someone from a household takes effect immediately.
-export function requireMember(auth: Auth, db: Database, options: { householdAdmin?: boolean } = {}) {
+export function requireMember(
+  auth: Auth,
+  db: Database,
+  options: { householdAdmin?: boolean } = {},
+) {
   return createMiddleware<MemberEnv>(async (c, next) => {
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
     if (!session) return c.json({ error: 'unauthenticated' }, 401);
@@ -50,5 +54,92 @@ export function requireMember(auth: Auth, db: Database, options: { householdAdmi
       isInstanceAdmin: session.user.role === INSTANCE_ADMIN_ROLE,
     });
     await next();
+  });
+}
+
+// Administering the instance is independent of belonging to a household, so a household admin
+// who removes the instance admin leaves the instance still administrable.
+export function requireInstanceAdmin(auth: Auth) {
+  return createMiddleware(async (c, next) => {
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (!session) return c.json({ error: 'unauthenticated' }, 401);
+    if (session.user.role !== INSTANCE_ADMIN_ROLE) return c.json({ error: 'forbidden' }, 403);
+    await next();
+  });
+}
+
+export class MemberNotFoundError extends Error {
+  override name = 'MemberNotFoundError';
+}
+
+// The acting member stopped being the household admin after the request was authorised,
+// as when two handovers race.
+export class NotHouseholdAdminError extends Error {
+  override name = 'NotHouseholdAdminError';
+}
+
+export class OwnMembershipError extends Error {
+  override name = 'OwnMembershipError';
+}
+
+export async function listMembers(db: Database, scope: CurrentMember) {
+  const rows = await db
+    .select({
+      id: user.id,
+      name: user.name,
+      username: user.displayUsername,
+      role: member.role,
+      joinedAt: member.createdAt,
+    })
+    .from(member)
+    .innerJoin(user, eq(user.id, member.userId))
+    .where(eq(member.organizationId, scope.householdId))
+    .orderBy(sql`${member.role} = ${HOUSEHOLD_ADMIN_ROLE} desc`, asc(member.createdAt), asc(user.id));
+  return rows.map((row) => ({
+    ...row,
+    username: row.username ?? '',
+    role: row.role === HOUSEHOLD_ADMIN_ROLE ? ('admin' as const) : ('member' as const),
+  }));
+}
+
+type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+// Locks the acting admin's membership so removals and handovers by the same household queue up
+// behind one another, and each sees the roles the previous one left.
+async function lockAdmin(tx: Transaction, scope: CurrentMember) {
+  const [own] = await tx
+    .select({ role: member.role })
+    .from(member)
+    .where(eq(member.id, scope.memberId))
+    .for('update');
+  if (own?.role !== HOUSEHOLD_ADMIN_ROLE) throw new NotHouseholdAdminError();
+}
+
+function targetIn(scope: CurrentMember, userId: string) {
+  return and(eq(member.organizationId, scope.householdId), eq(member.userId, userId));
+}
+
+// The account stays, so price records keep showing who entered them; its sessions end at once.
+export async function removeMember(db: Database, scope: CurrentMember, userId: string) {
+  if (userId === scope.userId) throw new OwnMembershipError();
+  await db.transaction(async (tx) => {
+    await lockAdmin(tx, scope);
+    const removed = await tx.delete(member).where(targetIn(scope, userId)).returning({ id: member.id });
+    if (removed.length === 0) throw new MemberNotFoundError();
+    await tx.delete(session).where(eq(session.userId, userId));
+  });
+}
+
+export async function makeHouseholdAdmin(db: Database, scope: CurrentMember, userId: string) {
+  if (userId === scope.userId) throw new OwnMembershipError();
+  await db.transaction(async (tx) => {
+    await lockAdmin(tx, scope);
+    const promoted = await tx
+      .update(member)
+      .set({ role: HOUSEHOLD_ADMIN_ROLE })
+      .where(targetIn(scope, userId))
+      .returning({ id: member.id });
+    if (promoted.length === 0) throw new MemberNotFoundError();
+    await tx.update(member).set({ role: HOUSEHOLD_MEMBER_ROLE }).where(eq(member.id, scope.memberId));
   });
 }
