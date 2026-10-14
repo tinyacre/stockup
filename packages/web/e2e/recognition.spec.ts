@@ -42,3 +42,102 @@ test('a screenshot that is not an image is refused', async ({ page }) => {
   await page.getByLabel('上传截图').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
   await expect(page.getByRole('alert')).toHaveText('截图只支持 PNG、JPEG、WebP 或 GIF 图片。');
 });
+
+test('a member matches, edits and confirms drafts into price records', async ({ page }) => {
+  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+  const suffix = crypto.randomUUID().slice(0, 6);
+  const channelName = `京东 ${suffix}`;
+  const groupName = `生活用品 ${suffix}`;
+  const categoryName = `抽纸 ${suffix}`;
+  const tissueName = `得宝抽纸 ${suffix}`;
+  const catFoodName = `皇家猫粮 ${suffix}`;
+
+  await page.goto('/');
+  await page.getByLabel('用户名').fill(founder.username);
+  await page.getByLabel('密码').fill(founder.password);
+  await page.getByRole('button', { name: '登录' }).click();
+
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await nav.getByRole('link', { name: '渠道' }).click();
+  await page.getByLabel('新渠道名称').fill(channelName);
+  await page.getByRole('button', { name: '新建渠道' }).click();
+  await expect(page.getByRole('listitem', { name: channelName })).toBeVisible();
+
+  await nav.getByRole('link', { name: '商品' }).click();
+  await page.getByLabel('新大类名称').fill(groupName);
+  await page.getByRole('button', { name: '新建大类' }).click();
+  const group = page.getByRole('group', { name: `大类 ${groupName}` });
+  await group.getByRole('button', { name: `在 ${groupName} 下新建品类` }).click();
+  await group.getByLabel('新品类名称').fill(categoryName);
+  await group.getByRole('button', { name: '新建品类', exact: true }).click();
+  await page.getByRole('button', { name: '新建商品' }).click();
+  const productForm = page.getByRole('form', { name: '新建商品' });
+  await productForm.getByLabel('商品名称').fill(tissueName);
+  await productForm.getByLabel('计数单位名称').fill('抽');
+  await productForm.getByLabel('基准规格').fill('90');
+  await productForm.getByRole('button', { name: '创建商品' }).click();
+  await expect(page.getByRole('link', { name: tissueName })).toBeVisible();
+
+  await nav.getByRole('link', { name: '识别' }).click();
+  await page.getByLabel('上传截图').setInputFiles({ name: 'order.png', mimeType: 'image/png', buffer: pixel });
+  const drafts = page.getByRole('region', { name: '识别草稿' });
+  const tissues = drafts.getByRole('listitem', { name: '得宝抽纸 M码' });
+  const catFood = drafts.getByRole('listitem', { name: '皇家猫粮' });
+  await expect(tissues).toContainText('整单优惠分摊 -¥5.53');
+  await expect(catFood).toContainText('整单优惠分摊 -¥14.47');
+  await expect(drafts).toContainText('整单优惠 ¥20.00 已按原价比例分摊到各条');
+
+  await tissues.getByRole('button', { name: /选择商品|更换商品/ }).click();
+  await tissues.getByLabel('搜索商品').fill(tissueName);
+  await tissues.getByRole('button', { name: tissueName }).click();
+  await expect(tissues).toContainText(`商品：${tissueName}`);
+
+  await catFood.getByRole('button', { name: /选择商品|更换商品/ }).click();
+  await catFood.getByRole('button', { name: '新建商品' }).click();
+  const newProduct = catFood.getByRole('form', { name: '新建商品' });
+  await newProduct.getByLabel('商品名称').fill(catFoodName);
+  await newProduct.getByLabel('所属品类').selectOption({ label: categoryName });
+  await newProduct.getByLabel('计价单位').selectOption({ label: 'g' });
+  await newProduct.getByLabel('基准规格').fill('1000');
+  await newProduct.getByRole('button', { name: '创建商品' }).click();
+  await expect(catFood).toContainText(`商品：${catFoodName}`);
+
+  await tissues.getByRole('button', { name: '编辑' }).click();
+  const edit = tissues.getByRole('form', { name: '编辑 得宝抽纸 M码' });
+  await edit.getByLabel('件数').fill('24');
+  await edit.getByLabel('整单优惠分摊（元）').fill('6');
+  await edit.getByRole('button', { name: '保存' }).click();
+  await expect(tissues).toContainText('100 抽 · 24 件 · 原价 ¥99.00 · plus 券 -¥10.00 · 整单优惠分摊 -¥6.00');
+  await expect(drafts).toContainText('各条分摊合计 ¥20.47，与整单优惠 ¥20.00 不一致。');
+
+  const confirm = page.getByRole('form', { name: '确认入库' });
+  await expect(confirm.getByLabel('日期')).toHaveValue('2026-06-18');
+  await confirm.getByLabel('渠道').selectOption({ label: channelName });
+  await confirm.getByRole('button', { name: '确认入库 2 条' }).click();
+
+  const result = page.getByRole('region', { name: '入库结果' });
+  await expect(result.getByRole('status')).toHaveText('已入库 2 条价格记录。');
+  await expect(result).toContainText(`${tissueName}：到手价 ¥83.00`);
+  await expect(result).toContainText(`${catFoodName}：到手价 ¥244.53`);
+
+  await result.getByRole('link', { name: catFoodName }).click();
+  await expect(page.getByRole('listitem', { name: `2026-06-18 ${channelName}` })).toBeVisible();
+});
+
+test('deleting a draft shares the order discount over the rest', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('用户名').fill(founder.username);
+  await page.getByLabel('密码').fill(founder.password);
+  await page.getByRole('button', { name: '登录' }).click();
+
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '识别' }).click();
+  await page.getByLabel('上传截图').setInputFiles({ name: 'order.png', mimeType: 'image/png', buffer: pixel });
+  const drafts = page.getByRole('region', { name: '识别草稿' });
+  await expect(drafts.getByRole('heading')).toHaveText('识别草稿（2 条）');
+
+  const catFood = drafts.getByRole('listitem', { name: '皇家猫粮' });
+  await catFood.getByRole('button', { name: '删除 皇家猫粮' }).click();
+  await catFood.getByRole('button', { name: '确认删除 皇家猫粮' }).click();
+  await expect(drafts.getByRole('heading')).toHaveText('识别草稿（1 条）');
+  await expect(drafts.getByRole('listitem', { name: '得宝抽纸 M码' })).toContainText('整单优惠分摊 -¥20.00');
+});

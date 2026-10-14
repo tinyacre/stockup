@@ -276,6 +276,8 @@ export const recognition = pgTable(
     result: jsonb('result').$type<RecognitionResult>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     finishedAt: timestamp('finished_at'),
+    // Set once its drafts have been written as price records, which also removes the drafts.
+    confirmedAt: timestamp('confirmed_at'),
   },
   (table) => [
     unique('recognition_household_id_unique').on(table.householdId, table.id),
@@ -312,6 +314,8 @@ export const recognitionDraft = pgTable(
     // Cents.
     listPrice: integer('list_price'),
     discounts: jsonb('discounts').$type<Discount[]>().notNull(),
+    // Cents: this draft's share of the order discounts, null while a draft's list price is unknown.
+    orderDiscount: integer('order_discount'),
     // The suggested or chosen product. Deleting the product clears only this column (see the migration),
     // and merging moves it to the kept product.
     productId: text('product_id'),
@@ -329,6 +333,7 @@ export const recognitionDraft = pgTable(
       columns: [table.householdId, table.productId],
       foreignColumns: [product.householdId, product.id],
     }).onDelete('set null'),
+    check('recognition_draft_order_discount_check', sql`${table.orderDiscount} >= 0`),
     check(
       'recognition_draft_size_check',
       sql`(${table.sizeAmount} is null) = (${table.sizeUnitDimension} is null)
