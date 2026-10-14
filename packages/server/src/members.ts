@@ -3,7 +3,7 @@ import { createMiddleware } from 'hono/factory';
 import type { Auth } from './auth';
 import type { Database } from './db';
 import { member, organization } from './db/schema';
-import { INSTANCE_ADMIN_ROLE } from './households';
+import { HOUSEHOLD_ADMIN_ROLE, INSTANCE_ADMIN_ROLE } from './households';
 
 // The member a request acts as. Household-scoped services take it instead of a household ID,
 // so callers can only ever reach their own household's data.
@@ -22,7 +22,7 @@ export type MemberEnv = { Variables: { member: CurrentMember } };
 
 // The household is looked up on every request rather than cached in the session,
 // so removing someone from a household takes effect immediately.
-export function requireMember(auth: Auth, db: Database) {
+export function requireMember(auth: Auth, db: Database, options: { householdAdmin?: boolean } = {}) {
   return createMiddleware<MemberEnv>(async (c, next) => {
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
     if (!session) return c.json({ error: 'unauthenticated' }, 401);
@@ -38,6 +38,9 @@ export function requireMember(auth: Auth, db: Database) {
       .innerJoin(organization, eq(organization.id, member.organizationId))
       .where(eq(member.userId, session.user.id));
     if (!membership) return c.json({ error: 'no_household' }, 403);
+    if (options.householdAdmin && membership.householdRole !== HOUSEHOLD_ADMIN_ROLE) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
 
     c.set('member', {
       ...membership,

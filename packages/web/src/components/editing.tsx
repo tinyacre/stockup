@@ -12,7 +12,8 @@ export const fieldClass =
 export type Action = () => Promise<string | void>;
 
 export function describeError(error: unknown, messages: Record<string, string> = {}) {
-  if (error instanceof ApiError && error.code && messages[error.code]) return messages[error.code];
+  const message = error instanceof ApiError && error.code ? messages[error.code] : undefined;
+  if (message) return message;
   if (error instanceof ApiError && error.status === 400) return '请检查填写的内容。';
   if (error instanceof NetworkError) return '连不上 StockUp，请联网后再试。';
   return '出错了，请稍后再试。';

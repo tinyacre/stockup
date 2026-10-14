@@ -7,6 +7,7 @@ import type { Database } from './db';
 import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
 import { healthRoutes } from './routes/health';
+import { invitationRoutes } from './routes/invitations';
 import { judgmentRoutes } from './routes/judgments';
 import { meRoutes } from './routes/me';
 import { priceRecordRoutes } from './routes/price-records';
@@ -24,6 +25,7 @@ export function createApp({ db, auth, webDir }: AppOptions) {
     .route('/api', healthRoutes(db))
     .route('/api', setupRoutes(db, auth))
     .route('/api', meRoutes(db, auth))
+    .route('/api', invitationRoutes(db, auth))
     .route('/api', promotionRoutes(db, auth))
     .route('/api', catalogRoutes(db, auth))
     .route('/api', channelRoutes(db, auth))

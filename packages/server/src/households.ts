@@ -3,6 +3,7 @@ import type { Database } from './db';
 import { account, member, organization, promotion, user } from './db/schema';
 
 export const HOUSEHOLD_ADMIN_ROLE = 'admin';
+export const HOUSEHOLD_MEMBER_ROLE = 'member';
 export const INSTANCE_ADMIN_ROLE = 'admin';
 
 // Default ranges for the promotions every household starts with; households adjust them afterwards.
@@ -28,23 +29,29 @@ export interface NewHousehold {
 
 type Executor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
 
-// Writes the Better Auth rows directly so the account, household and presets commit together;
-// Better Auth's own sign-up is disabled and cannot join a caller's transaction.
-export async function createHousehold(db: Executor, auth: Auth, input: NewHousehold) {
+// Hashing is slow, so callers hash before opening the transaction that holds their locks.
+export async function hashPassword(auth: Auth, plain: string) {
   const { password } = await auth.$context;
-  const passwordHash = await password.hash(input.admin.password);
+  return password.hash(plain);
+}
+
+// Writes the Better Auth rows directly so the account commits together with the caller's other writes;
+// Better Auth's own sign-up is disabled and cannot join a caller's transaction.
+export async function insertMember(
+  db: Executor,
+  input: { account: NewAccount; passwordHash: string; householdId: string; role: string; instanceAdmin?: boolean },
+) {
   const userId = crypto.randomUUID();
-  const householdId = crypto.randomUUID();
   const now = new Date();
 
   await db.transaction(async (tx) => {
     await tx.insert(user).values({
       id: userId,
-      name: input.admin.name,
+      name: input.account.name,
       // Members sign in by username; Better Auth still requires a unique email.
       email: `${userId}@users.stockup.invalid`,
-      username: input.admin.username.toLowerCase(),
-      displayUsername: input.admin.username,
+      username: input.account.username.toLowerCase(),
+      displayUsername: input.account.username,
       role: input.instanceAdmin ? INSTANCE_ADMIN_ROLE : 'user',
     });
     await tx.insert(account).values({
@@ -52,19 +59,36 @@ export async function createHousehold(db: Executor, auth: Auth, input: NewHouseh
       accountId: userId,
       providerId: 'credential',
       userId,
-      password: passwordHash,
+      password: input.passwordHash,
       updatedAt: now,
     });
-    await tx.insert(organization).values({ id: householdId, name: input.householdName, slug: householdId, createdAt: now });
     await tx.insert(member).values({
       id: crypto.randomUUID(),
-      organizationId: householdId,
+      organizationId: input.householdId,
       userId,
-      role: HOUSEHOLD_ADMIN_ROLE,
+      role: input.role,
       createdAt: now,
     });
-    await tx.insert(promotion).values(PRESET_PROMOTIONS.map((p) => ({ ...p, householdId })));
   });
 
-  return { userId, householdId };
+  return userId;
+}
+
+export async function createHousehold(db: Executor, auth: Auth, input: NewHousehold) {
+  const householdId = crypto.randomUUID();
+  const passwordHash = await hashPassword(auth, input.admin.password);
+  return db.transaction(async (tx) => {
+    await tx
+      .insert(organization)
+      .values({ id: householdId, name: input.householdName, slug: householdId, createdAt: new Date() });
+    await tx.insert(promotion).values(PRESET_PROMOTIONS.map((p) => ({ ...p, householdId })));
+    const userId = await insertMember(tx, {
+      account: input.admin,
+      passwordHash,
+      householdId,
+      role: HOUSEHOLD_ADMIN_ROLE,
+      instanceAdmin: input.instanceAdmin,
+    });
+    return { userId, householdId };
+  });
 }

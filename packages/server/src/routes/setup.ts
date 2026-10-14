@@ -6,7 +6,7 @@ import { AlreadySetUpError, needsSetup, setUpInstance } from '../onboarding';
 const errorSchema = z.object({ error: z.string() });
 
 // Mirrors Better Auth's default username and password rules, which sign-in applies.
-const founderSchema = z.object({
+export const accountSchema = z.object({
   username: z
     .string()
     .min(3)
@@ -14,8 +14,9 @@ const founderSchema = z.object({
     .regex(/^[a-zA-Z0-9_.]+$/),
   password: z.string().min(8).max(128),
   name: z.string().trim().min(1).max(50),
-  householdName: z.string().trim().min(1).max(50),
 });
+
+const founderSchema = accountSchema.extend({ householdName: z.string().trim().min(1).max(50) });
 
 const statusRoute = createRoute({
   method: 'get',

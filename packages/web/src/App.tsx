@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { api, ApiError, type Me } from '@/lib/api';
 import { CatalogPage } from '@/pages/catalog';
 import { ChannelsPage } from '@/pages/channels';
+import { InvitationsPage } from '@/pages/invitations';
+import { JoinPage } from '@/pages/join';
 import { ProductPage } from '@/pages/product';
 import { PromotionsPage } from '@/pages/promotions';
 import { QuickPricePage } from '@/pages/quick-price';
@@ -29,12 +31,23 @@ async function loadSession(): Promise<Session> {
   }
 }
 
+function invitationInPath() {
+  // Invitation IDs are UUIDs, so the path segment needs no decoding.
+  return /^\/join\/([^/]+)$/.exec(window.location.pathname)?.[1];
+}
+
 export function App() {
   const [session, setSession] = useState<Session>({ state: 'loading' });
   const refresh = useCallback(() => loadSession().then(setSession), []);
   useEffect(() => {
     refresh();
   }, [refresh]);
+  const signOut = () => api.signOut().finally(refresh);
+  const leaveInvitation = () => {
+    window.history.replaceState(null, '', '/');
+    refresh();
+  };
+  const invitationId = invitationInPath();
 
   switch (session.state) {
     case 'loading':
@@ -42,9 +55,27 @@ export function App() {
     case 'setup':
       return <SetupPage onDone={refresh} />;
     case 'signed-out':
+      if (invitationId) return <JoinPage invitationId={invitationId} onDone={leaveInvitation} />;
       return <SignInPage onDone={refresh} />;
     case 'signed-in':
-      return <Home me={session.me} onSignOut={() => api.signOut().finally(refresh)} />;
+      if (invitationId) {
+        return (
+          <main className="mx-auto flex min-h-svh max-w-sm flex-col items-center justify-center gap-4 p-4 text-center">
+            <p role="alert">
+              你已经是「{session.me.household.name}」的成员，一个成员只能属于一个家庭。要用这个邀请注册新账号，请先登出。
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={leaveInvitation}>
+                返回首页
+              </Button>
+              <Button variant="outline" onClick={signOut}>
+                登出
+              </Button>
+            </div>
+          </main>
+        );
+      }
+      return <Home me={session.me} onSignOut={signOut} />;
     case 'blocked':
       return (
         <main className="mx-auto flex min-h-svh max-w-sm flex-col items-center justify-center gap-4 p-4 text-center">
@@ -53,7 +84,7 @@ export function App() {
             <Button variant="outline" onClick={refresh}>
               重试
             </Button>
-            <Button variant="outline" onClick={() => api.signOut().finally(refresh)}>
+            <Button variant="outline" onClick={signOut}>
               登出
             </Button>
           </div>
@@ -67,6 +98,7 @@ const sections = [
   { path: '/products', label: '商品' },
   { path: '/channels', label: '渠道' },
   { path: '/promotions', label: '大促' },
+  { path: '/invitations', label: '邀请', householdAdmin: true },
 ] as const;
 
 type SectionPath = (typeof sections)[number]['path'];
@@ -101,6 +133,7 @@ function useRoute() {
 
 function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
   const [{ section, productId }, navigate] = useRoute();
+  const visibleSections = sections.filter((s) => !('householdAdmin' in s) || me.household.role === 'admin');
   const openProduct = (id: string) => navigate(`/products/${encodeURIComponent(id)}`);
   return (
     <div className="min-h-svh">
@@ -117,7 +150,7 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
         </div>
       </header>
       <nav aria-label="主导航" className="flex gap-1 border-b px-4">
-        {sections.map((s) => (
+        {visibleSections.map((s) => (
           <a
             key={s.path}
             href={s.path}
@@ -143,6 +176,8 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
           <ChannelsPage />
         ) : section === '/promotions' ? (
           <PromotionsPage />
+        ) : section === '/invitations' && me.household.role === 'admin' ? (
+          <InvitationsPage />
         ) : section === '/products' ? (
           <CatalogPage onOpenProduct={openProduct} />
         ) : (

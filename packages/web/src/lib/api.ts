@@ -5,6 +5,21 @@ export interface Me {
   household: { id: string; name: string; role: string };
 }
 
+export interface Invitation {
+  // Also the secret part of the invitation link.
+  id: string;
+  status: 'pending' | 'accepted' | 'revoked' | 'expired';
+  expiresAt: string;
+  createdAt: string;
+  invitedBy: { id: string; name: string };
+}
+
+export interface NewAccount {
+  username: string;
+  password: string;
+  name: string;
+}
+
 export interface CategoryGroup {
   id: string;
   name: string;
@@ -149,8 +164,7 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
 
 export const api = {
   setupStatus: () => request<{ needsSetup: boolean }>('/api/setup'),
-  setUp: (body: { username: string; password: string; name: string; householdName: string }) =>
-    request('/api/setup', { method: 'POST', body }),
+  setUp: (body: NewAccount & { householdName: string }) => request('/api/setup', { method: 'POST', body }),
   me: async () => {
     try {
       return await request<Me>('/api/me');
@@ -165,6 +179,18 @@ export const api = {
   },
   signOut: async () => {
     await request('/api/auth/sign-out', { method: 'POST', body: {} });
+    await clearCachedData();
+  },
+
+  invitations: () => request<Invitation[]>('/api/invitations'),
+  createInvitation: (body: { expiresInDays: number }) =>
+    request<Invitation>('/api/invitations', { method: 'POST', body }),
+  revokeInvitation: (id: string) =>
+    request<Invitation>(`/api/invitations/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
+  describeInvitation: (id: string) =>
+    request<{ householdName: string; invitedBy: string }>(`/api/join/${encodeURIComponent(id)}`),
+  join: async (id: string, body: NewAccount) => {
+    await request(`/api/join/${encodeURIComponent(id)}`, { method: 'POST', body });
     await clearCachedData();
   },
 

@@ -1,10 +1,8 @@
 import { afterAll, beforeAll } from 'bun:test';
-import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import { createApp, type AppOptions } from '../../src/app';
 import { createAuth, type Auth } from '../../src/auth';
 import { connect, migrate, type Database } from '../../src/db';
-import { member } from '../../src/db/schema';
 import { createHousehold } from '../../src/households';
 
 const adminUrl =
@@ -87,14 +85,28 @@ export async function signUpHousehold(ctx: TestContext): Promise<SignedInMember>
   };
 }
 
-// Invitations are not built yet, so the new member's membership is moved into the household directly.
-export async function joinHousehold(ctx: TestContext, household: SignedInMember): Promise<SignedInMember> {
-  const joined = await signUpHousehold(ctx);
-  await ctx.database.db
-    .update(member)
-    .set({ organizationId: household.householdId, role: 'member' })
-    .where(eq(member.userId, joined.userId));
-  return { ...joined, householdId: household.householdId };
+// The household's admin invites a new member, who registers through the invitation and is signed in.
+export async function joinHousehold(ctx: TestContext, admin: SignedInMember): Promise<SignedInMember> {
+  const invited = await admin.request('/api/invitations', jsonRequest('POST', { expiresInDays: 1 }));
+  if (invited.status !== 201) throw new Error(`invitation failed with ${invited.status}: ${await invited.text()}`);
+  const { id } = (await invited.json()) as { id: string };
+
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const username = `member_${suffix}`;
+  const password = `password-${suffix}`;
+  const account = { username, password, name: `Member ${suffix}` };
+  const res = await ctx.app.request(`/api/join/${id}`, jsonRequest('POST', account));
+  if (res.status !== 201) throw new Error(`joining failed with ${res.status}: ${await res.text()}`);
+  const { userId, householdId } = (await res.json()) as { userId: string; householdId: string };
+  const cookie = sessionCookie(res);
+  return {
+    userId,
+    householdId,
+    username,
+    password,
+    cookie,
+    request: (path, init) => requestAs(ctx, cookie, path, init),
+  };
 }
 
 export async function signIn(ctx: TestContext, username: string, password: string) {
