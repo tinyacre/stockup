@@ -30,6 +30,12 @@ export interface Household {
   createdAt: string;
 }
 
+export interface OAuthClient {
+  client_id: string;
+  client_name?: string;
+  client_uri?: string;
+}
+
 export interface NewAccount {
   username: string;
   password: string;
@@ -251,14 +257,28 @@ export const api = {
       throw error;
     }
   },
-  signIn: async (body: { username: string; password: string }) => {
-    await request('/api/auth/sign-in/username', { method: 'POST', body });
+  // With the signed query of an authorization request, the response names the page that continues it.
+  signIn: async ({ oauthQuery, ...credentials }: { username: string; password: string; oauthQuery?: string }) => {
+    const signedIn = await request<{ url?: string }>('/api/auth/sign-in/username', {
+      method: 'POST',
+      body: { ...credentials, oauth_query: oauthQuery },
+    });
     await clearCachedData();
+    return signedIn;
   },
   signOut: async () => {
     await request('/api/auth/sign-out', { method: 'POST', body: {} });
     await clearCachedData();
   },
+
+  oauthClient: (clientId: string) =>
+    request<OAuthClient>(`/api/auth/oauth2/public-client?client_id=${encodeURIComponent(clientId)}`),
+  // Resolves to where the authorization request continues: back to the client, with a code or a denial.
+  consent: (body: { accept: boolean; oauthQuery: string }) =>
+    request<{ url: string }>('/api/auth/oauth2/consent', {
+      method: 'POST',
+      body: { accept: body.accept, oauth_query: body.oauthQuery },
+    }),
 
   rename: (body: { name: string }) => request<Me>('/api/me', { method: 'PATCH', body }),
   changePassword: (body: { currentPassword: string; newPassword: string }) =>

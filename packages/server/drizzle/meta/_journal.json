@@ -71,6 +71,13 @@
       "when": 1791969254955,
       "tag": "0009_recognition_confirmation",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791978493440,
+      "tag": "0010_oauth",
+      "breakpoints": true
     }
   ]
 }

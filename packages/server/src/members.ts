@@ -20,8 +20,29 @@ export interface CurrentMember {
 
 export type MemberEnv = { Variables: { member: CurrentMember } };
 
-// The household is looked up on every request rather than cached in the session,
+// The household is looked up on every request rather than cached in the session or access token,
 // so removing someone from a household takes effect immediately.
+export async function findCurrentMember(db: Database, userId: string): Promise<CurrentMember | null> {
+  const [found] = await db
+    .select({
+      userId: user.id,
+      memberId: member.id,
+      householdId: member.organizationId,
+      householdRole: member.role,
+      householdName: organization.name,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    })
+    .from(member)
+    .innerJoin(organization, eq(organization.id, member.organizationId))
+    .innerJoin(user, eq(user.id, member.userId))
+    .where(eq(member.userId, userId));
+  if (!found) return null;
+  const { username, role, ...membership } = found;
+  return { ...membership, username: username ?? '', isInstanceAdmin: role === INSTANCE_ADMIN_ROLE };
+}
+
 export function requireMember(
   auth: Auth,
   db: Database,
@@ -31,28 +52,13 @@ export function requireMember(
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
     if (!session) return c.json({ error: 'unauthenticated' }, 401);
 
-    const [membership] = await db
-      .select({
-        memberId: member.id,
-        householdId: member.organizationId,
-        householdRole: member.role,
-        householdName: organization.name,
-      })
-      .from(member)
-      .innerJoin(organization, eq(organization.id, member.organizationId))
-      .where(eq(member.userId, session.user.id));
-    if (!membership) return c.json({ error: 'no_household' }, 403);
-    if (options.householdAdmin && membership.householdRole !== HOUSEHOLD_ADMIN_ROLE) {
+    const current = await findCurrentMember(db, session.user.id);
+    if (!current) return c.json({ error: 'no_household' }, 403);
+    if (options.householdAdmin && current.householdRole !== HOUSEHOLD_ADMIN_ROLE) {
       return c.json({ error: 'forbidden' }, 403);
     }
 
-    c.set('member', {
-      ...membership,
-      userId: session.user.id,
-      username: session.user.username ?? '',
-      name: session.user.name,
-      isInstanceAdmin: session.user.role === INSTANCE_ADMIN_ROLE,
-    });
+    c.set('member', current);
     await next();
   });
 }

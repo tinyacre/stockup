@@ -10,12 +10,17 @@
     "db:generate": "drizzle-kit generate"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
     "@types/bun": "^1.4.3",
     "drizzle-kit": "^0.31.11"
   },
   "dependencies": {
+    "@better-auth/cimd": "1.7.7",
+    "@better-auth/mcp": "1.7.7",
+    "@better-auth/oauth-provider": "1.7.7",
     "@hono/swagger-ui": "^0.6.1",
     "@hono/zod-openapi": "^1.6.3",
+    "@modelcontextprotocol/server": "2.3.1",
     "@stockup/domain": "workspace:*",
     "better-auth": "1.7.7",
     "drizzle-orm": "^0.45.4",
