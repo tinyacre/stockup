@@ -2,7 +2,7 @@ import { and, asc, count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { convert, isConvertible, IncompatibleUnitsError, type Unit } from '@stockup/domain';
 import { searchByName } from '@stockup/domain/search';
 import type { Database } from './db';
-import { category, categoryGroup, priceRecord, product } from './db/schema';
+import { category, categoryGroup, priceRecord, product, recognitionDraft } from './db/schema';
 import { NotEmptyError, ParentNotFoundError, translate } from './db/errors';
 import type { CurrentMember } from './members';
 
@@ -284,7 +284,8 @@ export function updateProduct(db: Database, scope: CurrentMember, id: string, in
   );
 }
 
-// Moves the merged product's price records, converted to the kept product's pricing unit, then deletes it.
+// Moves the merged product's price records, converted to the kept product's pricing unit, and the drafts
+// that suggest it, then deletes it.
 // Returns null when the kept product is not in the household.
 export function mergeProducts(db: Database, scope: CurrentMember, keptId: string, mergedId: string) {
   if (keptId === mergedId) return Promise.reject(new SameProductError());
@@ -302,6 +303,10 @@ export function mergeProducts(db: Database, scope: CurrentMember, keptId: string
       .update(priceRecord)
       .set({ productId: keptId })
       .where(and(eq(priceRecord.householdId, scope.householdId), eq(priceRecord.productId, mergedId)));
+    await tx
+      .update(recognitionDraft)
+      .set({ productId: keptId })
+      .where(and(eq(recognitionDraft.householdId, scope.householdId), eq(recognitionDraft.productId, mergedId)));
     await tx.delete(product).where(and(eq(product.householdId, scope.householdId), eq(product.id, mergedId)));
     return kept;
   });

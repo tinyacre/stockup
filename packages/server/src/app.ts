@@ -5,6 +5,7 @@ import { serveStatic } from 'hono/bun';
 import type { Auth } from './auth';
 import type { Database } from './db';
 import type { EvidenceStore } from './evidence-store';
+import type { ScreenshotRecognizer } from './recognizer';
 import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
 import { evidenceRoutes } from './routes/evidence';
@@ -14,16 +15,19 @@ import { judgmentRoutes } from './routes/judgments';
 import { meRoutes } from './routes/me';
 import { priceRecordRoutes } from './routes/price-records';
 import { promotionRoutes } from './routes/promotions';
+import { recognitionRoutes } from './routes/recognitions';
 import { setupRoutes } from './routes/setup';
 
 export interface AppOptions {
   db: Database;
   auth: Auth;
   evidence: EvidenceStore;
+  // Recognition is unavailable without one.
+  recognizer?: ScreenshotRecognizer;
   webDir?: string;
 }
 
-export function createApp({ db, auth, evidence, webDir }: AppOptions) {
+export function createApp({ db, auth, evidence, recognizer, webDir }: AppOptions) {
   const app = new OpenAPIHono()
     .route('/api', healthRoutes(db))
     .route('/api', setupRoutes(db, auth))
@@ -34,6 +38,7 @@ export function createApp({ db, auth, evidence, webDir }: AppOptions) {
     .route('/api', channelRoutes(db, auth))
     .route('/api', priceRecordRoutes(db, auth, evidence))
     .route('/api', evidenceRoutes(db, auth, evidence))
+    .route('/api', recognitionRoutes(db, auth, evidence, recognizer))
     .route('/api', judgmentRoutes(db, auth));
 
   // Households are created and joined only through StockUp's own endpoints, which keep

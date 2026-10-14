@@ -8,6 +8,7 @@ import { JoinPage } from '@/pages/join';
 import { ProductPage } from '@/pages/product';
 import { PromotionsPage } from '@/pages/promotions';
 import { QuickPricePage } from '@/pages/quick-price';
+import { RecognitionPage, RecognitionUploadPage } from '@/pages/recognition';
 import { SetupPage } from '@/pages/setup';
 import { SignInPage } from '@/pages/sign-in';
 
@@ -96,6 +97,7 @@ export function App() {
 const sections = [
   { path: '/', label: '算价' },
   { path: '/products', label: '商品' },
+  { path: '/recognitions', label: '识别' },
   { path: '/channels', label: '渠道' },
   { path: '/promotions', label: '大促' },
   { path: '/invitations', label: '邀请', householdAdmin: true },
@@ -103,16 +105,19 @@ const sections = [
 
 type SectionPath = (typeof sections)[number]['path'];
 
-// A product page belongs to the catalog section.
+// A product page belongs to the catalog section, and a recognition to the recognition section.
 interface Route {
   section: SectionPath;
   productId?: string;
+  recognitionId?: string;
 }
 
 function currentRoute(): Route {
   const path = window.location.pathname;
   const product = /^\/products\/([^/]+)$/.exec(path);
   if (product) return { section: '/products', productId: decodeURIComponent(product[1]!) };
+  const recognition = /^\/recognitions\/([^/]+)$/.exec(path);
+  if (recognition) return { section: '/recognitions', recognitionId: decodeURIComponent(recognition[1]!) };
   return { section: sections.find((s) => s.path === path)?.path ?? '/' };
 }
 
@@ -132,7 +137,7 @@ function useRoute() {
 }
 
 function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
-  const [{ section, productId }, navigate] = useRoute();
+  const [{ section, productId, recognitionId }, navigate] = useRoute();
   const visibleSections = sections.filter((s) => !('householdAdmin' in s) || me.household.role === 'admin');
   const openProduct = (id: string) => navigate(`/products/${encodeURIComponent(id)}`);
   return (
@@ -172,6 +177,16 @@ function Home({ me, onSignOut }: { me: Me; onSignOut(): void }) {
             productId={productId}
             onBack={(categoryId) => navigate('/products', { categoryId })}
           />
+        ) : recognitionId ? (
+          <RecognitionPage
+            key={recognitionId}
+            recognitionId={recognitionId}
+            onManualEntry={() => navigate('/')}
+            onOpenProduct={openProduct}
+            onUploadAnother={() => navigate('/recognitions')}
+          />
+        ) : section === '/recognitions' ? (
+          <RecognitionUploadPage onStarted={(id) => navigate(`/recognitions/${encodeURIComponent(id)}`)} />
         ) : section === '/channels' ? (
           <ChannelsPage />
         ) : section === '/promotions' ? (

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { loadConfig } from '../src/config';
 import { bootstrap } from '../src/main';
-import { createTestDatabase, testAuthSecret } from './support/harness';
+import { createTestDatabase, jsonRequest, sessionCookie, testAuthSecret } from './support/harness';
 
 const required = { STOCKUP_DATABASE_URL: 'postgres://x/y', STOCKUP_AUTH_SECRET: testAuthSecret };
 
@@ -91,5 +91,37 @@ describe('bootstrap', () => {
     const second = await bootstrap(config);
     cleanups.push(second.close);
     expect((await second.app.request('/api/health')).status).toBe(200);
+  });
+
+  test('fails recognitions that a restart cut off', async () => {
+    const config = {
+      databaseUrl: await emptyDatabaseUrl(),
+      authSecret: testAuthSecret,
+      baseUrl: undefined,
+      port: 0,
+      evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
+      webDir: undefined,
+    };
+    const stuck = { recognize: () => new Promise<never>(() => {}) };
+    const first = await bootstrap(config, { recognizer: stuck });
+    cleanups.push(first.close);
+    const username = `member_${crypto.randomUUID().slice(0, 8)}`;
+    const password = 'password-restart';
+    await first.app.request(
+      '/api/setup',
+      jsonRequest('POST', { householdName: 'Home', username, password, name: 'Member' }),
+    );
+    const signedIn = await first.app.request('/api/auth/sign-in/username', jsonRequest('POST', { username, password }));
+    const cookie = sessionCookie(signedIn);
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], 'a.png'));
+    const started = await first.app.request('/api/recognitions', { method: 'POST', body: form, headers: { cookie } });
+    const { id, status } = (await started.json()) as { id: string; status: string };
+    expect(status).toBe('pending');
+
+    const second = await bootstrap(config, { recognizer: stuck });
+    cleanups.push(second.close);
+    const res = await second.app.request(`/api/recognitions/${id}`, { headers: { cookie } });
+    expect(await res.json()).toMatchObject({ status: 'failed', error: 'recognition_interrupted' });
   });
 });

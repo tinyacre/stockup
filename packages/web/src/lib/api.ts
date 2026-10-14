@@ -120,6 +120,34 @@ export interface PriceRecord extends Omit<PriceRecordInput, 'channelId' | 'promo
   evidence?: Evidence[];
 }
 
+export interface RecognitionDraft {
+  id: string;
+  name: string;
+  // As the screenshot writes it.
+  sizeText: string | null;
+  // Null, like the other values, when it could not be read.
+  size: Size | null;
+  quantity: number | null;
+  // Cents.
+  listPrice: number | null;
+  discounts: Discount[];
+  suggestedProduct: { id: string; name: string; pricingUnit: Unit; baseSize: number } | null;
+}
+
+export interface Recognition {
+  id: string;
+  status: 'pending' | 'succeeded' | 'failed';
+  error: 'recognition_unavailable' | 'recognition_failed' | 'recognition_interrupted' | null;
+  requestedBy: { id: string; name: string } | null;
+  screenshot: { contentType: string; size: number };
+  date: string | null;
+  channel: string | null;
+  orderDiscounts: Discount[];
+  drafts: RecognitionDraft[];
+  createdAt: string;
+  finishedAt: string | null;
+}
+
 export interface PriceReferences {
   productId: string;
   lowestUnitPrice: number;
@@ -260,5 +288,12 @@ export const api = {
   },
   deleteEvidence: (id: string) => request(`/api/evidence/${id}`, { method: 'DELETE' }),
   evidenceUrl: (id: string) => `/api/evidence/${encodeURIComponent(id)}`,
+  startRecognition: (file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    return request<Recognition>('/api/recognitions', { method: 'POST', body });
+  },
+  recognition: (id: string) => request<Recognition>(`/api/recognitions/${encodeURIComponent(id)}`),
+  recognitionScreenshotUrl: (id: string) => `/api/recognitions/${encodeURIComponent(id)}/screenshot`,
   priceReferences: () => request<PriceReferences[]>('/api/price-references'),
 };

@@ -1,4 +1,4 @@
-import type { Judgment, JudgmentInput, Price, PriceInput, PromotionRange, Unit } from '../src';
+import type { Judgment, JudgmentInput, Price, PriceInput, PromotionRange, Size, Unit } from '../src';
 import allocation from './allocation.json';
 import judgment from './judgment.json';
 import price from './price.json';
@@ -7,6 +7,7 @@ import promotion from './promotion.json';
 import promotionYear from './promotion-year.json';
 import quantity from './quantity.json';
 import search from './search.json';
+import size from './size.json';
 import units from './units.json';
 
 // Each fixture expects either a value or the name of the error class the call throws.
@@ -23,6 +24,8 @@ export type MonthDayFixture = { name: string; text: string; expected: boolean };
 export type AllocationFixture = { name: string; total: number; listPrices: number[] } & Outcome<number[]>;
 // Expects null for text that is not a valid Quantity.
 export type QuantityFixture = { name: string; text: string; expected: number | null };
+// Expects null for text that is not a valid Size.
+export type SizeFixture = { name: string; text: string; expected: Size | null };
 // Expects the matching names, best match first.
 export type SearchFixture = { name: string; query: string; names: string[]; expected: string[] };
 
@@ -35,3 +38,4 @@ export const monthDayFixtures = monthDay as MonthDayFixture[];
 export const allocationFixtures = allocation as AllocationFixture[];
 export const quantityFixtures = quantity as QuantityFixture[];
 export const searchFixtures = search as SearchFixture[];
+export const sizeFixtures = size as SizeFixture[];

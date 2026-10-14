@@ -60,6 +60,14 @@ export async function evidenceOfRecords(db: Executor, scope: CurrentMember, pric
   return byRecord;
 }
 
+// Returns the image's content type, read from its bytes.
+export function checkEvidenceFile(bytes: Uint8Array) {
+  if (bytes.length > maxEvidenceSize) throw new EvidenceTooLargeError();
+  const contentType = contentTypeOf(bytes);
+  if (!contentType) throw new UnsupportedEvidenceTypeError();
+  return contentType;
+}
+
 // Returns null when the price record is not in the member's household.
 export async function addEvidence(
   db: Database,
@@ -68,12 +76,7 @@ export async function addEvidence(
   priceRecordId: string,
   files: Uint8Array[],
 ) {
-  const pieces = files.map((bytes) => {
-    if (bytes.length > maxEvidenceSize) throw new EvidenceTooLargeError();
-    const contentType = contentTypeOf(bytes);
-    if (!contentType) throw new UnsupportedEvidenceTypeError();
-    return { id: crypto.randomUUID(), contentType, bytes };
-  });
+  const pieces = files.map((bytes) => ({ id: crypto.randomUUID(), contentType: checkEvidenceFile(bytes), bytes }));
 
   // Files are written before the transaction opens, so it stays short; any failure takes them out again.
   await Promise.all(pieces.map((p) => store.put(p.id, p.bytes)));

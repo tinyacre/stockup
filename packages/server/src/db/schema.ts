@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -13,6 +14,8 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { Discount } from '@stockup/domain';
+import type { RecognitionResult } from '../recognizer';
 import { organization, user } from './auth-schema';
 
 export * from './auth-schema';
@@ -248,5 +251,88 @@ export const evidence = pgTable(
       sql`${table.contentType} in (${sql.raw(evidenceContentTypes.map((t) => `'${t}'`).join(', '))})`,
     ),
     check('evidence_size_check', sql`${table.size} > 0`),
+  ],
+);
+
+export const recognitionStatuses = ['pending', 'succeeded', 'failed'] as const;
+export const recognitionErrors = ['recognition_unavailable', 'recognition_failed', 'recognition_interrupted'] as const;
+
+// A member's request to read a screenshot into Recognition Drafts. The screenshot sits in the evidence
+// store under the row's id.
+export const recognition = pgTable(
+  'recognition',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    householdId: text('household_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    requestedBy: text('requested_by').references(() => user.id, { onDelete: 'set null' }),
+    status: text('status', { enum: recognitionStatuses }).notNull(),
+    error: text('error', { enum: recognitionErrors }),
+    screenshotContentType: text('screenshot_content_type', { enum: evidenceContentTypes }).notNull(),
+    // Bytes.
+    screenshotSize: integer('screenshot_size').notNull(),
+    // What the recognizer answered, kept as it came for auditing; drafts hold the parsed lines.
+    result: jsonb('result').$type<RecognitionResult>(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    finishedAt: timestamp('finished_at'),
+  },
+  (table) => [
+    unique('recognition_household_id_unique').on(table.householdId, table.id),
+    check(
+      'recognition_status_check',
+      sql`${table.status} in (${sql.raw(recognitionStatuses.map((s) => `'${s}'`).join(', '))})`,
+    ),
+    check('recognition_error_check', sql`(${table.status} = 'failed') = (${table.error} is not null)`),
+    check(
+      'recognition_screenshot_content_type_check',
+      sql`${table.screenshotContentType} in (${sql.raw(evidenceContentTypes.map((t) => `'${t}'`).join(', '))})`,
+    ),
+  ],
+);
+
+// One line of goods read from a recognition's screenshot, waiting for a member to confirm it.
+export const recognitionDraft = pgTable(
+  'recognition_draft',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    householdId: text('household_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    recognitionId: text('recognition_id').notNull(),
+    // Keeps drafts in the order the screenshot lists them.
+    position: integer('position').notNull(),
+    name: text('name').notNull(),
+    sizeText: text('size_text'),
+    // Null, like the other values, until it is read from the screenshot or entered.
+    sizeAmount: doublePrecision('size_amount'),
+    sizeUnitDimension: text('size_unit_dimension', { enum: unitDimensions }),
+    sizeUnitName: text('size_unit_name'),
+    quantity: integer('quantity'),
+    // Cents.
+    listPrice: integer('list_price'),
+    discounts: jsonb('discounts').$type<Discount[]>().notNull(),
+    // The suggested or chosen product. Deleting the product clears only this column (see the migration),
+    // and merging moves it to the kept product.
+    productId: text('product_id'),
+  },
+  (table) => [
+    uniqueIndex('recognition_draft_recognition_position_uidx').on(table.recognitionId, table.position),
+    index('recognition_draft_household_product_idx').on(table.householdId, table.productId),
+    foreignKey({
+      name: 'recognition_draft_recognition_fk',
+      columns: [table.householdId, table.recognitionId],
+      foreignColumns: [recognition.householdId, recognition.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'recognition_draft_product_fk',
+      columns: [table.householdId, table.productId],
+      foreignColumns: [product.householdId, product.id],
+    }).onDelete('set null'),
+    check(
+      'recognition_draft_size_check',
+      sql`(${table.sizeAmount} is null) = (${table.sizeUnitDimension} is null)
+        and (${table.sizeAmount} is null) = (${table.sizeUnitName} is null)`,
+    ),
   ],
 );
