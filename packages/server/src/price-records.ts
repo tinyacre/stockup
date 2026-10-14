@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { calculatePrice, convert, matchPromotion, type Discount, type Size, type Unit } from '@stockup/domain';
 import type { Database } from './db';
 import { ParentNotFoundError, translate } from './db/errors';
-import { channel, discount, evidence, priceRecord, product, promotion, user } from './db/schema';
+import { channel, discount, evidence, priceRecord, priceRecordSources, product, promotion, user } from './db/schema';
 import { evidenceOfRecords, removeEvidenceFiles } from './evidence';
 import type { EvidenceStore } from './evidence-store';
 import type { CurrentMember } from './members';
@@ -278,24 +278,35 @@ export async function pricingOf(db: Executor, scope: CurrentMember, productId: s
   };
 }
 
+// Runs inside the caller's transaction, which then holds the product's lock until it commits.
+export async function insertPriceRecord(
+  tx: Executor,
+  scope: CurrentMember,
+  input: NewPriceRecord,
+  source: (typeof priceRecordSources)[number],
+) {
+  const pricing = await pricingOf(tx, scope, input.productId, { lock: true });
+  if (!pricing) throw new ProductNotFoundError();
+  const [created] = await tx
+    .insert(priceRecord)
+    .values({
+      ...(await recordValues(tx, scope, pricing, input)),
+      householdId: scope.householdId,
+      productId: input.productId,
+      recordedBy: scope.userId,
+      source,
+    })
+    .returning({ id: priceRecord.id });
+  await insertDiscounts(tx, created!.id, input.discounts);
+  return created!.id;
+}
+
 export function createPriceRecord(db: Database, scope: CurrentMember, input: NewPriceRecord) {
   return translate(
     () =>
       db.transaction(async (tx) => {
-        const pricing = await pricingOf(tx, scope, input.productId, { lock: true });
-        if (!pricing) throw new ProductNotFoundError();
-        const [created] = await tx
-          .insert(priceRecord)
-          .values({
-            ...(await recordValues(tx, scope, pricing, input)),
-            householdId: scope.householdId,
-            productId: input.productId,
-            recordedBy: scope.userId,
-            source: 'manual',
-          })
-          .returning({ id: priceRecord.id });
-        await insertDiscounts(tx, created!.id, input.discounts);
-        return (await findPriceRecord(tx, scope, created!.id))!;
+        const id = await insertPriceRecord(tx, scope, input, 'manual');
+        return (await findPriceRecord(tx, scope, id))!;
       }),
     ParentNotFoundError,
   );

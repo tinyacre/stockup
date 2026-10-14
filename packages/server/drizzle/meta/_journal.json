@@ -64,6 +64,13 @@
       "when": 1791965247810,
       "tag": "0008_recognition",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791969254955,
+      "tag": "0009_recognition_confirmation",
+      "breakpoints": true
     }
   ]
 }

@@ -23,13 +23,13 @@ const errorContent = { 'application/json': { schema: z.object({ error: z.string(
 const idParams = z.object({ id: z.string() });
 
 // Postgres integer columns hold amounts up to 2^31 - 1.
-const cents = z.number().int().positive().max(2_000_000_000);
+export const cents = z.number().int().positive().max(2_000_000_000);
 
 export const sizeSchema = z
   .object({ amount: z.number().positive().finite(), unit: pricingUnitSchema })
   .openapi('Size', { description: 'Amount per piece, in any unit of the same dimension as the pricing unit' });
 
-const discountSchema = z
+export const discountSchema = z
   .object({
     amount: cents.openapi({ description: 'Cents' }),
     name: z.string().trim().max(50).optional(),
@@ -56,7 +56,7 @@ export const priceRecordInputSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
-const priceRecordSchema = z
+export const priceRecordSchema = z
   .object({
     id: z.string(),
     productId: z.string(),

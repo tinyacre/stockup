@@ -147,7 +147,26 @@ export interface RecognitionDraft {
   // Cents.
   listPrice: number | null;
   discounts: Discount[];
+  // Cents: its share of the order discounts, null while a draft's list price is unknown.
+  orderDiscount: number | null;
+  // Suggested by name, or chosen by a member.
   suggestedProduct: { id: string; name: string; pricingUnit: Unit; baseSize: number } | null;
+}
+
+export interface DraftChanges {
+  name?: string;
+  size?: Size | null;
+  quantity?: number | null;
+  listPrice?: number | null;
+  discounts?: Discount[];
+  orderDiscount?: number;
+  productId?: string | null;
+}
+
+export interface Confirmation {
+  date: string;
+  channelId: string;
+  purchased: boolean;
 }
 
 export interface Recognition {
@@ -162,6 +181,8 @@ export interface Recognition {
   drafts: RecognitionDraft[];
   createdAt: string;
   finishedAt: string | null;
+  // Drafts are gone once confirmed.
+  confirmedAt: string | null;
 }
 
 export interface PriceReferences {
@@ -180,6 +201,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string | undefined,
+    // The whole error payload, for the details some errors carry beside their code.
+    readonly payload: unknown = null,
   ) {
     super(code ?? `HTTP ${status}`);
   }
@@ -210,7 +233,7 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
     throw new NetworkError(String(error), { cause: error });
   }
   const payload = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(res.status, payload?.error ?? payload?.code);
+  if (!res.ok) throw new ApiError(res.status, payload?.error ?? payload?.code, payload);
   if (res.headers.has('x-stockup-from-cache') && typeof payload === 'object' && payload !== null) {
     cachedPayloads.add(payload);
   }
@@ -324,6 +347,21 @@ export const api = {
     return request<Recognition>('/api/recognitions', { method: 'POST', body });
   },
   recognition: (id: string) => request<Recognition>(`/api/recognitions/${encodeURIComponent(id)}`),
+  editDraft: (recognitionId: string, draftId: string, body: DraftChanges) =>
+    request<Recognition>(
+      `/api/recognitions/${encodeURIComponent(recognitionId)}/drafts/${encodeURIComponent(draftId)}`,
+      { method: 'PATCH', body },
+    ),
+  deleteDraft: (recognitionId: string, draftId: string) =>
+    request<Recognition>(
+      `/api/recognitions/${encodeURIComponent(recognitionId)}/drafts/${encodeURIComponent(draftId)}`,
+      { method: 'DELETE' },
+    ),
+  confirmRecognition: (id: string, body: Confirmation) =>
+    request<{ priceRecords: PriceRecord[] }>(`/api/recognitions/${encodeURIComponent(id)}/confirm`, {
+      method: 'POST',
+      body,
+    }),
   recognitionScreenshotUrl: (id: string) => `/api/recognitions/${encodeURIComponent(id)}/screenshot`,
   priceReferences: () => request<PriceReferences[]>('/api/price-references'),
 };
