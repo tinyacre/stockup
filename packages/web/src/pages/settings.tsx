@@ -69,18 +69,21 @@ export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
 
 function ThemeSetting({ theme, onChanged }: { theme: Theme; onChanged(): void }) {
   const [shown, setShown] = useState(theme);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
 
+  // Applying a theme writes the copy a reload paints from, so it waits until the account holds the choice.
   async function choose(next: Theme) {
-    setShown(next);
+    if (saving || next === shown) return;
+    setSaving(true);
     setError(undefined);
-    applyTheme(next);
     const message = await attempt(() => api.setTheme(next));
+    setSaving(false);
     if (message) {
-      setShown(theme);
-      applyTheme(theme);
       setError(message);
     } else {
+      setShown(next);
+      applyTheme(next);
       onChanged();
     }
   }
@@ -96,6 +99,7 @@ function ThemeSetting({ theme, onChanged }: { theme: Theme; onChanged(): void })
             options={themes.map((value) => ({ value, label: themeLabels[value] }))}
             value={shown}
             onValueChange={choose}
+            aria-busy={saving}
           />
           {error && <Alert>{error}</Alert>}
         </PanelBody>
