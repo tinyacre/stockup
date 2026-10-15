@@ -34,13 +34,15 @@ export default defineConfig({
         runtimeCaching: [
           {
             // Offline, the app opens on the household data it last read. Auth endpoints carry no data worth replaying,
-            // Evidence images are too large to keep without bound, and a recognition is polled for its latest status.
+            // Evidence images are too large to keep without bound, a recognition is polled for its latest status,
+            // and whether recognition is available matters only online, where it must reflect the server's setup now.
             urlPattern: ({ url, sameOrigin }) =>
               sameOrigin &&
               url.pathname.startsWith('/api/') &&
               !url.pathname.startsWith('/api/auth/') &&
               !url.pathname.startsWith('/api/evidence/') &&
-              !url.pathname.startsWith('/api/recognitions/'),
+              !url.pathname.startsWith('/api/recognitions/') &&
+              url.pathname !== '/api/recognizer',
             method: 'GET',
             handler: 'NetworkFirst',
             options: {

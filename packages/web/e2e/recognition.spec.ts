@@ -141,3 +141,21 @@ test('deleting a draft shares the order discount over the rest', async ({ page }
   await expect(drafts.getByRole('heading')).toHaveText('识别草稿（1 条）');
   await expect(drafts.getByRole('listitem', { name: '得宝抽纸 M码' })).toContainText('整单优惠分摊 -¥20.00');
 });
+
+test.describe('without a recognizer', () => {
+  // The e2e server always has the fake recognizer, so the server's answer is stood in for here;
+  // the service worker would otherwise serve the request out of reach of page.route.
+  test.use({ serviceWorkers: 'block' });
+
+  test('recognition shows as unavailable', async ({ page }) => {
+    await page.route('**/api/recognizer', (route) => route.fulfill({ json: { available: false } }));
+    await page.goto('/');
+    await page.getByLabel('用户名').fill(founder.username);
+    await page.getByLabel('密码').fill(founder.password);
+    await page.getByRole('button', { name: '登录' }).click();
+
+    await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '识别' }).click();
+    await expect(page.getByRole('alert')).toHaveText('还没有配置识别服务，暂时不能识别截图。');
+    await expect(page.getByLabel('上传截图')).toBeDisabled();
+  });
+});

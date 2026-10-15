@@ -373,6 +373,7 @@ export const api = {
   },
   deleteEvidence: (id: string) => request(`/api/evidence/${id}`, { method: 'DELETE' }),
   evidenceUrl: (id: string) => `/api/evidence/${encodeURIComponent(id)}`,
+  recognizer: () => request<{ available: boolean }>('/api/recognizer'),
   startRecognition: (file: File) => {
     const body = new FormData();
     body.append('file', file);

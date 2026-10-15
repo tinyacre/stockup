@@ -69,7 +69,7 @@ const recognitionSchema = z
     status: z.enum(recognitionStatuses),
     error: z.enum(recognitionErrors).nullable().openapi({
       description:
-        'Why it failed: no recognizer is configured (recognition_unavailable), the recognizer gave no answer (recognition_failed), or the server restarted while it ran (recognition_interrupted)',
+        'Why it failed: no recognizer is configured (recognition_unavailable), the recognizer failed or gave an answer it could not read (recognition_failed), or the server restarted while it ran (recognition_interrupted)',
     }),
     requestedBy: z.object({ id: z.string(), name: z.string() }).nullable(),
     screenshot: z
@@ -267,6 +267,22 @@ export function recognitionRoutes(
     },
   });
 
+  const availabilityRoute = createRoute({
+    method: 'get',
+    path: '/recognizer',
+    tags: ['recognitions'],
+    summary: 'Report whether screenshots can be recognized',
+    description: 'Recognition is unavailable until the server is configured with a recognizer.',
+    middleware,
+    responses: {
+      200: {
+        description: 'Whether recognition is available',
+        content: { 'application/json': { schema: z.object({ available: z.boolean() }) } },
+      },
+      ...unauthenticated,
+    },
+  });
+
   const app = new OpenAPIHono();
   app.use(
     '/recognitions',
@@ -277,6 +293,7 @@ export function recognitionRoutes(
     }),
   );
   return app
+    .openapi(availabilityRoute, (c) => c.json({ available: recognizer !== undefined }, 200))
     .openapi(startRoute, async (c) => {
       const { file } = c.req.valid('form');
       if (file.size > maxEvidenceSize) return c.json({ error: 'evidence_too_large' }, 413);

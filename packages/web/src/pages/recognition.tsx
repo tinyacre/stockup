@@ -37,6 +37,15 @@ export function RecognitionUploadPage({ onStarted }: { onStarted(id: string): vo
   const inputId = useId();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
+  // Uploads stay open while the answer is outstanding: the server fails them cleanly if it has no recognizer.
+  const [available, setAvailable] = useState(true);
+  useEffect(() => {
+    api.recognizer().then(
+      (r) => setAvailable(r.available),
+      () => {},
+    );
+  }, []);
+  const disabled = uploading || !available;
 
   async function upload(file: File | undefined) {
     if (!file) return;
@@ -55,7 +64,7 @@ export function RecognitionUploadPage({ onStarted }: { onStarted(id: string): vo
       <h2 className="text-xl font-semibold">截图识别</h2>
       <p className="text-muted-foreground text-sm">上传一张订单页或商品页截图，识别出其中每件商品，生成识别草稿供你确认。</p>
       <div>
-        <Button disabled={uploading} asChild>
+        <Button disabled={disabled} asChild>
           <label htmlFor={inputId}>{uploading ? '上传中…' : '上传截图'}</label>
         </Button>
         <input
@@ -64,7 +73,7 @@ export function RecognitionUploadPage({ onStarted }: { onStarted(id: string): vo
           aria-label="上传截图"
           accept="image/png,image/jpeg,image/webp,image/gif"
           className="sr-only"
-          disabled={uploading}
+          disabled={disabled}
           onChange={(event) => {
             const file = event.currentTarget.files?.[0];
             event.currentTarget.value = '';
@@ -72,6 +81,7 @@ export function RecognitionUploadPage({ onStarted }: { onStarted(id: string): vo
           }}
         />
       </div>
+      {!available && <Alert>还没有配置识别服务，暂时不能识别截图。</Alert>}
       {error && <Alert>{error}</Alert>}
     </div>
   );

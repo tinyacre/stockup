@@ -312,6 +312,13 @@ describe('recognitions', () => {
     expect((await other.request(`/api/recognitions/${started.id}/screenshot`)).status).toBe(404);
   });
 
+  test('recognition is reported available', async () => {
+    const m = await signUpHousehold(ctx);
+    const res = await m.request('/api/recognizer');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ available: true });
+  });
+
   test('recognitions require a signed-in member', async () => {
     const owner = await signUpHousehold(ctx);
     const started = await created<Recognition>(await upload(owner, screenshot(7)));
@@ -322,6 +329,7 @@ describe('recognitions', () => {
     const form = new FormData();
     form.append('file', new File([screenshot()], 'a.png', { type: 'image/png' }));
     expect((await ctx.app.request('/api/recognitions', { method: 'POST', body: form })).status).toBe(401);
+    expect((await ctx.app.request('/api/recognizer')).status).toBe(401);
   });
 });
 
@@ -635,6 +643,11 @@ describe('reviewing and confirming drafts', () => {
 
 describe('recognitions without a recognizer', () => {
   const ctx = useTestApp();
+
+  test('report recognition as unavailable', async () => {
+    const m = await signUpHousehold(ctx);
+    expect(await (await m.request('/api/recognizer')).json()).toEqual({ available: false });
+  });
 
   test('fail straight away and keep the screenshot for manual entry', async () => {
     const m = await signUpHousehold(ctx);
