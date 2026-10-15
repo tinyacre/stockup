@@ -40,6 +40,7 @@ export function createAuth({ db, secret, baseURL, fetchClientMetadataResource }:
     user: {
       additionalFields: {
         role: { type: 'string', required: true, defaultValue: 'user', input: false },
+        theme: { type: 'string', required: true, defaultValue: 'tool', input: false },
       },
     },
     plugins: [

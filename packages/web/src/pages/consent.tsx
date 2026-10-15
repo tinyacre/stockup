@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { AuthLayout } from '@/components/auth-form';
+import { AuthCard, AuthLayout } from '@/components/auth-form';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, ApiError, type Me, type OAuthClient } from '@/lib/api';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
 
@@ -60,17 +59,18 @@ export function ConsentPage({ oauthQuery }: { oauthQuery: string }) {
   const name = authorization.client.client_name;
   return (
     <AuthLayout>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">授权 {clientHost(clientId)} 访问 StockUp</CardTitle>
-          <CardDescription>
+      <AuthCard
+        title={`授权 ${clientHost(clientId)} 访问 StockUp`}
+        description={
+          <>
             {name && `这个应用自称「${name}」，请确认上面的域名属于它。`}
             {authorization.me
               ? `它将以「${authorization.me.user.name}」的身份访问「${authorization.me.household.name}」的数据。`
               : '你目前不属于任何家庭，授权后它也看不到任何数据。'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
           <ul className="list-disc pl-5 text-sm">
             {scopes.map((scope) => (
               <li key={scope}>{scopeDescriptions[scope] ?? scope}</li>
@@ -89,8 +89,8 @@ export function ConsentPage({ oauthQuery }: { oauthQuery: string }) {
               拒绝
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </AuthCard>
     </AuthLayout>
   );
 }

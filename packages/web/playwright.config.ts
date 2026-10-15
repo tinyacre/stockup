@@ -1,8 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import type { ThemeOptions } from './e2e/test';
 
 const port = 4173;
 
-export default defineConfig({
+export default defineConfig<ThemeOptions>({
   testDir: './e2e',
   outputDir: './e2e/.out/results',
   reporter: [['list'], ['html', { outputFolder: './e2e/.out/report', open: 'never' }]],
@@ -17,9 +18,24 @@ export default defineConfig({
     {
       name: 'desktop',
       dependencies: ['onboarding'],
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, theme: 'tool' },
     },
-    { name: 'phone', dependencies: ['onboarding'], use: { ...devices['Pixel 7'] } },
+    { name: 'phone', dependencies: ['onboarding'], use: { ...devices['Pixel 7'], theme: 'tool' } },
+    {
+      name: 'desktop-price-tag',
+      dependencies: ['onboarding'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+        theme: 'price-tag',
+        serviceWorkers: 'block',
+      },
+    },
+    {
+      name: 'phone-price-tag',
+      dependencies: ['onboarding'],
+      use: { ...devices['Pixel 7'], theme: 'price-tag', serviceWorkers: 'block' },
+    },
   ],
   webServer: {
     command: 'bun run build && bun ../server/test/support/e2e-server.ts',

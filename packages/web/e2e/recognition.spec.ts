@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test';
 import { founder } from './founder';
 
 // A 1 × 1 PNG.

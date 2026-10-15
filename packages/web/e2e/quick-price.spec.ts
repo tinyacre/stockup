@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
+import { expect, test } from './test';
 import { formatStockLineGap, formatYuan } from '../src/lib/format';
 import { founder } from './founder';
 
@@ -69,7 +70,7 @@ test('a member prices a product from the home page and keeps it as seen only', a
 
   const judgment = page.getByRole('status', { name: '判断' });
   await expect(judgment).toContainText('囤');
-  await expect(judgment).toContainText('3.42元 / 90 抽');
+  await expect(judgment).toContainText('¥3.42 / 90 抽');
   await expect(judgment).toContainText('比入手价便宜 14.4%，到手 ¥89.00');
 
   await options.getByRole('radio', { name: channelName }).click();
@@ -138,7 +139,7 @@ interface Judgment {
   stockLineGap: number | null;
 }
 
-const badges = { recordLow: '史低', stockUp: '囤', skip: '不囤', noReference: '无参考' };
+const badges = { recordLow: '史低', stockUp: '囤', skip: '不囤', noReference: '暂无参考' };
 
 // The page judges in the browser for instant feedback; this keeps it in step with POST /judgments,
 // which MCP and other clients use.
@@ -242,7 +243,7 @@ test('quick price shows the same judgment as the judgment API', async ({ page })
         : `${formatStockLineGap(judgment.stockLineGap)}，到手 ${formatYuan(judgment.netPrice)}`;
     const badge = judgment.verdict ? badges[judgment.verdict] : '—';
     await expect(judgmentOutput, JSON.stringify(c)).toHaveText(
-      `${badge}${(judgment.unitPrice / 100).toFixed(2)}元 / 90 抽${gap}`,
+      `${badge}¥${(judgment.unitPrice / 100).toFixed(2)} / 90 抽${gap}`,
     );
 
     const references = [
@@ -258,7 +259,7 @@ test('quick price shows the same judgment as the judgment API', async ({ page })
 });
 
 test('a wide screen shows the product list, the form and the result side by side', async ({ page }, info) => {
-  test.skip(info.project.name !== 'desktop', 'the three columns need a wide screen');
+  test.skip(!info.project.name.startsWith('desktop'), 'the three columns need a wide screen');
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `洁柔面巾纸 ${suffix}`;
 
@@ -298,7 +299,7 @@ test('a wide screen shows the product list, the form and the result side by side
 });
 
 test('a member prices and saves with the keyboard alone', async ({ page }, info) => {
-  test.skip(info.project.name !== 'desktop', 'keyboard pricing is for computers');
+  test.skip(!info.project.name.startsWith('desktop'), 'keyboard pricing is for computers');
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `得宝抽纸 ${suffix}`;
 
@@ -341,7 +342,7 @@ test('a member prices and saves with the keyboard alone', async ({ page }, info)
   await page.keyboard.press('Tab');
   await expect(form.getByLabel('规格', { exact: true })).toBeFocused();
   await page.keyboard.type('130');
-  await expect(page.getByRole('status', { name: '判断' })).toContainText('3.81元 / 90 抽');
+  await expect(page.getByRole('status', { name: '判断' })).toContainText('¥3.81 / 90 抽');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('status').filter({ hasText: '已存为仅记录' })).toBeVisible();
 
@@ -383,5 +384,5 @@ test('a member creates a product that search misses and goes on pricing it', asy
   await expect(search).toHaveValue('');
   await page.getByRole('form', { name: '快速算价' }).getByLabel('原价').fill('19.9');
   await expect(page.getByRole('status', { name: '判断' })).toContainText('无参考');
-  await expect(page.getByRole('status', { name: '判断' })).toContainText('19.90元 / 80 片');
+  await expect(page.getByRole('status', { name: '判断' })).toContainText('¥19.90 / 80 片');
 });

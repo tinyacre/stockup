@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test';
 import { founder } from './founder';
 
 // The e2e server starts empty and can be set up only once, so this runs before every other project.

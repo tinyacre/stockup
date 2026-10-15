@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test';
 import { founder } from './founder';
 
 test('a member sets a stock line and sees the judgment while recording a price', async ({ page }) => {

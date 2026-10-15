@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ChevronRight, CirclePlus, Search, X } from 'lucide-react';
-import { findLastYearPromotionLowest, judge, type Judgment, type Price, type Verdict } from '@stockup/domain';
+import { findLastYearPromotionLowest, judge, type Judgment, type Price } from '@stockup/domain';
 import { Alert, attempt, describeError, RetryAlert } from '@/components/editing';
 import { NewProductForm } from '@/components/product-form';
-import { verdictTone } from '@/components/verdict';
+import { VerdictDisplay, verdictTone } from '@/components/verdict';
 import { api, isFromCache, type CategoryGroup, type Channel, type PriceReferences, type Product, type Promotion } from '@/lib/api';
 import { formatSize, formatStockLineGap, formatYuan } from '@/lib/format';
 import { useHistoryState } from '@/lib/history';
@@ -18,7 +18,6 @@ import {
   recordErrors,
   today,
   unitsLike,
-  verdictLabels,
   type DiscountDraft,
 } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
@@ -500,9 +499,6 @@ function Field({ label, htmlFor, children, hint }: { label: string; htmlFor: str
   );
 }
 
-// The badge fits two characters.
-const badgeLabels: Record<Verdict, string> = { ...verdictLabels, noReference: '无参考' };
-
 const bigInput =
   'numeric w-full min-w-0 bg-transparent text-right text-[28px] font-semibold outline-none placeholder:text-border';
 
@@ -849,34 +845,16 @@ function QuickPrice({
       离线中：照常算价，联网后才能保存。
     </p>
   );
-  const verdictOutput = (
-    <output aria-label="判断" className="flex min-w-0 flex-1 items-stretch gap-1">
-      <span
-        className={cn(
-          'flex w-[60px] shrink-0 items-center justify-center rounded-[14px] text-center text-[17px] leading-5 font-semibold transition-colors',
-          tone ? cn(tone.soft, tone.text) : 'bg-muted text-muted-foreground',
-        )}
-      >
-        {judgment?.verdict ? badgeLabels[judgment.verdict] : '—'}
-      </span>
-      <span className="min-w-0 flex-1 px-2.5 py-1.5">
-        {priced ? (
-          <>
-            <span className="flex items-baseline gap-1">
-              <span className="numeric text-[32px] leading-none font-bold">{yuan(priced.unitPrice)}</span>
-              <span className="text-muted-foreground text-xs">元 / {perBase(product)}</span>
-            </span>
-            <span className="text-muted-foreground mt-1 block truncate text-xs tabular-nums">
-              <Gap judgment={judgment} netPrice={priced.netPrice} />
-            </span>
-          </>
-        ) : (
-          <span className="text-muted-foreground flex h-full items-center text-[13px]">
-            {typeof price === 'string' ? price : '填好原价、件数和规格'}
-          </span>
-        )}
-      </span>
-    </output>
+  const verdictOutput = (compact?: boolean) => (
+    <VerdictDisplay
+      compact={compact}
+      verdict={judgment?.verdict ?? null}
+      unitPrice={priced?.unitPrice ?? null}
+      per={perBase(product)}
+      gap={priced && <Gap judgment={judgment} netPrice={priced.netPrice} />}
+      placeholder={typeof price === 'string' ? price : '填好原价、件数和规格'}
+      className={compact ? 'flex-1 px-1' : undefined}
+    />
   );
   const saveButton = (className?: string) => (
     <button
@@ -903,7 +881,7 @@ function QuickPrice({
         </div>
         <section aria-label="算价结果" className={cn(card, 'sticky top-4 flex flex-col gap-4 p-4')}>
           {ruler}
-          <div className="flex min-h-[60px] items-stretch">{verdictOutput}</div>
+          {verdictOutput()}
           {saveButton('h-12')}
           {offlineStatus}
           {savedStatus}
@@ -923,7 +901,7 @@ function QuickPrice({
         {offlineStatus}
         {savedStatus}
         <div className="bg-card flex items-stretch gap-1 rounded-[20px] p-1.5 shadow-[0_12px_32px_-8px_rgba(30,41,36,.28),0_0_0_1px_rgba(30,41,36,.05)]">
-          {verdictOutput}
+          {verdictOutput(true)}
           {saveButton()}
         </div>
       </div>

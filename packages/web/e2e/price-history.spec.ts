@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
+import { expect, test } from './test';
 import { founder } from './founder';
 
 async function post<T>(request: APIRequestContext, path: string, data: object, method = 'POST'): Promise<T> {

@@ -37,6 +37,51 @@ describe('display name', () => {
   });
 });
 
+describe('theme', () => {
+  test('a new account uses the tool theme', async () => {
+    const member = await signUpHousehold(ctx);
+    expect(await (await member.request('/api/me')).json()).toMatchObject({ user: { theme: 'tool' } });
+  });
+
+  test('a member switches theme and every session of the account sees it', async () => {
+    const member = await signUpHousehold(ctx);
+    const res = await member.request('/api/me', jsonRequest('PATCH', { theme: 'price-tag' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ user: { name: member.name, theme: 'price-tag' } });
+
+    const phone = await signIn(ctx, member.username, member.password);
+    expect(await (await requestAs(ctx, phone, '/api/me')).json()).toMatchObject({ user: { theme: 'price-tag' } });
+  });
+
+  test('changing the theme keeps the name, and renaming keeps the theme', async () => {
+    const member = await signUpHousehold(ctx);
+    await member.request('/api/me', jsonRequest('PATCH', { theme: 'price-tag' }));
+    await member.request('/api/me', jsonRequest('PATCH', { name: '新名字' }));
+    expect(await (await member.request('/api/me')).json()).toMatchObject({
+      user: { name: '新名字', theme: 'price-tag' },
+    });
+  });
+
+  test('rejects an unknown theme', async () => {
+    const member = await signUpHousehold(ctx);
+    expect((await member.request('/api/me', jsonRequest('PATCH', { theme: 'dark' }))).status).toBe(400);
+    expect(await (await member.request('/api/me')).json()).toMatchObject({ user: { theme: 'tool' } });
+  });
+
+  test("a member's theme does not change anyone else's", async () => {
+    const member = await signUpHousehold(ctx);
+    const other = await signUpHousehold(ctx);
+    await member.request('/api/me', jsonRequest('PATCH', { theme: 'price-tag' }));
+    expect(await (await other.request('/api/me')).json()).toMatchObject({ user: { theme: 'tool' } });
+  });
+
+  test('Better Auth refuses to set the theme through its own endpoints', async () => {
+    const member = await signUpHousehold(ctx);
+    await member.request('/api/auth/update-user', jsonRequest('POST', { theme: 'price-tag' }));
+    expect(await (await member.request('/api/me')).json()).toMatchObject({ user: { theme: 'tool' } });
+  });
+});
+
 describe('password', () => {
   test('a member changes their password and signs in with the new one', async () => {
     const member = await signUpHousehold(ctx);

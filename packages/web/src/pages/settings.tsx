@@ -2,15 +2,19 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageContent, PageHeader } from '@/components/ui/page';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Alert, attempt, describeError, RetryAlert } from '@/components/editing';
 import { api, type AuthorizedClient, type Me } from '@/lib/api';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
+import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
 
-// The header shows the display name, so `onRenamed` reloads the session.
+// The header shows the display name and the shell applies the theme, so `onRenamed` reloads the session.
 export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-8 p-4">
-      <h2 className="text-xl font-semibold">个人设置</h2>
+    <PageContent width="narrow" className="gap-8">
+      <PageHeader title="个人设置" />
+      <ThemeSetting theme={me.user.theme} onChanged={onRenamed} />
       <SettingsForm
         title="显示名称"
         description="家人在价格记录上看到的名字，修改后已有的记录也会显示新名字。"
@@ -59,7 +63,40 @@ export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
         }}
       />
       <AuthorizedClients />
-    </div>
+    </PageContent>
+  );
+}
+
+function ThemeSetting({ theme, onChanged }: { theme: Theme; onChanged(): void }) {
+  const [shown, setShown] = useState(theme);
+  const [error, setError] = useState<string>();
+
+  async function choose(next: Theme) {
+    setShown(next);
+    setError(undefined);
+    applyTheme(next);
+    const message = await attempt(() => api.setTheme(next));
+    if (message) {
+      setShown(theme);
+      applyTheme(theme);
+      setError(message);
+    } else {
+      onChanged();
+    }
+  }
+
+  return (
+    <section aria-label="主题" className="flex flex-col gap-3">
+      <h3 className="font-medium">主题</h3>
+      <SegmentedControl
+        aria-label="主题"
+        className="self-start"
+        options={themes.map((value) => ({ value, label: themeLabels[value] }))}
+        value={shown}
+        onValueChange={choose}
+      />
+      {error && <Alert>{error}</Alert>}
+    </section>
   );
 }
 

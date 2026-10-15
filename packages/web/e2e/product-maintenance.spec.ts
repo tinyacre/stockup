@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './test';
 import { founder } from './founder';
 
 async function createProduct(page: Page, name: string, unit: string, baseSize: string) {

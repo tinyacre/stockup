@@ -1,7 +1,8 @@
 import type { Discount, PromotionLowest, Size, Unit } from '@stockup/domain';
+import type { Theme } from '@/lib/theme';
 
 export interface Me {
-  user: { id: string; username: string; name: string; isInstanceAdmin: boolean };
+  user: { id: string; username: string; name: string; theme: Theme; isInstanceAdmin: boolean };
   household: { id: string; name: string; role: string };
 }
 
@@ -290,6 +291,7 @@ export const api = {
     }),
 
   rename: (body: { name: string }) => request<Me>('/api/me', { method: 'PATCH', body }),
+  setTheme: (theme: Theme) => request<Me>('/api/me', { method: 'PATCH', body: { theme } }),
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request('/api/me/password', { method: 'POST', body }),
   signOutOthers: () => request('/api/me/sign-out-others', { method: 'POST' }),

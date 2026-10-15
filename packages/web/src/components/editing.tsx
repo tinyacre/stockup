@@ -1,12 +1,11 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { controlClass, Input } from '@/components/ui/input';
 import { ApiError, NetworkError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-export const fieldClass =
-  'w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm dark:bg-input/30';
+export const fieldClass = cn(controlClass, 'px-2.5 py-1 text-base wide:text-[13px] price-tag:wide:text-sm');
 
 // Resolves to an error message for the member, or nothing when the action succeeded.
 export type Action = () => Promise<string | void>;

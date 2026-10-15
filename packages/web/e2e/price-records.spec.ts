@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test';
 import { founder } from './founder';
 
 test('a member records, edits and deletes prices on a product page', async ({ page }) => {

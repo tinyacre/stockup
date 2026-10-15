@@ -15,6 +15,7 @@ export interface CurrentMember {
   householdRole: string;
   username: string;
   name: string;
+  theme: string;
   isInstanceAdmin: boolean;
 }
 
@@ -32,6 +33,7 @@ export async function findCurrentMember(db: Database, userId: string): Promise<C
       householdName: organization.name,
       username: user.username,
       name: user.name,
+      theme: user.theme,
       role: user.role,
     })
     .from(member)
@@ -160,4 +162,8 @@ export async function makeHouseholdAdmin(db: Database, scope: CurrentMember, use
     if (promoted.length === 0) throw new MemberNotFoundError();
     await tx.update(member).set({ role: HOUSEHOLD_MEMBER_ROLE }).where(eq(member.id, scope.memberId));
   });
+}
+
+export async function updateTheme(db: Database, userId: string, theme: string) {
+  await db.update(user).set({ theme }).where(eq(user.id, userId));
 }

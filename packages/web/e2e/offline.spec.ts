@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
+import { expect, test } from './test';
 import { founder } from './founder';
 
 async function post<T>(request: APIRequestContext, path: string, data: object, method = 'POST'): Promise<T> {
@@ -8,6 +9,10 @@ async function post<T>(request: APIRequestContext, path: string, data: object, m
 }
 
 const tissue = { dimension: 'count', name: '抽' };
+
+// Offline support is the service worker, so this runs with it even in projects that block it,
+// and then shows the theme the account chose.
+test.use({ serviceWorkers: 'allow' });
 
 test('offline, a member prices a cached product as online and saves once back online', async ({ page, context }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
@@ -70,7 +75,7 @@ test('offline, a member prices a cached product as online and saves once back on
   await priceIt();
   await expect(references).toHaveText(['历史最低2.30', '入手价4.00', '去年6182.30']);
   const online = await judgment.textContent();
-  expect(online).toContain('囤3.81元 / 90 抽');
+  expect(online).toContain('囤¥3.81 / 90 抽');
 
   await context.setOffline(true);
   await page.reload();

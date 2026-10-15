@@ -1,10 +1,17 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test';
 import { founder } from './founder';
 
+const projectMonths: Record<string, string> = {
+  desktop: '07',
+  phone: '08',
+  'desktop-price-tag': '09',
+  'phone-price-tag': '04',
+};
+
 test('a member adjusts promotions and sees them tag price records', async ({ page }, testInfo) => {
-  // Desktop and phone runs share one household, so names carry a run-specific suffix and ranges differ per project.
+  // Every project shares one household, so names carry a run-specific suffix and ranges differ per project.
   const suffix = crypto.randomUUID().slice(0, 6);
-  const month = testInfo.project.name === 'phone' ? '08' : '07';
+  const month = projectMonths[testInfo.project.name] ?? '07';
   const promotionName = `周年庆 ${suffix}`;
   const channelName = `山姆 ${suffix}`;
   const groupName = `生活用品 ${suffix}`;
