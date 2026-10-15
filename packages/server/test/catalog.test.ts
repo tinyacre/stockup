@@ -303,9 +303,48 @@ describe('products', () => {
 
     const res = await m.request(`/api/products?categoryId=${category.id}`);
     expect(await res.json()).toEqual([
-      { ...product, stockLine: 5000, lowestUnitPrice: 4500, latestPrice: { date: '2026-10-01', unitPrice: 6000 } },
+      { ...product, stockLine: 5000, lowestUnitPrice: 4500, latestPrice: { date: '2026-10-01', unitPrice: 6000, verdict: 'skip' } },
       { ...plain, lowestUnitPrice: null, latestPrice: null },
     ]);
+  });
+
+  test("judge their latest price against the stock line and the product's other records", async () => {
+    const m = await signUpHousehold(ctx);
+    const { category } = await seed(m);
+    const channel = await created<{ id: string }>(
+      await m.request('/api/channels', jsonRequest('POST', { name: unique('京东') })),
+    );
+    async function latestVerdict(stockLine: number | null, listPrices: [string, number][]) {
+      const product = await created<Product>(await createProduct(m, category.id, { name: unique('抽纸') }));
+      if (stockLine !== null) await m.request(`/api/products/${product.id}`, jsonRequest('PATCH', { stockLine }));
+      for (const [date, listPrice] of listPrices) {
+        const res = await m.request(
+          '/api/price-records',
+          jsonRequest('POST', {
+            productId: product.id,
+            channelId: channel.id,
+            date,
+            purchased: true,
+            listPrice,
+            discounts: [],
+            quantity: 1,
+            size: { amount: 90, unit: { dimension: 'count', name: '抽' } },
+          }),
+        );
+        expect(res.status).toBe(201);
+      }
+      const listed = (await (await m.request(`/api/products?categoryId=${category.id}`)).json()) as {
+        id: string;
+        latestPrice: { verdict: string | null } | null;
+      }[];
+      return listed.find((p) => p.id === product.id)!.latestPrice!.verdict;
+    }
+
+    expect(await latestVerdict(5000, [['2026-01-01', 4500], ['2026-10-01', 4000]])).toBe('recordLow');
+    expect(await latestVerdict(5000, [['2026-01-01', 4500], ['2026-10-01', 4500]])).toBe('stockUp');
+    expect(await latestVerdict(null, [['2026-10-01', 4500]])).toBe('noReference');
+    expect(await latestVerdict(null, [['2026-01-01', 4500], ['2026-10-01', 4800]])).toBeNull();
+    expect(await latestVerdict(3500, [['2026-10-01', 4000], ['2026-01-01', 3000]])).toBe('skip');
   });
 
   test('are renamed, moved to another category and given a note', async () => {
