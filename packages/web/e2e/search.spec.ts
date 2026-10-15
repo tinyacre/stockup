@@ -42,7 +42,7 @@ test('a member finds a product by its pinyin initials', async ({ page }) => {
   await expect(results.getByRole('listitem', { name: productName })).toBeVisible();
 
   await page.getByRole('searchbox', { name: '搜索商品' }).fill(`zzzz${suffix}`);
-  await expect(results).toContainText(`没有找到「zzzz${suffix}」相关的商品。`);
+  await expect(results).toContainText(`未找到「zzzz${suffix}」相关的商品`);
 
   await page.getByRole('searchbox', { name: '搜索商品' }).fill('');
   await expect(results).toBeHidden();
