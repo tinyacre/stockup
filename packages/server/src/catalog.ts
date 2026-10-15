@@ -12,9 +12,19 @@ const categoryColumns = { id: category.id, name: category.name, categoryGroupId:
 export async function listCatalog(db: Database, scope: CurrentMember) {
   const [groups, categories] = await Promise.all([
     db
-      .select(groupColumns)
+      .select({ ...groupColumns, productCount: count(product.id) })
       .from(categoryGroup)
+      .leftJoin(
+        product,
+        and(
+          eq(product.householdId, categoryGroup.householdId),
+          eq(product.categoryGroupId, categoryGroup.id),
+          isNull(product.categoryId),
+          isNull(product.archivedAt),
+        ),
+      )
       .where(eq(categoryGroup.householdId, scope.householdId))
+      .groupBy(categoryGroup.id)
       .orderBy(asc(categoryGroup.name)),
     db
       .select({ ...categoryColumns, productCount: count(product.id) })
@@ -116,6 +126,7 @@ export function deleteCategory(db: Database, scope: CurrentMember, id: string) {
 const productColumns = {
   id: product.id,
   name: product.name,
+  categoryGroupId: product.categoryGroupId,
   categoryId: product.categoryId,
   pricingUnitDimension: product.pricingUnitDimension,
   pricingUnitName: product.pricingUnitName,
@@ -135,8 +146,27 @@ function toProduct({ pricingUnitDimension, pricingUnitName, archivedAt, ...rest 
   };
 }
 
-export interface NewProduct {
-  categoryId: string;
+// Either a category, which brings its group along, or a group alone for a product outside any category.
+export interface Placement {
+  categoryId?: string;
+  categoryGroupId?: string;
+}
+
+type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+async function place(tx: Database | Transaction, scope: CurrentMember, placement: Placement) {
+  if (placement.categoryId === undefined) {
+    return placement.categoryGroupId === undefined ? undefined : { categoryGroupId: placement.categoryGroupId, categoryId: null };
+  }
+  const [found] = await tx
+    .select({ categoryGroupId: category.categoryGroupId })
+    .from(category)
+    .where(and(eq(category.householdId, scope.householdId), eq(category.id, placement.categoryId)));
+  if (!found) throw new ParentNotFoundError();
+  return { categoryGroupId: found.categoryGroupId, categoryId: placement.categoryId };
+}
+
+export interface NewProduct extends Placement {
   name: string;
   pricingUnit: Unit;
   baseSize: number;
@@ -146,7 +176,7 @@ export interface NewProduct {
 export async function listProducts(
   db: Database,
   scope: CurrentMember,
-  filter: { categoryId?: string; includeArchived?: boolean },
+  filter: { categoryId?: string; categoryGroupId?: string; includeArchived?: boolean },
 ) {
   const rows = await db
     .select(productColumns)
@@ -155,6 +185,9 @@ export async function listProducts(
       and(
         eq(product.householdId, scope.householdId),
         filter.categoryId === undefined ? undefined : eq(product.categoryId, filter.categoryId),
+        filter.categoryGroupId === undefined
+          ? undefined
+          : and(eq(product.categoryGroupId, filter.categoryGroupId), isNull(product.categoryId)),
         filter.includeArchived ? undefined : isNull(product.archivedAt),
       ),
     )
@@ -187,12 +220,15 @@ export async function findProduct(db: Database, scope: CurrentMember, id: string
 }
 
 export function createProduct(db: Database, scope: CurrentMember, input: NewProduct) {
-  const { pricingUnit, ...rest } = input;
+  const { pricingUnit, categoryId, categoryGroupId, ...rest } = input;
   return translate(async () => {
+    const placed = await place(db, scope, { categoryId, categoryGroupId });
+    if (!placed) throw new ParentNotFoundError();
     const [created] = await db
       .insert(product)
       .values({
         ...rest,
+        ...placed,
         householdId: scope.householdId,
         pricingUnitDimension: pricingUnit.dimension,
         pricingUnitName: pricingUnit.name,
@@ -210,9 +246,8 @@ export class MergedProductNotFoundError extends Error {
   override name = 'MergedProductNotFoundError';
 }
 
-export interface ProductChanges {
+export interface ProductChanges extends Placement {
   name?: string;
-  categoryId?: string;
   note?: string;
   pricingUnit?: Unit;
   // In the new pricing unit when that changes too.
@@ -220,8 +255,6 @@ export interface ProductChanges {
   stockLine?: number | null;
   archived?: boolean;
 }
-
-type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 // The row lock makes price records written concurrently wait, so none is stored in the old pricing unit.
 async function lockProducts(tx: Transaction, scope: CurrentMember, ids: string[]) {
@@ -253,12 +286,13 @@ function rescaleStockLine(stockLine: number | null, ratio: number) {
 }
 
 export function updateProduct(db: Database, scope: CurrentMember, id: string, input: ProductChanges) {
-  const { archived, pricingUnit, baseSize, stockLine, ...rest } = input;
+  const { archived, pricingUnit, baseSize, stockLine, categoryId, categoryGroupId, ...rest } = input;
   return translate(
     () =>
       db.transaction(async (tx) => {
         const [current] = await lockProducts(tx, scope, [id]);
         if (!current) return null;
+        const placed = await place(tx, scope, { categoryId, categoryGroupId });
         const unit = pricingUnit ?? current.pricingUnit;
         if (!isConvertible(current.pricingUnit, unit)) throw new IncompatibleUnitsError(current.pricingUnit, unit);
         await convertSizes(tx, scope, id, current.pricingUnit, unit);
@@ -269,6 +303,7 @@ export function updateProduct(db: Database, scope: CurrentMember, id: string, in
           .update(product)
           .set({
             ...rest,
+            ...placed,
             pricingUnitName: unit.name,
             baseSize: newBase,
             stockLine: stockLine === undefined ? rescaleStockLine(current.stockLine, newBase / convertedBase) : stockLine,

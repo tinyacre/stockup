@@ -76,6 +76,7 @@ export const category = pgTable(
   (table) => [
     uniqueIndex('category_household_name_uidx').on(table.householdId, table.name),
     unique('category_household_id_unique').on(table.householdId, table.id),
+    unique('category_household_id_group_unique').on(table.householdId, table.id, table.categoryGroupId),
     index('category_household_group_idx').on(table.householdId, table.categoryGroupId),
     foreignKey({
       name: 'category_category_group_fk',
@@ -94,7 +95,9 @@ export const product = pgTable(
     householdId: text('household_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
-    categoryId: text('category_id').notNull(),
+    categoryGroupId: text('category_group_id').notNull(),
+    // Null for a product placed directly in its category group.
+    categoryId: text('category_id'),
     name: text('name').notNull(),
     pricingUnitDimension: text('pricing_unit_dimension', { enum: unitDimensions }).notNull(),
     pricingUnitName: text('pricing_unit_name').notNull(),
@@ -110,11 +113,18 @@ export const product = pgTable(
   (table) => [
     unique('product_household_id_unique').on(table.householdId, table.id),
     index('product_household_category_idx').on(table.householdId, table.categoryId),
+    index('product_household_group_idx').on(table.householdId, table.categoryGroupId),
+    foreignKey({
+      name: 'product_category_group_fk',
+      columns: [table.householdId, table.categoryGroupId],
+      foreignColumns: [categoryGroup.householdId, categoryGroup.id],
+    }),
+    // Carries the category's group, so moving a category to another group moves its products along.
     foreignKey({
       name: 'product_category_fk',
-      columns: [table.householdId, table.categoryId],
-      foreignColumns: [category.householdId, category.id],
-    }),
+      columns: [table.householdId, table.categoryId, table.categoryGroupId],
+      foreignColumns: [category.householdId, category.id, category.categoryGroupId],
+    }).onUpdate('cascade'),
     check('product_base_size_check', sql`${table.baseSize} > 0`),
     check('product_stock_line_check', sql`${table.stockLine} > 0`),
     check(

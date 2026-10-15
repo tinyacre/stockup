@@ -55,6 +55,8 @@ export interface NewAccount {
 export interface CategoryGroup {
   id: string;
   name: string;
+  // Products placed in the group outside any category.
+  productCount: number;
   categories: { id: string; name: string; productCount: number }[];
 }
 
@@ -67,7 +69,9 @@ export interface Category {
 export interface Product {
   id: string;
   name: string;
-  categoryId: string;
+  categoryGroupId: string;
+  // Null for a product placed in its group outside any category.
+  categoryId: string | null;
   pricingUnit: Unit;
   baseSize: number;
   // Cents per Base Size.
@@ -85,9 +89,13 @@ export interface ProductSummary extends ProductDetail {
   latestPrice: { date: string; unitPrice: number; verdict: Verdict | null } | null;
 }
 
+// A category brings its group along; a group alone places the product outside any category.
+export type Placement = { categoryId: string; categoryGroupId?: never } | { categoryGroupId: string; categoryId?: never };
+
 export interface ProductChanges {
   name?: string;
   categoryId?: string;
+  categoryGroupId?: string;
   note?: string;
   // Only to another unit of the same dimension.
   pricingUnit?: Unit;
@@ -97,13 +105,12 @@ export interface ProductChanges {
   archived?: boolean;
 }
 
-export interface NewProduct {
-  categoryId: string;
+export type NewProduct = Placement & {
   name: string;
   pricingUnit: Unit;
   baseSize: number;
   note: string;
-}
+};
 
 export interface Channel {
   id: string;
@@ -334,9 +341,10 @@ export const api = {
     request<Category>(`/api/categories/${id}`, { method: 'PATCH', body }),
   deleteCategory: (id: string) => request(`/api/categories/${id}`, { method: 'DELETE' }),
 
-  products: (categoryId?: string, { includeArchived = false } = {}) => {
+  products: (placement?: Placement, { includeArchived = false } = {}) => {
     const query = new URLSearchParams();
-    if (categoryId) query.set('categoryId', categoryId);
+    if (placement?.categoryId) query.set('categoryId', placement.categoryId);
+    if (placement?.categoryGroupId) query.set('categoryGroupId', placement.categoryGroupId);
     if (includeArchived) query.set('includeArchived', 'true');
     return request<ProductSummary[]>(query.size ? `/api/products?${query}` : '/api/products');
   },

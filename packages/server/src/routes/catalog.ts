@@ -38,6 +38,7 @@ const categoryGroupSchema = z.object({ id: z.string(), name: z.string() }).opena
 export const catalogSchema = z
   .array(
     categoryGroupSchema.extend({
+      productCount: z.number().int().openapi({ description: 'Products placed in the group outside any category' }),
       categories: z.array(z.object({ id: z.string(), name: z.string(), productCount: z.number().int() })),
     }),
   )
@@ -59,7 +60,8 @@ export const productSchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    categoryId: z.string(),
+    categoryGroupId: z.string(),
+    categoryId: z.string().nullable().openapi({ description: 'Null for a product placed in its group outside any category' }),
     pricingUnit: pricingUnitSchema,
     baseSize: z.number().openapi({ description: 'Base Size in the pricing unit', example: 90 }),
     stockLine: z
@@ -102,18 +104,32 @@ const productSummarySchema = productDetailSchema
 
 const note = z.string().trim().max(500);
 
-export const newProductSchema = z.object({
-  categoryId: z.string(),
-  name: z.string().trim().min(1).max(100),
-  pricingUnit: pricingUnitSchema,
-  baseSize: z.number().positive().finite(),
-  note: note.optional(),
-});
+const placement = {
+  categoryId: z.string().optional(),
+  categoryGroupId: z
+    .string()
+    .optional()
+    .openapi({ description: 'Places the product in the group outside any category; give this or categoryId' }),
+};
+
+const atMostOnePlacement = (value: { categoryId?: string; categoryGroupId?: string }) =>
+  value.categoryId === undefined || value.categoryGroupId === undefined;
+const twoPlacements = { message: 'Give either categoryId or categoryGroupId' };
+
+export const newProductSchema = z
+  .object({
+    ...placement,
+    name: z.string().trim().min(1).max(100),
+    pricingUnit: pricingUnitSchema,
+    baseSize: z.number().positive().finite(),
+    note: note.optional(),
+  })
+  .refine((value) => (value.categoryId === undefined) !== (value.categoryGroupId === undefined), twoPlacements);
 
 const productChangesSchema = z
   .object({
     name: z.string().trim().min(1).max(100).optional(),
-    categoryId: z.string().optional(),
+    ...placement,
     note: note.optional(),
     pricingUnit: pricingUnitSchema.optional().openapi({
       description:
@@ -134,7 +150,12 @@ const productChangesSchema = z
       .openapi({ description: 'Cents per base size; null clears it' }),
     archived: z.boolean().optional(),
   })
-  .refine(atLeastOne, nothingToChange);
+  .refine(atLeastOne, nothingToChange)
+  .refine(atMostOnePlacement, twoPlacements);
+
+// Names the parent a create or move could not find.
+export const missingPlacement = (input: { categoryId?: string }) =>
+  input.categoryId === undefined ? 'category_group_not_found' : 'category_not_found';
 
 function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };
@@ -209,7 +230,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
       204: { description: 'Deleted' },
       ...unauthenticated,
       ...notFound,
-      409: { description: 'The group still has categories', content: errorContent },
+      409: { description: 'The group still has categories or products', content: errorContent },
     },
   });
 
@@ -273,6 +294,10 @@ export function catalogRoutes(db: Database, auth: Auth) {
     request: {
       query: z.object({
         categoryId: z.string().optional(),
+        categoryGroupId: z
+          .string()
+          .optional()
+          .openapi({ description: 'Only the products placed in this group outside any category' }),
         includeArchived: z
           .enum(['true', 'false'])
           .optional()
@@ -329,13 +354,16 @@ export function catalogRoutes(db: Database, auth: Auth) {
     method: 'post',
     path: '/products',
     tags: ['catalog'],
-    summary: 'Create a product in a category',
+    summary: 'Create a product in a category, or in a category group outside any category',
     middleware,
     request: { body: json(newProductSchema) },
     responses: {
       201: { description: 'Created', content: { 'application/json': { schema: productSchema } } },
       ...unauthenticated,
-      422: { description: 'No such category in this household', content: errorContent },
+      422: {
+        description: 'No such category (category_not_found) or category group (category_group_not_found) in this household',
+        content: errorContent,
+      },
     },
   });
 
@@ -344,7 +372,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
     path: '/products/{id}',
     tags: ['catalog'],
     summary:
-      'Rename a product, move it to another category, change its note, pricing unit, base size or stock line, or archive it',
+      'Rename a product, move it to another category or group, change its note, pricing unit, base size or stock line, or archive it',
     middleware,
     request: { params: idParams, body: json(productChangesSchema) },
     responses: {
@@ -353,7 +381,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
       ...notFound,
       422: {
         description:
-          'No such category in this household (category_not_found), or the pricing unit is of another dimension or count unit, so a new product is needed (incompatible_unit)',
+          'No such category (category_not_found) or category group (category_group_not_found) in this household, or the pricing unit is of another dimension or count unit, so a new product is needed (incompatible_unit)',
         content: errorContent,
       },
     },
@@ -467,7 +495,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
       try {
         return c.json(await createProduct(db, c.var.member, c.req.valid('json')), 201);
       } catch (error) {
-        return respondToError(c, error, 'category_not_found');
+        return respondToError(c, error, missingPlacement(c.req.valid('json')));
       }
     })
     .openapi(updateProductRoute, async (c) => {
@@ -475,7 +503,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
         const updated = await updateProduct(db, c.var.member, c.req.valid('param').id, c.req.valid('json'));
         return updated ? c.json(updated, 200) : c.json({ error: 'not_found' }, 404);
       } catch (error) {
-        return respondToError(c, error, 'category_not_found');
+        return respondToError(c, error, missingPlacement(c.req.valid('json')));
       }
     })
     .openapi(mergeProductRoute, async (c) => {

@@ -30,6 +30,7 @@ import {
   type Promotion,
 } from '@/lib/api';
 import { formatSize, formatStockLineGap, formatYuan } from '@/lib/format';
+import { outsideCategories, placementLabel } from '@/lib/catalog';
 import { Link, productPath } from '@/lib/navigation';
 import { useHistoryState } from '@/lib/history';
 import { useOnline } from '@/lib/online';
@@ -305,14 +306,6 @@ export function QuickPricePage() {
   );
 }
 
-function categoryLabel(groups: CategoryGroup[], categoryId: string) {
-  for (const group of groups) {
-    const category = group.categories.find((c) => c.id === categoryId);
-    if (category) return `${group.name} / ${category.name}`;
-  }
-  return '';
-}
-
 function ListSkeleton() {
   return (
     <div className="flex flex-col gap-3 px-2 py-2">
@@ -357,7 +350,7 @@ function SearchResults({
                 <ListRow asChild className={cn('w-full justify-between', i === 0 && 'wide:bg-surface-hover')}>
                   <button type="button" onClick={() => onPick(p.id)}>
                     <span className="min-w-0 truncate text-sm text-ink wide:text-[13px]">{p.name}</span>
-                    <span className="shrink-0 text-xs text-ink-3">{categoryLabel(groups, p.categoryId)}</span>
+                    <span className="shrink-0 text-xs text-ink-3">{placementLabel(groups, p)}</span>
                   </button>
                 </ListRow>
               </li>
@@ -385,10 +378,8 @@ function ProductList({
   const [groupId, setGroupId] = useHistoryState<string | undefined>('quickPriceGroupId', undefined);
   const active = products.filter((p) => !p.archived);
   if (active.length === 0) return <EmptyState title="暂无商品" />;
-  const inGroup = (g: CategoryGroup) => active.filter((p) => g.categories.some((c) => c.id === p.categoryId)).length;
-  const shownGroups = groups.filter(
-    (g) => g.categories.some((c) => active.some((p) => p.categoryId === c.id)) && (!groupId || g.id === groupId),
-  );
+  const inGroup = (g: CategoryGroup) => active.filter((p) => p.categoryGroupId === g.id).length;
+  const shownGroups = groups.filter((g) => inGroup(g) > 0 && (!groupId || g.id === groupId));
 
   return (
     <section aria-label="商品列表" className="-mx-3 flex flex-col max-wide:-mx-4">
@@ -415,11 +406,11 @@ function ProductList({
       </div>
       <div className="flex flex-col gap-1 py-2">
         {shownGroups.flatMap((g) =>
-          g.categories.map((c) => {
-            const items = active.filter((p) => p.categoryId === c.id);
+          [{ id: null, name: outsideCategories }, ...g.categories].map((c) => {
+            const items = active.filter((p) => p.categoryGroupId === g.id && p.categoryId === c.id);
             if (items.length === 0) return null;
             return (
-              <section key={c.id} aria-label={`${g.name} / ${c.name}`}>
+              <section key={c.id ?? g.id} aria-label={`${g.name} / ${c.name}`}>
                 <SectionHeader as="h2" title={c.name} count={items.length} className="px-4 pt-2" />
                 <List>
                   {items.map((p) => (
@@ -587,7 +578,7 @@ function QuickPrice({
   const header = (
     <section aria-label="商品" className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
       <div className="flex min-w-0 flex-col gap-1">
-        <p className="text-xs text-ink-3">{categoryLabel(household.groups, product.categoryId)}</p>
+        <p className="text-xs text-ink-3">{placementLabel(household.groups, product)}</p>
         <h2 className="text-title-page font-semibold text-ink">{product.name}</h2>
         <p className="flex items-center gap-1.5 text-xs text-ink-3">
           每 {perBase(product)}

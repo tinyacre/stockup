@@ -6,13 +6,15 @@ const ctx = useTestApp();
 interface CategoryGroup {
   id: string;
   name: string;
+  productCount: number;
   categories: { id: string; name: string; productCount: number }[];
 }
 
 interface Product {
   id: string;
   name: string;
-  categoryId: string;
+  categoryGroupId: string;
+  categoryId: string | null;
   pricingUnit: { dimension: string; name: string };
   baseSize: number;
   stockLine: number | null;
@@ -37,7 +39,7 @@ function createCategory(m: SignedInMember, categoryGroupId: string, name = uniqu
   return m.request('/api/categories', jsonRequest('POST', { categoryGroupId, name }));
 }
 
-function createProduct(m: SignedInMember, categoryId: string, overrides: Record<string, unknown> = {}) {
+function createProduct(m: SignedInMember, categoryId: string | undefined, overrides: Record<string, unknown> = {}) {
   return m.request(
     '/api/products',
     jsonRequest('POST', {
@@ -76,7 +78,7 @@ describe('category groups', () => {
     expect(renamed.status).toBe(200);
     expect(await renamed.json()).toEqual({ id: group.id, name: '宠物用品' });
 
-    expect(await catalogOf(m)).toEqual([{ id: group.id, name: '宠物用品', categories: [] }]);
+    expect(await catalogOf(m)).toEqual([{ id: group.id, name: '宠物用品', productCount: 0, categories: [] }]);
   });
 
   test('names are trimmed and must be unique within the household', async () => {
@@ -112,6 +114,24 @@ describe('category groups', () => {
     expect(await res.json()).toEqual({ error: 'not_empty' });
     expect((await catalogOf(m)).map((g) => g.id)).toEqual([group.id]);
   });
+
+  test('a group that still has products of its own is kept', async () => {
+    const m = await signUpHousehold(ctx);
+    const group = await created<{ id: string }>(await createGroup(m));
+    await created<Product>(await createProduct(m, undefined, { categoryGroupId: group.id }));
+    const res = await m.request(`/api/category-groups/${group.id}`, { method: 'DELETE' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'not_empty' });
+  });
+
+  test('count only the products outside their categories', async () => {
+    const m = await signUpHousehold(ctx);
+    const { group } = await seed(m);
+    await created<Product>(await createProduct(m, undefined, { categoryGroupId: group.id }));
+    const archived = await created<Product>(await createProduct(m, undefined, { categoryGroupId: group.id }));
+    await m.request(`/api/products/${archived.id}`, jsonRequest('PATCH', { archived: true }));
+    expect((await catalogOf(m))[0]!.productCount).toBe(1);
+  });
 });
 
 describe('categories', () => {
@@ -146,6 +166,16 @@ describe('categories', () => {
 
     const moved = (await catalogOf(m)).find((g) => g.id === target.id);
     expect(moved!.categories.map((c) => c.name)).toEqual(['豆腐猫砂']);
+  });
+
+  test('take their products along to another group', async () => {
+    const m = await signUpHousehold(ctx);
+    const { category, product } = await seed(m);
+    const target = await created<{ id: string }>(await createGroup(m));
+
+    await m.request(`/api/categories/${category.id}`, jsonRequest('PATCH', { categoryGroupId: target.id }));
+    const res = await m.request(`/api/products/${product.id}`);
+    expect(await res.json()).toMatchObject({ categoryGroupId: target.id, categoryId: category.id });
   });
 
   test('names must be unique within the household', async () => {
@@ -196,6 +226,7 @@ describe('products', () => {
     expect(product).toEqual({
       id: product.id,
       name: '渴望猫粮',
+      categoryGroupId: category.categoryGroupId,
       categoryId: category.id,
       pricingUnit: { dimension: 'weight', name: '磅' },
       baseSize: 25,
@@ -258,6 +289,41 @@ describe('products', () => {
     const res = await createProduct(m, crypto.randomUUID());
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: 'category_not_found' });
+  });
+
+  test('are created directly in a group, outside any category', async () => {
+    const m = await signUpHousehold(ctx);
+    const group = await created<{ id: string }>(await createGroup(m));
+    const product = await created<Product>(await createProduct(m, undefined, { categoryGroupId: group.id }));
+    expect(product).toMatchObject({ categoryGroupId: group.id, categoryId: null });
+  });
+
+  test('need an existing group when placed in one', async () => {
+    const m = await signUpHousehold(ctx);
+    const res = await createProduct(m, undefined, { categoryGroupId: crypto.randomUUID() });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: 'category_group_not_found' });
+  });
+
+  test('take exactly one of a category and a group', async () => {
+    const m = await signUpHousehold(ctx);
+    const { group, category, product } = await seed(m);
+    expect((await createProduct(m, undefined)).status).toBe(400);
+    expect((await createProduct(m, category.id, { categoryGroupId: group.id })).status).toBe(400);
+    const move = await m.request(
+      `/api/products/${product.id}`,
+      jsonRequest('PATCH', { categoryId: category.id, categoryGroupId: group.id }),
+    );
+    expect(move.status).toBe(400);
+  });
+
+  test('are listed by the group they sit in directly', async () => {
+    const m = await signUpHousehold(ctx);
+    const { group } = await seed(m);
+    const direct = await created<Product>(await createProduct(m, undefined, { categoryGroupId: group.id }));
+
+    const res = await m.request(`/api/products?categoryGroupId=${group.id}`);
+    expect(await res.json()).toEqual([{ ...direct, lowestUnitPrice: null, latestPrice: null }]);
   });
 
   test('are listed by category', async () => {
@@ -360,6 +426,29 @@ describe('products', () => {
     expect(await res.json()).toEqual({ ...product, name: '维达抽纸', categoryId: target.id, note: '超韧和棉韧都算' });
   });
 
+  test('are moved out of their category into a group and back', async () => {
+    const m = await signUpHousehold(ctx);
+    const { category, product } = await seed(m);
+    const target = await created<{ id: string }>(await createGroup(m));
+
+    const out = await m.request(`/api/products/${product.id}`, jsonRequest('PATCH', { categoryGroupId: target.id }));
+    expect(await out.json()).toEqual({ ...product, categoryGroupId: target.id, categoryId: null });
+
+    const back = await m.request(`/api/products/${product.id}`, jsonRequest('PATCH', { categoryId: category.id }));
+    expect(await back.json()).toEqual(product);
+  });
+
+  test('cannot be moved to a missing group', async () => {
+    const m = await signUpHousehold(ctx);
+    const { product } = await seed(m);
+    const res = await m.request(
+      `/api/products/${product.id}`,
+      jsonRequest('PATCH', { categoryGroupId: crypto.randomUUID() }),
+    );
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: 'category_group_not_found' });
+  });
+
   test('cannot be moved to a missing category', async () => {
     const m = await signUpHousehold(ctx);
     const { product } = await seed(m);
@@ -418,6 +507,7 @@ describe('household isolation', () => {
 
     expect((await createCategory(alice, group.id)).status).toBe(422);
     expect((await createProduct(alice, category.id)).status).toBe(422);
+    expect((await createProduct(alice, undefined, { categoryGroupId: group.id })).status).toBe(422);
     const move = await alice.request(
       `/api/categories/${mine.category.id}`,
       jsonRequest('PATCH', { categoryGroupId: group.id }),

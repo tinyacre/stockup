@@ -26,6 +26,7 @@ import {
   type ProductDetail,
   type Promotion,
 } from '@/lib/api';
+import { placementKey, placementOf } from '@/lib/catalog';
 import { formatSize, formatYuan } from '@/lib/format';
 import {
   discountDraft,
@@ -49,7 +50,7 @@ const UnitPriceChart = lazy(() =>
   import('@/components/unit-price-chart').then((m) => ({ default: m.UnitPriceChart })),
 );
 
-export function ProductPage({ productId, onBack }: { productId: string; onBack(categoryId?: string): void }) {
+export function ProductPage({ productId, onBack }: { productId: string; onBack(placement?: string): void }) {
   const [product, setProduct] = useState<ProductDetail | null>();
   const [records, setRecords] = useState<PriceRecord[]>();
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -111,7 +112,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
   const all = records ?? [];
   const filtering = Object.values(filter).some((v) => v !== undefined);
   const shown = all.filter((r) => matches(r, filter));
-  const group = catalog.find((g) => g.categories.some((c) => c.id === product.categoryId));
+  const group = catalog.find((g) => g.id === product.categoryGroupId);
   const category = group?.categories.find((c) => c.id === product.categoryId);
 
   const saved = async () => {
@@ -135,8 +136,10 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
           title={product.name}
           crumbs={[
             { label: '商品', onClick: () => onBack() },
-            ...(group ? [{ label: group.name }] : []),
-            ...(category ? [{ label: category.name, onClick: () => onBack(category.id) }] : []),
+            ...(group
+              ? [{ label: group.name, onClick: category ? undefined : () => onBack(placementKey(placementOf(product))) }]
+              : []),
+            ...(category ? [{ label: category.name, onClick: () => onBack(placementKey(placementOf(product))) }] : []),
           ]}
         />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">

@@ -185,7 +185,7 @@ function Home({ me, onSignOut, onSessionChange }: { me: Me; onSignOut(): void; o
           <ProductPage
             key={productId}
             productId={productId}
-            onBack={(categoryId) => navigate('/products', { categoryId })}
+            onBack={(placement) => navigate('/products', { placement })}
           />
         ) : recognitionId ? (
           <RecognitionPage

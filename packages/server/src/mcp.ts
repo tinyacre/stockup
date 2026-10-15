@@ -165,7 +165,8 @@ function stockupServer(db: Database, userId: string, scopes: string[]) {
     'list_categories',
     {
       title: 'List categories',
-      description: "List the household's category groups with their categories and how many products each holds.",
+      description:
+        "List the household's category groups with their categories and how many products each holds; a group's own count is of products outside any category.",
       inputSchema: z.object({}),
       outputSchema: z.object({ categoryGroups: catalogSchema }),
       annotations: readOnly,
@@ -182,14 +183,17 @@ function stockupServer(db: Database, userId: string, scopes: string[]) {
     {
       title: 'Create a product',
       description:
-        'Create a product in one of the categories list_categories returns. Search first: a product is a brand and line sharing one stock line, such as 得宝抽纸 M 码, and scents or colours of it are the same product. baseSize, in the pricing unit, is the reference amount unit prices are shown for, such as 90 抽 or 500 g.',
+        'Create a product in one of the categories list_categories returns, or with categoryGroupId directly in a category group when no category fits. Search first: a product is a brand and line sharing one stock line, such as 得宝抽纸 M 码, and scents or colours of it are the same product. baseSize, in the pricing unit, is the reference amount unit prices are shown for, such as 90 抽 or 500 g.',
       inputSchema: newProductSchema,
       outputSchema: z.object({ product: productSchema }),
       annotations: write,
     },
     (input) =>
       asMember(async (member) => ({ product: await createProduct(db, member, input) }), {
-        missingParent: '这个家庭没有这个品类，请先用 list_categories 找到品类 ID。',
+        missingParent:
+          input.categoryId === undefined
+            ? '这个家庭没有这个大类，请先用 list_categories 找到大类 ID。'
+            : '这个家庭没有这个品类，请先用 list_categories 找到品类 ID。',
       }),
   );
 

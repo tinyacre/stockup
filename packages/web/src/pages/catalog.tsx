@@ -14,20 +14,54 @@ import { Panel } from '@/components/ui/panel';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, attempt, describeError, NameForm, nameTaken, RetryAlert, type Action } from '@/components/editing';
-import { NewProductForm, NoteField } from '@/components/product-form';
-import { api, type CategoryGroup, type Product, type ProductSummary } from '@/lib/api';
+import { NewProductForm, NoteField, PlacementSelect } from '@/components/product-form';
+import { api, type CategoryGroup, type Placement, type Product, type ProductSummary } from '@/lib/api';
+import { outsideCategories, parsePlacementKey, placementKey, placementLabel, placementOf } from '@/lib/catalog';
 import { formatSize } from '@/lib/format';
 import { Link, productPath } from '@/lib/navigation';
 import { useHistoryState } from '@/lib/history';
 import { useProductSearch } from '@/lib/search';
 import { cn } from '@/lib/utils';
 
-type PlacedCategory = CategoryGroup['categories'][number] & { group: CategoryGroup };
+// A category, or the products a group holds outside its categories.
+interface Shelf {
+  key: string;
+  placement: Placement;
+  name: string;
+  productCount: number;
+  group: CategoryGroup;
+  category?: CategoryGroup['categories'][number];
+}
+
+function shelvesOf(groups: CategoryGroup[]): Shelf[] {
+  return groups.flatMap((group) => [
+    {
+      key: placementKey({ categoryGroupId: group.id }),
+      placement: { categoryGroupId: group.id },
+      name: outsideCategories,
+      productCount: group.productCount,
+      group,
+    },
+    ...group.categories.map((category) => ({
+      key: placementKey({ categoryId: category.id }),
+      placement: { categoryId: category.id },
+      name: category.name,
+      productCount: category.productCount,
+      group,
+      category,
+    })),
+  ]);
+}
+
+// A group lists its own shelf once it holds products there, or while it has no category to offer instead.
+function showsGroupShelf(group: CategoryGroup) {
+  return group.productCount > 0 || group.categories.length === 0;
+}
 
 export function CatalogPage() {
   const [groups, setGroups] = useState<CategoryGroup[]>();
   const [loadError, setLoadError] = useState<string>();
-  const [selectedId, setSelectedId] = useHistoryState<string | undefined>('categoryId', undefined);
+  const [selectedKey, setSelectedKey] = useHistoryState<string | undefined>('placement', undefined);
   const [query, setQuery] = useHistoryState('query', '');
   const [creating, setCreating] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -57,10 +91,9 @@ export function CatalogPage() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const categories: PlacedCategory[] = (groups ?? []).flatMap((g) => g.categories.map((c) => ({ ...c, group: g })));
-  const selected = categories.find((c) => c.id === selectedId);
+  const selected = shelvesOf(groups ?? []).find((s) => s.key === selectedKey);
   const trimmed = query.trim();
-  // New products go into the selected category; an empty one offers 新建商品 in its own empty state instead.
+  // New products go onto the selected shelf; an empty one offers 新建商品 in its own empty state instead.
   const canCreate = selected && !creating && (selected.productCount > 0 || trimmed);
 
   const header = (
@@ -113,7 +146,7 @@ export function CatalogPage() {
         <PageContent>
           {loadAlert}
           <section aria-label="搜索结果">
-            <SearchResults query={trimmed} categories={categories} />
+            <SearchResults query={trimmed} groups={groups} />
           </section>
         </PageContent>
       </>
@@ -132,29 +165,29 @@ export function CatalogPage() {
         >
           <CategoryTree
             groups={groups}
-            selectedId={selected?.id}
-            onSelect={(id) => {
+            selectedKey={selected?.key}
+            onSelect={(key) => {
               setCreating(false);
-              setSelectedId(id);
+              setSelectedKey(key);
             }}
             onChange={reload}
           />
         </section>
         <section aria-label="品类详情" className={cn('flex min-w-0 flex-col', !showsDetail && 'max-wide:hidden')}>
           {selected ? (
-            <CategoryPanel
-              key={selected.id}
-              category={selected}
+            <ShelfPanel
+              key={selected.key}
+              shelf={selected}
               groups={groups}
               creating={creating}
               onCreatingChange={setCreating}
               onBack={() => {
                 setCreating(false);
-                setSelectedId(undefined);
+                setSelectedKey(undefined);
               }}
               onChange={reload}
               onDeleted={() => {
-                setSelectedId(undefined);
+                setSelectedKey(undefined);
                 return reload();
               }}
             />
@@ -178,13 +211,7 @@ function CatalogSkeleton() {
   );
 }
 
-function SearchResults({
-  query,
-  categories,
-}: {
-  query: string;
-  categories: PlacedCategory[];
-}) {
+function SearchResults({ query, groups }: { query: string; groups: CategoryGroup[] }) {
   const { found, error } = useProductSearch(query);
 
   if (error) return <Alert>{`搜索失败：${error}`}</Alert>;
@@ -202,14 +229,14 @@ function SearchResults({
     <Panel>
       <List variant="ruled" aria-busy={stale} inert={stale} className={cn(stale && 'opacity-50')}>
         {found.products.map((product) => {
-          const category = categories.find((c) => c.id === product.categoryId);
+          const placement = placementLabel(groups, product);
           return (
             <li key={product.id} aria-label={product.name}>
               <ListRow className="py-2.5">
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <ProductLink product={product} />
                   <span className="text-xs text-ink-3">
-                    {category && `${category.group.name} / ${category.name} · `}基准规格{' '}
+                    {placement && `${placement} · `}基准规格{' '}
                     {formatSize(product.baseSize, product.pricingUnit)}
                   </span>
                 </div>
@@ -268,13 +295,13 @@ function ConfirmDelete({ label, children, onDelete }: { label: string; children?
 
 function CategoryTree({
   groups,
-  selectedId,
+  selectedKey,
   onSelect,
   onChange,
 }: {
   groups: CategoryGroup[];
-  selectedId?: string;
-  onSelect(id: string): void;
+  selectedKey?: string;
+  onSelect(key: string): void;
   onChange(): Promise<void>;
 }) {
   const newGroup = (
@@ -296,7 +323,7 @@ function CategoryTree({
       <SectionHeader title="分类" className="px-4 pt-3" />
       <div className="flex flex-1 flex-col gap-1 pb-3">
         {groups.map((group) => (
-          <GroupItem key={group.id} group={group} selectedId={selectedId} onSelect={onSelect} onChange={onChange} />
+          <GroupItem key={group.id} group={group} selectedKey={selectedKey} onSelect={onSelect} onChange={onChange} />
         ))}
       </div>
       <div className="border-t border-line px-3 py-3 wide:sticky wide:bottom-0 wide:bg-surface">{newGroup}</div>
@@ -306,19 +333,20 @@ function CategoryTree({
 
 function GroupItem({
   group,
-  selectedId,
+  selectedKey,
   onSelect,
   onChange,
 }: {
   group: CategoryGroup;
-  selectedId?: string;
-  onSelect(id: string): void;
+  selectedKey?: string;
+  onSelect(key: string): void;
   onChange(): Promise<void>;
 }) {
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState<string>();
-  const total = group.categories.reduce((sum, c) => sum + c.productCount, 0);
+  const shelves = shelvesOf([group]).filter((s) => s.category || showsGroupShelf(group));
+  const total = shelves.reduce((sum, s) => sum + s.productCount, 0);
 
   return (
     <div role="group" aria-label={`大类 ${group.name}`}>
@@ -362,7 +390,7 @@ function GroupItem({
                           await api.deleteCategoryGroup(group.id);
                           await onChange();
                         },
-                        { not_empty: '大类下还有品类' },
+                        { not_empty: '大类下还有品类或商品' },
                       )) ?? undefined,
                     )
                   }
@@ -390,26 +418,26 @@ function GroupItem({
                     const created = await api.createCategory({ categoryGroupId: group.id, name });
                     setAdding(false);
                     await onChange();
-                    onSelect(created.id);
+                    onSelect(placementKey({ categoryId: created.id }));
                   }, nameTaken)
                 }
               />
             </ListRow>
           </li>
         )}
-        {group.categories.map((category) => (
-          <li key={category.id}>
-            <ListRow inset asChild aria-current={category.id === selectedId ? 'true' : undefined}>
+        {shelves.map((shelf) => (
+          <li key={shelf.key}>
+            <ListRow inset asChild aria-current={shelf.key === selectedKey ? 'true' : undefined}>
               <button
                 type="button"
                 className={cn(
                   'h-8 w-full py-0 text-[13px] text-ink-2 aria-[current]:font-medium aria-[current]:text-ink',
-                  category.productCount === 0 && 'text-ink-3',
+                  shelf.productCount === 0 && 'text-ink-3',
                 )}
-                onClick={() => onSelect(category.id)}
+                onClick={() => onSelect(shelf.key)}
               >
-                <span className="min-w-0 flex-1 truncate">{category.name}</span>
-                <span className="numeric text-xs text-ink-3">{category.productCount}</span>
+                <span className="min-w-0 flex-1 truncate">{shelf.name}</span>
+                <span className="numeric text-xs text-ink-3">{shelf.productCount}</span>
               </button>
             </ListRow>
           </li>
@@ -424,8 +452,8 @@ const priceColumns = 'grid grid-cols-3 gap-3';
 const rowGrid =
   'wide:grid-cols-[minmax(0,1fr)_6rem_minmax(0,26rem)_4.5rem] wide:items-center wide:gap-x-4';
 
-function CategoryPanel({
-  category,
+function ShelfPanel({
+  shelf,
   groups,
   creating,
   onCreatingChange,
@@ -433,7 +461,7 @@ function CategoryPanel({
   onChange,
   onDeleted,
 }: {
-  category: PlacedCategory;
+  shelf: Shelf;
   groups: CategoryGroup[];
   creating: boolean;
   onCreatingChange(creating: boolean): void;
@@ -441,6 +469,7 @@ function CategoryPanel({
   onChange(): Promise<void>;
   onDeleted(): Promise<void>;
 }) {
+  const { key: shelfKey, category } = shelf;
   const [products, setProducts] = useState<ProductSummary[]>();
   const [editingId, setEditingId] = useState<string>();
   const [renaming, setRenaming] = useState(false);
@@ -449,12 +478,12 @@ function CategoryPanel({
 
   const reload = useCallback(async () => {
     try {
-      setProducts(await api.products(category.id));
+      setProducts(await api.products(parsePlacementKey(shelfKey)));
       setLoadError(undefined);
     } catch (error) {
       setLoadError(describeError(error));
     }
-  }, [category.id]);
+  }, [shelfKey]);
   useEffect(() => {
     reload();
   }, [reload]);
@@ -469,9 +498,9 @@ function CategoryPanel({
     <PageContent className="gap-4">
       <Button variant="ghost" size="sm" className="-ml-2 self-start wide:hidden" onClick={onBack}>
         <ChevronLeft />
-        {category.group.name}
+        {shelf.group.name}
       </Button>
-      {renaming ? (
+      {renaming && category ? (
         <NameForm
           label="品类名称"
           submitLabel="保存"
@@ -491,67 +520,69 @@ function CategoryPanel({
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           <div className="min-w-0">
             <p className="flex items-center gap-1 text-xs text-ink-3 max-wide:hidden">
-              {category.group.name}
+              {shelf.group.name}
               <ChevronRight className="size-3.5 text-ink-4" />
             </p>
             <h2 className="flex items-baseline gap-2.5 text-xl font-semibold text-ink">
-              {category.name}
+              {shelf.name}
               <small className="text-[13px] font-normal tracking-normal text-ink-3">
-                {category.productCount} 个商品
+                {shelf.productCount} 个商品
               </small>
             </h2>
           </div>
-          <div className="flex flex-wrap items-center gap-2 wide:ml-auto">
-            <label className="flex items-center gap-2 text-xs text-ink-3">
-              所属大类
-              <NativeSelect
-                className="w-36"
-                value={category.group.id}
-                onChange={(event) => {
-                  const categoryGroupId = event.target.value;
+          {category && (
+            <div className="flex flex-wrap items-center gap-2 wide:ml-auto">
+              <label className="flex items-center gap-2 text-xs text-ink-3">
+                所属大类
+                <NativeSelect
+                  className="w-36"
+                  value={shelf.group.id}
+                  onChange={(event) => {
+                    const categoryGroupId = event.target.value;
+                    run(() =>
+                      attempt(async () => {
+                        await api.updateCategory(category.id, { categoryGroupId });
+                        await onChange();
+                      }),
+                    );
+                  }}
+                >
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+              <Button variant="outline" aria-label={`重命名 ${category.name}`} onClick={() => setRenaming(true)}>
+                <Pencil />
+                重命名
+              </Button>
+              <ConfirmDelete
+                label={`删除品类 ${category.name}`}
+                onDelete={() =>
                   run(() =>
-                    attempt(async () => {
-                      await api.updateCategory(category.id, { categoryGroupId });
-                      await onChange();
-                    }),
-                  );
-                }}
+                    attempt(
+                      async () => {
+                        await api.deleteCategory(category.id);
+                        await onDeleted();
+                      },
+                      { not_empty: '品类下还有商品' },
+                    ),
+                  )
+                }
               >
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-            <Button variant="outline" aria-label={`重命名 ${category.name}`} onClick={() => setRenaming(true)}>
-              <Pencil />
-              重命名
-            </Button>
-            <ConfirmDelete
-              label={`删除品类 ${category.name}`}
-              onDelete={() =>
-                run(() =>
-                  attempt(
-                    async () => {
-                      await api.deleteCategory(category.id);
-                      await onDeleted();
-                    },
-                    { not_empty: '品类下还有商品' },
-                  ),
-                )
-              }
-            >
-              删除
-            </ConfirmDelete>
-          </div>
+                删除
+              </ConfirmDelete>
+            </div>
+          )}
         </div>
       )}
       {error && <Alert>{error}</Alert>}
 
       {creating && (
         <NewProductForm
-          categoryId={category.id}
+          placement={shelf.placement}
           className="max-w-160"
           onCancel={() => onCreatingChange(false)}
           onCreated={async () => {
@@ -624,7 +655,7 @@ function CategoryPanel({
           </List>
         </Panel>
       )}
-      <ArchivedProducts categoryId={category.id} />
+      <ArchivedProducts shelfKey={shelfKey} />
     </PageContent>
   );
 }
@@ -702,14 +733,14 @@ function PriceSummary({ product }: { product: ProductSummary }) {
   );
 }
 
-function ArchivedProducts({ categoryId }: { categoryId: string }) {
+function ArchivedProducts({ shelfKey }: { shelfKey: string }) {
   const [archived, setArchived] = useState<Product[]>([]);
   useEffect(() => {
-    api.products(categoryId, { includeArchived: true }).then(
+    api.products(parsePlacementKey(shelfKey), { includeArchived: true }).then(
       (products) => setArchived(products.filter((p) => p.archived)),
       () => setArchived([]),
     );
-  }, [categoryId]);
+  }, [shelfKey]);
 
   if (archived.length === 0) return null;
   return (
@@ -760,7 +791,7 @@ function ProductEditor({
       (await attempt(async () => {
         await api.updateProduct(product.id, {
           name: String(data.get('name')),
-          categoryId: String(data.get('categoryId')),
+          ...parsePlacementKey(String(data.get('placement'))),
           note: String(data.get('note')),
         });
         await onSaved();
@@ -776,17 +807,13 @@ function ProductEditor({
           <Input id={`${id}-name`} name="name" required maxLength={100} defaultValue={product.name} />
         </Field>
         <Field label="所属品类" htmlFor={`${id}-category`}>
-          <NativeSelect id={`${id}-category`} name="categoryId" className="w-full" defaultValue={product.categoryId}>
-            {groups.map((g) => (
-              <optgroup key={g.id} label={g.name}>
-                {g.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </NativeSelect>
+          <PlacementSelect
+            id={`${id}-category`}
+            name="placement"
+            className="w-full"
+            defaultValue={placementKey(placementOf(product))}
+            groups={groups}
+          />
         </Field>
       </div>
       <p className="text-xs text-ink-3">

@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useState, type ComponentProps, type FormEvent } from 'react';
 import { isUnit, volumeUnits, weightUnits, type Unit } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
@@ -6,22 +6,46 @@ import { Input, InputAddon, InputGroup, InputGroupInput, Textarea } from '@/comp
 import { NativeSelect } from '@/components/ui/native-select';
 import { Panel, PanelBody, PanelFooter, PanelHeader } from '@/components/ui/panel';
 import { Alert, attempt } from '@/components/editing';
-import { api, type CategoryGroup, type Product } from '@/lib/api';
+import { api, type CategoryGroup, type Placement, type Product } from '@/lib/api';
+import { outsideCategories, parsePlacementKey, placementKey } from '@/lib/catalog';
 
 // The select's value is "dimension:name"; the count option leaves the name to a separate input.
 const countUnit = 'count:';
 
-// A product goes either into a known category or into one the member picks from the groups.
-type Placement = { categoryId: string; groups?: never } | { categoryId?: never; groups: CategoryGroup[] };
+// A product goes either into a known placement or into one the member picks from the groups.
+type Destination = { placement: Placement; groups?: never } | { placement?: never; groups: CategoryGroup[] };
+
+// Each group offers itself first, for products outside its categories.
+export function PlacementSelect({ groups, ...props }: { groups: CategoryGroup[] } & ComponentProps<typeof NativeSelect>) {
+  return (
+    <NativeSelect {...props}>
+      {props.defaultValue === '' && (
+        <option value="" disabled>
+          选择品类
+        </option>
+      )}
+      {groups.map((g) => (
+        <optgroup key={g.id} label={g.name}>
+          <option value={placementKey({ categoryGroupId: g.id })}>{outsideCategories}</option>
+          {g.categories.map((c) => (
+            <option key={c.id} value={placementKey({ categoryId: c.id })}>
+              {c.name}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </NativeSelect>
+  );
+}
 
 export function NewProductForm({
-  categoryId,
+  placement,
   groups,
   defaultName,
   className,
   onCancel,
   onCreated,
-}: Placement & {
+}: Destination & {
   defaultName?: string;
   className?: string;
   onCancel(): void;
@@ -54,7 +78,7 @@ export function NewProductForm({
     setError(
       (await attempt(async () => {
         const product = await api.createProduct({
-          categoryId: categoryId ?? String(data.get('categoryId')),
+          ...(placement ?? parsePlacementKey(String(data.get('placement')))!),
           name: String(data.get('name')),
           pricingUnit,
           baseSize,
@@ -78,22 +102,16 @@ export function NewProductForm({
             <Field
               label="所属品类"
               htmlFor={`${id}-category`}
-              hint={groups.every((g) => g.categories.length === 0) && '暂无品类'}
+              hint={groups.length === 0 && '暂无大类'}
             >
-              <NativeSelect id={`${id}-category`} name="categoryId" required defaultValue="" className="w-full">
-                <option value="" disabled>
-                  选择品类
-                </option>
-                {groups.map((g) => (
-                  <optgroup key={g.id} label={g.name}>
-                    {g.categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </NativeSelect>
+              <PlacementSelect
+                id={`${id}-category`}
+                name="placement"
+                required
+                defaultValue=""
+                className="w-full"
+                groups={groups}
+              />
             </Field>
           )}
           <div className="grid grid-cols-2 gap-3">
