@@ -24,10 +24,10 @@ test('a member picks a theme in settings and it follows the account to other dev
 
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '设置' }).click();
   const theme = page.getByRole('radiogroup', { name: '主题' });
-  await expect(theme.getByRole('radio', { name: '工具' })).toBeChecked();
-  await theme.getByRole('radio', { name: '价签' }).click();
+  await expect(theme.getByRole('radio', { name: '简洁' })).toBeChecked();
+  await theme.getByRole('radio', { name: '醒目' }).click();
   await expect(html).toHaveAttribute('data-theme', 'price-tag');
-  await expect(theme.getByRole('radio', { name: '价签' })).toBeChecked();
+  await expect(theme.getByRole('radio', { name: '醒目' })).toBeChecked();
 
   await page.reload();
   await expect(html).toHaveAttribute('data-theme', 'price-tag');
