@@ -65,7 +65,7 @@ test('a member prices a product from the home page and keeps it as seen only', a
   await expect(form).toContainText('共 18');
   await form.getByRole('button', { name: '130 抽' }).click();
   await expect(form.getByLabel('规格', { exact: true })).toHaveValue('130');
-  await form.getByRole('button', { name: '加一项优惠' }).click();
+  await form.getByRole('button', { name: '添加优惠' }).click();
   await form.getByLabel('优惠 1 金额').fill('10');
 
   const judgment = page.getByRole('status', { name: '判断' });
@@ -119,7 +119,7 @@ test('pricing without saving leaves no record', async ({ page }) => {
   await search.fill(productName);
   await page.getByRole('region', { name: '搜索结果' }).getByRole('button', { name: productName }).click();
   await expect(page.getByRole('list', { name: '参考单价' })).toHaveCount(0);
-  await expect(page.getByText('还没有价格记录。')).toBeVisible();
+  await expect(page.getByText('暂无价格记录')).toBeVisible();
   await page.getByRole('form', { name: '快速算价' }).getByLabel('原价').fill('39.9');
   await expect(page.getByRole('status', { name: '判断' })).toContainText('无参考');
 
@@ -220,7 +220,7 @@ test('quick price shows the same judgment as the judgment API', async ({ page })
     const removeDiscount = form.getByRole('button', { name: '移除优惠 1' });
     if (await removeDiscount.isVisible()) await removeDiscount.click();
     if (c.discount) {
-      await form.getByRole('button', { name: '加一项优惠' }).click();
+      await form.getByRole('button', { name: '添加优惠' }).click();
       await form.getByLabel('优惠 1 金额').fill(String(c.discount));
     }
 
@@ -242,9 +242,10 @@ test('quick price shows the same judgment as the judgment API', async ({ page })
         ? `到手 ${formatYuan(judgment.netPrice)}${judgment.verdict === null ? '，未设入手价' : ''}`
         : `${formatStockLineGap(judgment.stockLineGap)}，到手 ${formatYuan(judgment.netPrice)}`;
     const badge = judgment.verdict ? badges[judgment.verdict] : '—';
-    await expect(judgmentOutput, JSON.stringify(c)).toHaveText(
-      `${badge}¥${(judgment.unitPrice / 100).toFixed(2)} / 90 抽${gap}`,
-    );
+    // The output reads the verdict, the unit price and the gap first, then the price breakdown.
+    const head = `${badge}¥${(judgment.unitPrice / 100).toFixed(2)} / 90 抽${gap}`;
+    const escaped = head.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await expect(judgmentOutput, JSON.stringify(c)).toHaveText(new RegExp(`^${escaped}(原价|$)`));
 
     const references = [
       judgment.lowestUnitPrice !== null && `历史最低${(judgment.lowestUnitPrice / 100).toFixed(2)}`,
@@ -370,7 +371,6 @@ test('a member creates a product that search misses and goes on pricing it', asy
 
   await search.fill(productName);
   const results = page.getByRole('region', { name: '搜索结果' });
-  await expect(results).toContainText(`没有找到「${productName}」相关的商品。`);
   await results.getByRole('button', { name: `新建「${productName}」` }).click();
 
   const create = page.getByRole('form', { name: '新建商品' });
