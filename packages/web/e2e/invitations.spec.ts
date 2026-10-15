@@ -55,7 +55,7 @@ test('an invited family member registers and joins the household', async ({ page
   await page.goto(link);
   await expect(page.getByRole('alert')).toContainText('一个成员只能属于一个家庭');
   await page.getByRole('button', { name: '登出' }).click();
-  await expect(page.getByRole('alert')).toContainText('已经被使用过了');
+  await expect(page.getByRole('alert')).toContainText('邀请链接已被使用');
 });
 
 test('a revoked link can no longer be used', async ({ page }) => {
@@ -67,5 +67,5 @@ test('a revoked link can no longer be used', async ({ page }) => {
   await expect(page.getByRole('button', { name: '登录' })).toBeVisible();
 
   await page.goto(link);
-  await expect(page.getByRole('alert')).toContainText('已被作废');
+  await expect(page.getByRole('alert')).toContainText('邀请链接已作废');
 });

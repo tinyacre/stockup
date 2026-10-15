@@ -6,7 +6,7 @@ test('a member signs in and out', async ({ page }) => {
   await page.getByLabel('用户名').fill(founder.username);
   await page.getByLabel('密码').fill('wrong-password');
   await page.getByRole('button', { name: '登录' }).click();
-  await expect(page.getByRole('alert')).toHaveText('用户名或密码不正确。');
+  await expect(page.getByRole('alert')).toHaveText('用户名或密码错误');
 
   await page.getByLabel('密码').fill(founder.password);
   await page.getByRole('button', { name: '登录' }).click();

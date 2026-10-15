@@ -1,9 +1,22 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { isMonthDay } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, attempt, describeError, EditableTitle, nameTaken, RetryAlert } from '@/components/editing';
+import { List, ListRow } from '@/components/ui/list';
+import { PageContent, PageHeader } from '@/components/ui/page';
+import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
+import {
+  Alert,
+  attempt,
+  describeError,
+  EditableTitle,
+  ListSkeleton,
+  listPageClass,
+  nameTaken,
+  RetryAlert,
+} from '@/components/editing';
 import { api, type Promotion } from '@/lib/api';
 
 type Range = Pick<Promotion, 'startsOn' | 'endsOn'>;
@@ -16,7 +29,7 @@ function rangeOf({ startsOn, endsOn }: Range): Range {
   return { startsOn, endsOn };
 }
 
-const rangeError = '日期请写成 月-日，如 05-31。';
+const rangeError = '日期格式应为 月-日';
 
 export function PromotionsPage() {
   const [promotions, setPromotions] = useState<Promotion[]>();
@@ -35,55 +48,55 @@ export function PromotionsPage() {
   }, [reload]);
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-6 p-4">
-      <div>
-        <h2 className="text-xl font-semibold">大促</h2>
-        <p className="text-muted-foreground text-sm">
-          每年按这些日期范围自动标注价格记录；多个大促重叠时取范围最短的一个。修改范围只影响之后新建的记录。
-        </p>
-      </div>
-      {loadError && <RetryAlert message={`大促加载失败：${loadError}`} onRetry={reload} />}
+    <PageContent className={listPageClass}>
+      <PageHeader title="大促" />
+      {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
       <NewPromotionForm onCreated={reload} />
-      {promotions && (
-        <ul aria-label="大促列表" className="flex flex-col gap-2">
-          {promotions.map((promotion) => (
-            <li key={promotion.id} aria-label={promotion.name} className="rounded-lg border px-3 py-2">
-              <PromotionItem promotion={promotion} onChange={reload} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+      <Panel>
+        <PanelHeader title="全部大促" count={promotions?.length} />
+        {!promotions && <ListSkeleton />}
+        {promotions?.length === 0 && <EmptyState title="暂无大促" />}
+        {promotions && promotions.length > 0 && (
+          <List variant="ruled" aria-label="大促列表">
+            {promotions.map((promotion) => (
+              <ListRow key={promotion.id} asChild className="flex-col items-stretch justify-center gap-1.5 py-2.5">
+                <li aria-label={promotion.name}>
+                  <PromotionItem promotion={promotion} onChange={reload} />
+                </li>
+              </ListRow>
+            ))}
+          </List>
+        )}
+      </Panel>
+    </PageContent>
   );
 }
 
 function RangeFields({ range, onChange }: { range: Range; onChange(range: Range): void }) {
   const id = useId();
   return (
-    <div className="flex gap-3">
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${id}-start`}>开始（月-日）</Label>
+    <>
+      <Field label="开始（月-日）" htmlFor={`${id}-start`}>
         <Input
           id={`${id}-start`}
           required
           placeholder="05-31"
-          className="w-28"
+          className="numeric w-28"
           value={range.startsOn}
           onChange={(e) => onChange({ ...range, startsOn: e.target.value.trim() })}
         />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${id}-end`}>结束（月-日）</Label>
+      </Field>
+      <Field label="结束（月-日）" htmlFor={`${id}-end`}>
         <Input
           id={`${id}-end`}
           required
           placeholder="06-20"
-          className="w-28"
+          className="numeric w-28"
           value={range.endsOn}
           onChange={(e) => onChange({ ...range, endsOn: e.target.value.trim() })}
         />
-      </div>
-    </div>
+      </Field>
+    </>
   );
 }
 
@@ -110,24 +123,29 @@ function NewPromotionForm({ onCreated }: { onCreated(): Promise<void> }) {
   }
 
   return (
-    <form aria-label="新建大促" className="flex flex-col gap-3 rounded-lg border p-3" onSubmit={handleSubmit}>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${id}-name`}>新大促名称</Label>
-        <Input
-          id={`${id}-name`}
-          required
-          maxLength={50}
-          placeholder="如 超市周年庆"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </div>
-      <RangeFields range={range} onChange={setRange} />
-      {error && <Alert>{error}</Alert>}
-      <Button type="submit" variant="outline" className="self-start" disabled={pending}>
-        新建大促
-      </Button>
-    </form>
+    <Panel asChild>
+      <form aria-label="新建大促" onSubmit={handleSubmit}>
+        <PanelHeader title="新建大促" />
+        <PanelBody className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="新大促名称" htmlFor={`${id}-name`} className="min-w-48 flex-1">
+              <Input
+                id={`${id}-name`}
+                required
+                maxLength={50}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </Field>
+            <RangeFields range={range} onChange={setRange} />
+            <Button type="submit" variant="outline" disabled={pending}>
+              新建大促
+            </Button>
+          </div>
+          {error && <Alert>{error}</Alert>}
+        </PanelBody>
+      </form>
+    </Panel>
   );
 }
 
@@ -151,7 +169,7 @@ function PromotionItem({ promotion, onChange }: { promotion: Promotion; onChange
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <>
       <EditableTitle
         as="h3"
         name={promotion.name}
@@ -162,10 +180,30 @@ function PromotionItem({ promotion, onChange }: { promotion: Promotion; onChange
             await onChange();
           }, nameTaken)
         }
+        actions={
+          !editing && (
+            <>
+              <span className="numeric mx-2 text-sm text-ink-3">{formatRange(promotion)}</span>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => {
+                  setRange(rangeOf(promotion));
+                  setError(undefined);
+                  setEditing(true);
+                }}
+              >
+                修改范围
+              </Button>
+            </>
+          )
+        }
       />
-      {editing ? (
+      {editing && (
         <form aria-label={`修改 ${promotion.name} 的日期范围`} className="flex flex-col gap-3" onSubmit={handleSubmit}>
-          <RangeFields range={range} onChange={setRange} />
+          <div className="flex flex-wrap items-end gap-3">
+            <RangeFields range={range} onChange={setRange} />
+          </div>
           {error && <Alert>{error}</Alert>}
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={pending}>
@@ -176,23 +214,7 @@ function PromotionItem({ promotion, onChange }: { promotion: Promotion; onChange
             </Button>
           </div>
         </form>
-      ) : (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground tabular-nums">{formatRange(promotion)}</span>
-          <Button
-            variant="ghost"
-            size="xs"
-            className="ml-auto"
-            onClick={() => {
-              setRange(rangeOf(promotion));
-              setError(undefined);
-              setEditing(true);
-            }}
-          >
-            修改范围
-          </Button>
-        </div>
       )}
-    </div>
+    </>
   );
 }

@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, attempt, describeError, fieldClass, RetryAlert } from '@/components/editing';
+import { List, ListRow } from '@/components/ui/list';
+import { NativeSelect } from '@/components/ui/native-select';
+import { PageContent, PageHeader } from '@/components/ui/page';
+import { Panel, PanelHeader } from '@/components/ui/panel';
+import { Alert, attempt, describeError, ListSkeleton, listPageClass, RetryAlert } from '@/components/editing';
 import { api, type Invitation } from '@/lib/api';
 
 const expiryOptions = [
@@ -51,43 +57,47 @@ export function InvitationsPage() {
   const past = invitations?.filter((i) => i.status !== 'pending') ?? [];
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-6 p-4">
-      <div>
-        <h2 className="text-xl font-semibold">邀请</h2>
-        <p className="text-muted-foreground text-sm">
-          把邀请链接发给家人，对方用它注册后就成为这个家庭的成员。每个链接只能用一次，过期或作废后失效。
-        </p>
-      </div>
-      {loadError && <RetryAlert message={`邀请加载失败：${loadError}`} onRetry={reload} />}
-      <NewInvitationForm onCreated={reload} />
-      {invitations && (
-        <>
-          {pending.length === 0 && <p className="text-muted-foreground text-sm">没有待使用的邀请链接。</p>}
-          <ul aria-label="待使用的邀请" className="flex flex-col gap-2">
+    <PageContent className={listPageClass}>
+      <PageHeader title="邀请" />
+      {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
+      <Panel>
+        <PanelHeader title="待使用" count={invitations && pending.length}>
+          <NewInvitationForm onCreated={reload} />
+        </PanelHeader>
+        {!invitations && <ListSkeleton />}
+        {invitations && pending.length === 0 && <EmptyState title="暂无待使用的邀请" />}
+        {pending.length > 0 && (
+          <List variant="ruled" aria-label="待使用的邀请">
             {pending.map((invitation) => (
-              <li key={invitation.id} className="rounded-lg border px-3 py-2">
-                <PendingInvitation invitation={invitation} onChange={reload} />
-              </li>
+              <ListRow key={invitation.id} asChild className="items-stretch py-3">
+                <li>
+                  <PendingInvitation invitation={invitation} onChange={reload} />
+                </li>
+              </ListRow>
             ))}
-          </ul>
-          {past.length > 0 && (
-            <section aria-label="已失效的邀请" className="flex flex-col gap-2">
-              <h3 className="text-muted-foreground text-sm font-medium">已失效</h3>
-              <ul className="flex flex-col gap-1">
-                {past.map((invitation) => (
-                  <li key={invitation.id} className="text-muted-foreground flex justify-between text-sm">
+          </List>
+        )}
+      </Panel>
+      {past.length > 0 && (
+        <Panel asChild>
+          <section aria-label="已失效的邀请">
+            <PanelHeader title="已失效" count={past.length} />
+            <List variant="ruled">
+              {past.map((invitation) => (
+                <ListRow key={invitation.id} asChild className="justify-between text-sm text-ink-2">
+                  <li>
                     <span>
                       {invitation.invitedBy.name} 创建于 {formatTime(invitation.createdAt)}
                     </span>
-                    <span>{statusLabels[invitation.status]}</span>
+                    <Badge tone="outline">{statusLabels[invitation.status]}</Badge>
                   </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </>
+                </ListRow>
+              ))}
+            </List>
+          </section>
+        </Panel>
       )}
-    </div>
+    </PageContent>
   );
 }
 
@@ -109,23 +119,21 @@ function NewInvitationForm({ onCreated }: { onCreated(): Promise<void> }) {
   }
 
   return (
-    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-      <div className="flex items-end gap-2">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="expiresInDays">有效期</Label>
-          <select id="expiresInDays" name="expiresInDays" defaultValue={7} className={`${fieldClass} h-9`}>
-            {expiryOptions.map((o) => (
-              <option key={o.days} value={o.days}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <Button type="submit" variant="outline" disabled={pending}>
-          生成邀请链接
-        </Button>
-      </div>
-      {error && <Alert>{error}</Alert>}
+    <form className="ml-auto flex flex-wrap items-center gap-2" onSubmit={handleSubmit}>
+      <Label htmlFor="expiresInDays" className="text-ink-3">
+        有效期
+      </Label>
+      <NativeSelect id="expiresInDays" name="expiresInDays" defaultValue={7}>
+        {expiryOptions.map((o) => (
+          <option key={o.days} value={o.days}>
+            {o.label}
+          </option>
+        ))}
+      </NativeSelect>
+      <Button type="submit" size="sm" disabled={pending}>
+        生成邀请链接
+      </Button>
+      {error && <Alert className="basis-full">{error}</Alert>}
     </form>
   );
 }
@@ -136,11 +144,11 @@ function PendingInvitation({ invitation, onChange }: { invitation: Invitation; o
   const link = invitationLink(invitation.id);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex w-full flex-col gap-2">
       <Input readOnly aria-label="邀请链接" value={link} onFocus={(event) => event.currentTarget.select()} />
       <div className="flex flex-wrap items-center gap-1">
-        <span className="text-muted-foreground mr-auto text-xs">
-          {invitation.invitedBy.name} 创建，{formatTime(invitation.expiresAt)} 过期
+        <span className="mr-auto text-xs text-ink-3">
+          {invitation.invitedBy.name} 创建 · {formatTime(invitation.expiresAt)} 过期
         </span>
         <Button
           variant="ghost"
@@ -148,7 +156,7 @@ function PendingInvitation({ invitation, onChange }: { invitation: Invitation; o
           onClick={() =>
             navigator.clipboard.writeText(link).then(
               () => setCopied(true),
-              () => setError('无法自动复制，请手动选中链接复制。'),
+              () => setError('复制失败'),
             )
           }
         >
@@ -159,7 +167,7 @@ function PendingInvitation({ invitation, onChange }: { invitation: Invitation; o
           size="xs"
           onClick={async () => {
             const message = await attempt(() => api.revokeInvitation(invitation.id), {
-              invitation_used: '这个邀请链接刚刚已被使用。',
+              invitation_used: '邀请链接已被使用',
             });
             setError(message ?? undefined);
             if (!message) await onChange();

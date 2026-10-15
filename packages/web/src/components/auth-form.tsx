@@ -7,8 +7,8 @@ import { Panel } from '@/components/ui/panel';
 
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-svh max-w-sm flex-col justify-center gap-6 p-4">
-      <BrandMark />
+    <main className="mx-auto flex min-h-svh w-full max-w-sm flex-col justify-center gap-6 p-4">
+      <BrandMark className="self-center" />
       {children}
     </main>
   );
@@ -28,9 +28,20 @@ export function AuthCard({
     <Panel className="gap-5 p-6 price-tag:border-t-4 price-tag:bg-surface price-tag:px-6">
       <div className="flex flex-col gap-1.5">
         <h1 className="text-xl font-semibold price-tag:tracking-[.02em]">{title}</h1>
-        {description && <p className="text-ink-3 text-[13px]">{description}</p>}
+        {description && <p className="text-[13px] text-ink-3">{description}</p>}
       </div>
       {children}
+    </Panel>
+  );
+}
+
+// A terminal message on a pre-app page, for example an unusable invitation.
+export function AuthNotice({ children }: { children: ReactNode }) {
+  return (
+    <Panel className="p-6 price-tag:border-t-4 price-tag:bg-surface">
+      <p role="alert" className="text-center text-sm">
+        {children}
+      </p>
     </Panel>
   );
 }
@@ -69,7 +80,7 @@ export function AuthForm({
     try {
       setError((await onSubmit(values)) ?? undefined);
     } catch {
-      setError('出错了，请稍后再试。');
+      setError('操作失败');
     } finally {
       setPending(false);
     }

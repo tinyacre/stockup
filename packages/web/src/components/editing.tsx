@@ -2,10 +2,14 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { controlClass, Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, NetworkError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 export const fieldClass = cn(controlClass, 'px-2.5 py-1 text-base wide:text-[13px] price-tag:wide:text-sm');
+
+// Caps list-style pages so rows stay readable on wide screens while aligning left with the page header.
+export const listPageClass = 'max-w-[calc(52rem+2*var(--gutter))]';
 
 // Resolves to an error message for the member, or nothing when the action succeeded.
 export type Action = () => Promise<string | void>;
@@ -13,9 +17,9 @@ export type Action = () => Promise<string | void>;
 export function describeError(error: unknown, messages: Record<string, string> = {}) {
   const message = error instanceof ApiError && error.code ? messages[error.code] : undefined;
   if (message) return message;
-  if (error instanceof ApiError && error.status === 400) return '请检查填写的内容。';
-  if (error instanceof NetworkError) return '连不上 StockUp，请联网后再试。';
-  return '出错了，请稍后再试。';
+  if (error instanceof ApiError && error.status === 400) return '填写有误';
+  if (error instanceof NetworkError) return '网络不可用';
+  return '操作失败';
 }
 
 export async function attempt(run: () => Promise<unknown>, messages?: Record<string, string>) {
@@ -26,7 +30,7 @@ export async function attempt(run: () => Promise<unknown>, messages?: Record<str
   }
 }
 
-export const nameTaken = { name_taken: '这个名称已经被使用。' };
+export const nameTaken = { name_taken: '名称已被使用' };
 
 export function NameForm({
   label,
@@ -120,8 +124,8 @@ export function EditableTitle({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      <Heading className={cn('mr-auto', className)}>{name}</Heading>
+    <div className="flex w-full flex-wrap items-center gap-1">
+      <Heading className={cn('mr-auto min-w-0 truncate text-sm font-medium', className)}>{name}</Heading>
       <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${name}`} onClick={() => setEditing(true)}>
         <Pencil />
       </Button>
@@ -174,7 +178,7 @@ export function DeleteButton({ label, onDelete }: { label: string; onDelete: Act
 
 export function RetryAlert({ message, onRetry }: { message: string; onRetry(): void }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Alert>{message}</Alert>
       <Button variant="outline" size="xs" onClick={onRetry}>
         重试
@@ -188,5 +192,14 @@ export function Alert({ children, className }: { children: ReactNode; className?
     <p role="alert" className={cn('text-destructive text-sm', className)}>
       {children}
     </p>
+  );
+}
+
+export function ListSkeleton() {
+  return (
+    <div aria-hidden className="flex flex-col gap-3 px-4 py-4">
+      <Skeleton className="h-5 w-40" />
+      <Skeleton className="h-5 w-56" />
+    </div>
   );
 }
