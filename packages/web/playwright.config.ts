@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import type { ThemeOptions } from './e2e/test';
 
-const port = 4173;
+const port = Number(process.env.STOCKUP_E2E_PORT ?? 4173);
 
 export default defineConfig<ThemeOptions>({
   testDir: './e2e',
