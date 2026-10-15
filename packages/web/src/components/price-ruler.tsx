@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Verdict } from '@stockup/domain';
 import { cn } from '@/lib/utils';
 
@@ -18,8 +18,8 @@ const verdictColor: Record<Verdict | 'none', string> = {
 
 const yuan = (cents: number) => (cents / 100).toFixed(2);
 
-// Labels closer than this share a row only when there is room, measured in percent of the ruler's width.
-const labelSpan = 30;
+// Pixels kept clear between two labels in the same row.
+const labelGap = 8;
 
 // Picks a round step that splits the scale into at most six intervals.
 function ticksOf(low: number, high: number) {
@@ -31,10 +31,26 @@ function ticksOf(low: number, high: number) {
   return ticks;
 }
 
-function anchor(position: number) {
-  if (position < 12) return 'translate-x-0';
-  if (position > 88) return '-translate-x-full';
-  return '-translate-x-1/2';
+// How much of its own width a label sits left of its mark: edge labels grow inwards.
+function anchorOf(position: number) {
+  if (position < 12) return 0;
+  if (position > 88) return 1;
+  return 0.5;
+}
+
+const anchorClass = { 0: 'translate-x-0', 0.5: '-translate-x-1/2', 1: '-translate-x-full' };
+
+// Puts each label in the first row where it clears the previous label, from left to right.
+function labelRows(labels: { key: string; left: number; width: number }[]) {
+  const rows = new Map<string, number>();
+  const rowEnds: number[] = [];
+  for (const label of [...labels].sort((a, b) => a.left - b.left)) {
+    let row = rowEnds.findIndex((end) => label.left >= end + labelGap);
+    if (row === -1) row = rowEnds.length;
+    rowEnds[row] = label.left + label.width;
+    rows.set(label.key, row);
+  }
+  return rows;
 }
 
 // The unit price against the references it is judged by. The scale spans the references only, so an
@@ -54,7 +70,7 @@ export function PriceRuler({
   per: string;
   className?: string;
 }) {
-  const marks = [
+  const candidates = [
     references.lowest !== null && {
       key: 'lowest',
       label: '历史最低',
@@ -77,26 +93,51 @@ export function PriceRuler({
       text: 'text-ink-3 price-tag:text-ink-2',
     },
   ].filter((m) => m !== false && m !== null);
+  // References at the same price share one mark, drawn like the first of them.
+  const marks = candidates.flatMap((m, i) => {
+    if (candidates.findIndex((other) => other.value === m.value) !== i) return [];
+    const same = candidates.filter((other) => other.value === m.value);
+    return [{ ...m, label: same.map((other) => other.label).join(' · ') }];
+  });
 
-  if (marks.length === 0) {
-    return <p className={cn('text-[13px] text-ink-3', className)}>暂无价格记录</p>;
-  }
+  const track = useRef<HTMLDivElement>(null);
+  const labels = useRef(new Map<string, HTMLLIElement>());
+  const [rows, setRows] = useState(new Map<string, number>());
 
   const values = marks.map((m) => m.value);
   const low = Math.min(...values) * 0.8;
   const high = Math.max(...values) * 1.25;
   const at = (v: number) => Math.min(100, Math.max(0, ((v - low) / (high - low)) * 100));
 
-  // Two label rows: a label takes the inner row unless it would overlap its neighbour there.
-  const rows = new Map<string, number>();
-  const lastInRow: number[] = [-Infinity, -Infinity];
-  for (const m of [...marks].sort((a, b) => a.value - b.value)) {
-    const position = at(m.value);
-    const free = lastInRow.findIndex((last) => position - last >= labelSpan);
-    const row = free === -1 ? (lastInRow[0]! < lastInRow[1]! ? 0 : 1) : free;
-    lastInRow[row] = position;
-    rows.set(m.key, row);
+  const layoutKey = marks.map((m) => `${m.key}:${m.label}:${m.value}`).join('|');
+  useLayoutEffect(() => {
+    const element = track.current;
+    if (!element) return;
+    const place = () => {
+      const width = element.clientWidth;
+      const measured = marks.flatMap((m) => {
+        const label = labels.current.get(m.key);
+        if (!label) return [];
+        const position = at(m.value);
+        return [{ key: m.key, width: label.offsetWidth, left: (position / 100) * width - anchorOf(position) * label.offsetWidth }];
+      });
+      const next = labelRows(measured);
+      setRows((current) =>
+        current.size === next.size && [...next].every(([key, row]) => current.get(key) === row) ? current : next,
+      );
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(element);
+    return () => observer.disconnect();
+    // The marks are rebuilt every render; their layout depends only on what `layoutKey` captures.
+  }, [layoutKey]);
+
+  if (marks.length === 0) {
+    return <p className={cn('text-[13px] text-ink-3', className)}>暂无价格记录</p>;
   }
+  // Rows beyond the second push the scale down and make the ruler taller.
+  const extraRows = Math.max(0, Math.max(0, ...rows.values()) - 1);
 
   const lowestAt = references.lowest === null ? 0 : at(references.lowest);
   const stockAt = references.stockLine === null ? lowestAt : Math.max(lowestAt, at(references.stockLine));
@@ -117,17 +158,21 @@ export function PriceRuler({
         <span>价位标尺</span>
         <span className="numeric tracking-normal">¥ / {per}</span>
       </figcaption>
-      <div className="relative mx-3 h-[86px] select-none price-tag:h-[100px]">
+      <div
+        ref={track}
+        className="relative mx-3 h-[calc(86px+var(--extra)*16px)] select-none price-tag:h-[calc(100px+var(--extra)*18px)]"
+        style={{ '--extra': extraRows } as CSSProperties}
+      >
         <div
           aria-hidden
-          className="absolute inset-x-0 top-[34px] h-1.5 rounded-full bg-line price-tag:top-[54px] price-tag:h-[1.5px] price-tag:rounded-none price-tag:bg-ink"
+          className="absolute inset-x-0 top-[34px] h-1.5 rounded-full bg-line price-tag:top-[calc(54px+var(--extra)*18px)] price-tag:h-[1.5px] price-tag:rounded-none price-tag:bg-ink"
         />
         {zones.map((z) => (
           <div
             key={z.className}
             aria-hidden
             className={cn(
-              'absolute top-[34px] h-1.5 first:rounded-l-full price-tag:top-[46px] price-tag:h-2 price-tag:rounded-none',
+              'absolute top-[34px] h-1.5 first:rounded-l-full price-tag:top-[calc(46px+var(--extra)*18px)] price-tag:h-2 price-tag:rounded-none',
               z.className,
             )}
             style={{ left: `${z.from}%`, width: `${z.to - z.from}%` }}
@@ -137,7 +182,7 @@ export function PriceRuler({
           <div
             key={v}
             aria-hidden
-            className="absolute top-[54px] hidden -translate-x-1/2 flex-col items-center price-tag:flex"
+            className="absolute top-[calc(54px+var(--extra)*18px)] hidden -translate-x-1/2 flex-col items-center price-tag:flex"
             style={{ left: `${at(v)}%` }}
           >
             <span className="h-[7px] w-[1.25px] bg-ink" />
@@ -150,23 +195,27 @@ export function PriceRuler({
             aria-hidden
             className={cn(
               'absolute top-[28px] h-[18px] w-0.5 -translate-x-1/2 rounded-full',
-              'price-tag:top-[calc(34px-var(--row)*18px)] price-tag:h-[calc(20px+var(--row)*18px)] price-tag:w-[1.5px] price-tag:rounded-none',
+              'price-tag:top-[calc(34px+(var(--extra)-var(--row))*18px)] price-tag:h-[calc(20px+var(--row)*18px)] price-tag:w-[1.5px] price-tag:rounded-none',
               m.line,
             )}
-            style={{ left: `${at(m.value)}%`, '--row': rows.get(m.key) } as CSSProperties}
+            style={{ left: `${at(m.value)}%`, '--row': rows.get(m.key) ?? 0 } as CSSProperties}
           />
         ))}
         <ul aria-label="参考单价">
           {marks.map((m) => (
             <li
               key={m.key}
+              ref={(element) => {
+                if (element) labels.current.set(m.key, element);
+                else labels.current.delete(m.key);
+              }}
               className={cn(
                 'absolute top-[calc(50px+var(--row)*16px)] flex items-baseline gap-1 text-[11px] leading-4 whitespace-nowrap',
-                'price-tag:top-[calc(18px-var(--row)*18px)] price-tag:rounded-[2px] price-tag:text-xs',
-                anchor(at(m.value)),
+                'price-tag:top-[calc(18px+(var(--extra)-var(--row))*18px)] price-tag:rounded-[2px] price-tag:text-xs',
+                anchorClass[anchorOf(at(m.value))],
                 m.text,
               )}
-              style={{ left: `${at(m.value)}%`, '--row': rows.get(m.key) } as CSSProperties}
+              style={{ left: `${at(m.value)}%`, '--row': rows.get(m.key) ?? 0 } as CSSProperties}
             >
               {m.label}
               <span className="numeric text-[13px] font-semibold">{yuan(m.value)}</span>
@@ -178,7 +227,7 @@ export function PriceRuler({
             aria-hidden
             className={cn(
               'absolute top-0 flex flex-col',
-              'price-tag:top-[40px]',
+              'price-tag:top-[calc(40px+var(--extra)*18px)]',
               overflow > 0 ? '-translate-x-full items-end' : overflow < 0 ? 'items-start' : '-translate-x-1/2 items-center',
             )}
             style={{ left: `${pinAt}%`, '--pin': verdictColor[verdict ?? 'none'] } as CSSProperties}

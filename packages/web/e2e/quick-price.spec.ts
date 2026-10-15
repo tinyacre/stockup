@@ -57,7 +57,7 @@ test('a member prices a product from the home page and keeps it as seen only', a
   await options.getByLabel('日期').fill('2026-09-01');
   await expect(references.getByRole('listitem')).toHaveText(['历史最低2.30', '入手价4.00']);
   await options.getByLabel('日期').fill('2026-06-18');
-  await expect(references.getByRole('listitem')).toHaveText(['历史最低2.30', '入手价4.00', '去年6182.30']);
+  await expect(references.getByRole('listitem')).toHaveText(['历史最低 · 去年6182.30', '入手价4.00']);
 
   const form = page.getByRole('form', { name: '快速算价' });
   await form.getByLabel('原价').fill('99');
@@ -247,12 +247,18 @@ test('quick price shows the same judgment as the judgment API', async ({ page })
     const escaped = head.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     await expect(judgmentOutput, JSON.stringify(c)).toHaveText(new RegExp(`^${escaped}(原价|$)`));
 
-    const references = [
-      judgment.lowestUnitPrice !== null && `历史最低${(judgment.lowestUnitPrice / 100).toFixed(2)}`,
-      judgment.stockLine !== null && `入手价${(judgment.stockLine / 100).toFixed(2)}`,
-      judgment.lastYearPromotionLowest !== null &&
-        `去年${judgment.promotion!.name}${(judgment.lastYearPromotionLowest / 100).toFixed(2)}`,
-    ].filter((r) => r !== false);
+    // References at the same price share one label.
+    const marks = [
+      { label: '历史最低', value: judgment.lowestUnitPrice },
+      { label: '入手价', value: judgment.stockLine },
+      { label: `去年${judgment.promotion?.name}`, value: judgment.lastYearPromotionLowest },
+    ].filter((m): m is { label: string; value: number } => m.value !== null);
+    const references = marks
+      .filter((m, i) => marks.findIndex((other) => other.value === m.value) === i)
+      .map((m) => {
+        const labels = marks.filter((other) => other.value === m.value).map((other) => other.label);
+        return `${labels.join(' · ')}${(m.value / 100).toFixed(2)}`;
+      });
     const list = page.getByRole('list', { name: '参考单价' });
     if (references.length === 0) await expect(list, JSON.stringify(c)).toHaveCount(0);
     else await expect(list.getByRole('listitem'), JSON.stringify(c)).toHaveText(references);

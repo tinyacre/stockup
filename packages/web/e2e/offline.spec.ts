@@ -73,14 +73,14 @@ test('offline, a member prices a cached product as online and saves once back on
   }
 
   await priceIt();
-  await expect(references).toHaveText(['历史最低2.30', '入手价4.00', '去年6182.30']);
+  await expect(references).toHaveText(['历史最低 · 去年6182.30', '入手价4.00']);
   const online = await judgment.textContent();
   expect(online).toContain('囤¥3.81 / 90 抽');
 
   await context.setOffline(true);
   await page.reload();
   await priceIt();
-  await expect(references).toHaveText(['历史最低2.30', '入手价4.00', '去年6182.30']);
+  await expect(references).toHaveText(['历史最低 · 去年6182.30', '入手价4.00']);
   await expect(judgment).toHaveText(online!);
 
   const save = page.getByRole('button', { name: '联网后保存' });
