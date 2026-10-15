@@ -36,7 +36,7 @@ test('a member sets a stock line and sees the judgment while recording a price',
   await productForm.getByRole('button', { name: '创建商品' }).click();
   await page.getByRole('link', { name: productName }).click();
 
-  const stockLine = page.getByRole('region', { name: '入手价' });
+  const stockLine = page.getByRole('region', { name: '价格概览' });
   await expect(stockLine).toContainText('入手价 未设置');
   await expect(stockLine).toContainText('历史最低单价 暂无');
 
@@ -51,7 +51,6 @@ test('a member sets a stock line and sees the judgment while recording a price',
 
   await stockLine.getByRole('button', { name: '设置入手价' }).click();
   const stockLineForm = stockLine.getByRole('form', { name: '设置入手价' });
-  await expect(stockLineForm).toContainText('历史最低单价 ¥100.00 / 1 kg');
   await expect(stockLineForm).toContainText(`${channelName} ¥100.00 / 1 kg`);
   await stockLineForm.getByLabel('入手价（元 / 1 kg）').fill('110');
   await stockLineForm.getByRole('button', { name: '保存入手价' }).click();

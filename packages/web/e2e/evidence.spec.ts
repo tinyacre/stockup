@@ -66,7 +66,7 @@ test('a member attaches screenshots to a price record, views and deletes them', 
     mimeType: 'text/plain',
     buffer: Buffer.from('not an image'),
   });
-  await expect(record.getByRole('alert')).toHaveText('凭证只支持 PNG、JPEG、WebP 或 GIF 图片。');
+  await expect(record.getByRole('alert')).toHaveText('凭证仅支持 PNG、JPEG、WebP、GIF');
 
   await page.reload();
   await record.getByRole('button', { name: `删除 ${label} 的凭证 2` }).click();

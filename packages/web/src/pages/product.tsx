@@ -1,15 +1,24 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useState, type FormEvent } from 'react';
-import { ChevronLeft, Plus, X } from 'lucide-react';
-import { judge } from '@stockup/domain';
+import { lazy, Suspense, useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { ChevronRight, ImagePlus, Package, Pencil, Plus, ReceiptText, X } from 'lucide-react';
+import { judge, type Verdict } from '@stockup/domain';
+import { Badge, PromotionTag, PurchaseBadge, VerdictBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, attempt, DeleteButton, describeError, fieldClass, RetryAlert } from '@/components/editing';
-import { ProductMaintenance } from '@/components/product-maintenance';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Field } from '@/components/ui/field';
+import { Input, InputAddon, InputGroup, InputGroupInput, Textarea } from '@/components/ui/input';
+import { List } from '@/components/ui/list';
+import { NativeSelect } from '@/components/ui/native-select';
+import { PageContent } from '@/components/ui/page';
+import { Panel, PanelFooter, PanelHeader } from '@/components/ui/panel';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, attempt, DeleteButton, describeError, RetryAlert } from '@/components/editing';
+import { ProductMaintenance, ProductMenu, type MaintenanceTask } from '@/components/product-maintenance';
 import { JudgmentSummary } from '@/components/verdict';
 import {
   api,
   ApiError,
+  type CategoryGroup,
   type Channel,
   type PriceRecord,
   type Product,
@@ -44,9 +53,13 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
   const [records, setRecords] = useState<PriceRecord[]>();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [catalog, setCatalog] = useState<CategoryGroup[]>([]);
   const [loadError, setLoadError] = useState<string>();
+  const [actionError, setActionError] = useState<string>();
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string>();
+  const [editingStockLine, setEditingStockLine] = useState(false);
+  const [task, setTask] = useState<MaintenanceTask>();
   const [filter, setFilter] = useState<RecordFilter>({});
 
   const reload = useCallback(async () => {
@@ -70,124 +83,222 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
   useEffect(() => {
     reload();
   }, [reload]);
+  // The breadcrumb is the only reader, so a failed load leaves it at the section name.
+  useEffect(() => {
+    api.catalog().then(setCatalog, () => {});
+  }, []);
 
-  const back = (
-    <Button variant="ghost" size="sm" className="self-start" onClick={() => onBack(product?.categoryId)}>
-      <ChevronLeft />
-      商品列表
-    </Button>
-  );
-  const loadAlert = loadError && <RetryAlert message={`价格记录加载失败：${loadError}`} onRetry={reload} />;
+  const loadAlert = loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />;
 
   if (product === null) {
     return (
-      <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
-        {back}
-        <p className="text-muted-foreground text-sm">找不到这个商品，它可能已被删除。</p>
-      </div>
+      <PageContent>
+        <EmptyState
+          title="商品不存在"
+          icon={<Package />}
+          action={
+            <Button variant="outline" onClick={() => onBack()}>
+              返回商品
+            </Button>
+          }
+        />
+      </PageContent>
     );
   }
-  if (!product) return loadAlert ? <div className="p-4">{loadAlert}</div> : null;
+  if (!product) return <PageContent>{loadAlert || <ProductSkeleton />}</PageContent>;
 
+  const all = records ?? [];
   const filtering = Object.values(filter).some((v) => v !== undefined);
-  const shown = records?.filter((r) => matches(r, filter));
+  const shown = all.filter((r) => matches(r, filter));
+  const group = catalog.find((g) => g.categories.some((c) => c.id === product.categoryId));
+  const category = group?.categories.find((c) => c.id === product.categoryId);
 
   const saved = async () => {
     setCreating(false);
     setEditingId(undefined);
     await reload();
   };
+  const archive = async (archived: boolean) => {
+    setActionError(
+      (await attempt(async () => {
+        await api.updateProduct(product.id, { archived });
+        await reload();
+      })) ?? undefined,
+    );
+  };
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
-      {back}
-      <div>
-        <h2 className="text-xl font-semibold">{product.name}</h2>
-        <p className="text-muted-foreground text-sm">
-          计价单位 {product.pricingUnit.name} · 基准规格 {formatSize(product.baseSize, product.pricingUnit)}
-        </p>
-        {product.note && <p className="text-muted-foreground mt-1 text-sm whitespace-pre-wrap">{product.note}</p>}
-      </div>
-      <ProductMaintenance product={product} onChanged={reload} />
-      {loadAlert}
-      <StockLineSection product={product} records={records ?? []} onSaved={reload} />
-
-      <div className="flex items-center justify-between">
-        <h3 className="font-medium">价格记录</h3>
-        {!creating && (
-          <Button size="sm" onClick={() => setCreating(true)}>
+    <PageContent>
+      <div className="flex flex-col gap-4 wide:flex-row wide:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <nav aria-label="路径">
+            <ol className="flex flex-wrap items-center gap-1 text-xs text-ink-3">
+              <Crumb onClick={() => onBack()}>商品</Crumb>
+              {group && <Crumb>{group.name}</Crumb>}
+              {category && <Crumb onClick={() => onBack(category.id)}>{category.name}</Crumb>}
+            </ol>
+          </nav>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-title-page font-semibold tracking-[.02em] break-all">{product.name}</h2>
+            {product.archived && <Badge tone="outline">已归档</Badge>}
+          </div>
+          <p className="text-xs text-ink-3">
+            计价单位 <span className="font-medium text-ink-2">{product.pricingUnit.name}</span> · 基准规格{' '}
+            <span className="font-medium text-ink-2">{formatSize(product.baseSize, product.pricingUnit)}</span>
+          </p>
+          {product.note && <p className="text-[13px] whitespace-pre-wrap text-ink-2">{product.note}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" onClick={() => setEditingStockLine(true)}>
+            <Pencil />
+            {product.stockLine === null ? '设置入手价' : '修改入手价'}
+          </Button>
+          <Button onClick={() => setCreating(true)}>
             <Plus />
             记录价格
           </Button>
-        )}
+          <ProductMenu product={product} onOpen={setTask} onArchive={archive} />
+        </div>
       </div>
+
+      {actionError && <Alert>{actionError}</Alert>}
+      {loadAlert}
+      {task && (
+        <ProductMaintenance product={product} task={task} onClose={() => setTask(undefined)} onChanged={reload} />
+      )}
       {creating && (
-        <PriceRecordForm
-          product={product}
-          channels={channels}
-          promotions={promotions}
-          records={records ?? []}
-          onCancel={() => setCreating(false)}
-          onSaved={saved}
-        />
+        <Panel>
+          <PanelHeader title="记录价格" as="h3" />
+          <PriceRecordForm
+            product={product}
+            channels={channels}
+            promotions={promotions}
+            records={all}
+            onCancel={() => setCreating(false)}
+            onSaved={saved}
+          />
+        </Panel>
       )}
-      {records?.length === 0 && !creating && <p className="text-muted-foreground text-sm">还没有价格记录。</p>}
-      {((records && records.length > 0) || filtering) && (
-        <RecordFilters
-          records={records ?? []}
-          channels={channels}
-          promotions={promotions}
-          filter={filter}
-          onChange={setFilter}
-        />
-      )}
-      <div className="flex flex-col gap-4">
-        {shown && shown.length > 0 && (
-          <Suspense fallback={<div className="h-72 rounded-lg border" />}>
-            <UnitPriceChart records={shown} product={product} />
-          </Suspense>
-        )}
-        {filtering && shown?.length === 0 && records?.length !== 0 && (
-          <p className="text-muted-foreground text-sm">没有符合筛选条件的价格记录。</p>
-        )}
-        <ul aria-label="价格记录列表" className="flex flex-col gap-2">
-          {shown?.map((record) => (
-            <li
-              key={record.id}
-              aria-label={`${record.date} ${record.channel.name}`}
-              className="rounded-lg border p-3"
-            >
-              {editingId === record.id ? (
-                <PriceRecordForm
-                  product={product}
-                  channels={channels}
-                  promotions={promotions}
-                  records={records ?? []}
-                  record={record}
-                  onCancel={() => setEditingId(undefined)}
-                  onSaved={saved}
-                />
+
+      <div className="grid items-start gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-w-0 flex-col gap-6">
+          {shown.length > 0 && (
+            <Suspense fallback={<Skeleton className="h-[19rem]" />}>
+              <UnitPriceChart records={shown} product={product} />
+            </Suspense>
+          )}
+          <Panel asChild>
+            <section aria-label="价格记录">
+              <PanelHeader
+                title="价格记录"
+                count={records && shown.length}
+                actions={
+                  (all.length > 0 || filtering) && (
+                    <RecordFilters
+                      records={all}
+                      channels={channels}
+                      promotions={promotions}
+                      filter={filter}
+                      onChange={setFilter}
+                    />
+                  )
+                }
+              />
+              {!records ? (
+                <div className="flex flex-col gap-3 px-(--panel-padding) py-4">
+                  <Skeleton className="h-14" />
+                  <Skeleton className="h-14" />
+                </div>
+              ) : all.length === 0 ? (
+                <EmptyState title="暂无价格记录" icon={<ReceiptText />} />
               ) : (
-                <PriceRecordItem
-                  record={record}
-                  product={product}
-                  onEdit={() => setEditingId(record.id)}
-                  onEvidenceChanged={reload}
-                  onDelete={() =>
-                    attempt(async () => {
-                      await api.deletePriceRecord(record.id);
-                      await reload();
-                    })
-                  }
-                />
+                shown.length === 0 && <EmptyState title="无匹配的价格记录" icon={<ReceiptText />} />
               )}
-            </li>
-          ))}
-        </ul>
+              {shown.length > 0 && (
+                <List variant="ruled" aria-label="价格记录列表">
+                  {shown.map((record) => (
+                    <li key={record.id} aria-label={recordLabel(record)}>
+                      {editingId === record.id ? (
+                        <PriceRecordForm
+                          product={product}
+                          channels={channels}
+                          promotions={promotions}
+                          records={all}
+                          record={record}
+                          onCancel={() => setEditingId(undefined)}
+                          onSaved={saved}
+                        />
+                      ) : (
+                        <PriceRecordItem
+                          record={record}
+                          product={product}
+                          onEdit={() => setEditingId(record.id)}
+                          onEvidenceChanged={reload}
+                          onDelete={() =>
+                            attempt(async () => {
+                              await api.deletePriceRecord(record.id);
+                              await reload();
+                            })
+                          }
+                        />
+                      )}
+                    </li>
+                  ))}
+                </List>
+              )}
+            </section>
+          </Panel>
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-6 max-[1199px]:order-first">
+          <PriceOverview
+            product={product}
+            records={all}
+            promotions={promotions}
+            editing={editingStockLine}
+            onEdit={() => setEditingStockLine(true)}
+            onClose={() => setEditingStockLine(false)}
+            onSaved={reload}
+          />
+          {all.length > 0 && <ChannelLowest product={product} records={all} />}
+        </aside>
+      </div>
+    </PageContent>
+  );
+}
+
+function Crumb({ onClick, children }: { onClick?(): void; children: ReactNode }) {
+  return (
+    <li className="flex items-center gap-1">
+      <ChevronRight aria-hidden className="size-3 text-ink-4 [li:first-child>&]:hidden" />
+      {onClick ? (
+        <button type="button" className="rounded-sm hover:text-ink focus-visible:shadow-focus" onClick={onClick}>
+          {children}
+        </button>
+      ) : (
+        <span>{children}</span>
+      )}
+    </li>
+  );
+}
+
+function ProductSkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-7 w-64" />
+        <Skeleton className="h-3 w-48" />
+      </div>
+      <div className="grid gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_300px]">
+        <Skeleton className="h-[19rem]" />
+        <Skeleton className="h-[19rem]" />
       </div>
     </div>
   );
 }
+
+const recordLabel = (record: PriceRecord) => `${record.date} ${record.channel.name}`;
 
 // Each field narrows the list when present; a null promotion keeps the records without one.
 interface RecordFilter {
@@ -206,6 +317,12 @@ function matches(record: PriceRecord, { purchased, channelId, promotionId }: Rec
 
 const promotionNone = 'none';
 
+const purchaseChoices = [
+  { value: 'all', label: '全部' },
+  { value: 'purchased', label: '已购' },
+  { value: 'seen', label: '仅记录' },
+] as const;
+
 // Offers only the channels and promotions the product's records use, plus whichever is already chosen.
 function RecordFilters({
   records,
@@ -220,64 +337,51 @@ function RecordFilters({
   filter: RecordFilter;
   onChange(filter: RecordFilter): void;
 }) {
-  const id = useId();
   const used = new Set<string | null | undefined>([filter.channelId, filter.promotionId]);
   for (const r of records) used.add(r.channel.id).add(r.promotion?.id);
   const channelChoices = channels.filter((c) => used.has(c.id));
   const promotionChoices = promotions.filter((p) => used.has(p.id));
   const change = (next: RecordFilter) => onChange({ ...filter, ...next });
+  const purchase = filter.purchased === undefined ? 'all' : filter.purchased ? 'purchased' : 'seen';
 
   return (
-    <div role="group" aria-label="筛选价格记录" className="flex flex-wrap items-end gap-3 text-sm">
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`${id}-purchased`}>购买情况</Label>
-        <select
-          id={`${id}-purchased`}
-          className={cn(fieldClass, 'h-8 w-28')}
-          value={filter.purchased === undefined ? '' : String(filter.purchased)}
-          onChange={(e) => change({ purchased: e.target.value ? e.target.value === 'true' : undefined })}
-        >
-          <option value="">全部</option>
-          <option value="true">已购</option>
-          <option value="false">仅记录</option>
-        </select>
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`${id}-channel`}>渠道</Label>
-        <select
-          id={`${id}-channel`}
-          className={cn(fieldClass, 'h-8 w-36')}
-          value={filter.channelId ?? ''}
-          onChange={(e) => change({ channelId: e.target.value || undefined })}
-        >
-          <option value="">全部渠道</option>
-          {channelChoices.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`${id}-promotion`}>大促</Label>
-        <select
-          id={`${id}-promotion`}
-          className={cn(fieldClass, 'h-8 w-36')}
-          value={filter.promotionId === null ? promotionNone : (filter.promotionId ?? '')}
-          onChange={(e) => {
-            const value = e.target.value;
-            change({ promotionId: value === promotionNone ? null : value || undefined });
-          }}
-        >
-          <option value="">全部</option>
-          <option value={promotionNone}>非大促</option>
-          {promotionChoices.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div role="group" aria-label="筛选价格记录" className="flex flex-wrap items-center gap-2">
+      <SegmentedControl
+        aria-label="购买情况"
+        options={[...purchaseChoices]}
+        value={purchase}
+        onValueChange={(value) => change({ purchased: value === 'all' ? undefined : value === 'purchased' })}
+      />
+      <NativeSelect
+        aria-label="渠道"
+        className="w-32"
+        value={filter.channelId ?? ''}
+        onChange={(e) => change({ channelId: e.target.value || undefined })}
+      >
+        <option value="">全部渠道</option>
+        {channelChoices.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </NativeSelect>
+      <NativeSelect
+        aria-label="大促"
+        className="w-32"
+        value={filter.promotionId === null ? promotionNone : (filter.promotionId ?? '')}
+        onChange={(e) => {
+          const value = e.target.value;
+          change({ promotionId: value === promotionNone ? null : value || undefined });
+        }}
+      >
+        <option value="">全部大促</option>
+        <option value={promotionNone}>非大促</option>
+        {promotionChoices.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </NativeSelect>
       {Object.values(filter).some((v) => v !== undefined) && (
         <Button variant="ghost" size="sm" onClick={() => onChange({})}>
           清除筛选
@@ -287,31 +391,184 @@ function RecordFilters({
   );
 }
 
-const recentReferenceCount = 5;
-// The server stores cents in a Postgres integer column.
-const maxCents = 2_000_000_000;
+function UnitPrice({ cents, product, className }: { cents: number; product: Product; className?: string }) {
+  return (
+    <>
+      <span className={cn('numeric font-semibold', className)}>{formatYuan(cents)}</span>
+      <span className="text-xs text-ink-3"> / {formatSize(product.baseSize, product.pricingUnit)}</span>
+    </>
+  );
+}
 
-function StockLineSection({
+function RecordSource({ record }: { record: PriceRecord }) {
+  return (
+    <dd className="text-xs text-ink-3">
+      <span className="numeric text-[13px]">{record.date}</span> · {record.channel.name}
+      {record.promotion && ` · ${record.promotion.name}`}
+    </dd>
+  );
+}
+
+// The latest record is judged against the records before it, as it was when recorded.
+function latestVerdict(product: ProductDetail, records: PriceRecord[], promotions: Promotion[]): Verdict | null {
+  const [latest, ...earlier] = records;
+  if (!latest) return null;
+  const promotion = promotions.find((p) => p.id === latest.promotion?.id);
+  return judge({
+    unitPrice: latest.unitPrice,
+    stockLine: product.stockLine,
+    lowestUnitPrice: lowestOf(earlier),
+    lastYearPromotionLowest: promotion ? lastYearPromotionLowest(latest.date, promotion, earlier) : null,
+  }).verdict;
+}
+
+const overviewRow = 'relative flex flex-col gap-1 border-b border-line px-(--panel-padding) py-3.5 last:border-b-0';
+
+function PriceOverview({
   product,
   records,
+  promotions,
+  editing,
+  onEdit,
+  onClose,
   onSaved,
 }: {
   product: ProductDetail;
   records: PriceRecord[];
+  promotions: Promotion[];
+  editing: boolean;
+  onEdit(): void;
+  onClose(): void;
+  onSaved(): Promise<void>;
+}) {
+  const lowest = records.find((r) => r.unitPrice === product.lowestUnitPrice);
+  const latest = records[0];
+  const verdict = latestVerdict(product, records, promotions);
+
+  return (
+    <Panel asChild>
+      <section aria-label="价格概览">
+        <PanelHeader title="价格概览" />
+        <dl>
+          <div
+            className={cn(
+              overviewRow,
+              'pl-[max(var(--panel-padding),14px)] before:absolute before:inset-y-3 before:left-0 before:w-0.5 before:bg-gold',
+            )}
+          >
+            <dt className="text-xs text-ink-3">入手价</dt>{' '}
+            <dd>
+              {editing ? (
+                <StockLineForm product={product} records={records} onClose={onClose} onSaved={onSaved} />
+              ) : product.stockLine === null ? (
+                <span className="text-sm text-ink-3">未设置</span>
+              ) : (
+                <UnitPrice cents={product.stockLine} product={product} className="text-num-xl" />
+              )}
+            </dd>
+            {!editing && (
+              <Button variant="ghost" size="xs" className="absolute top-2.5 right-(--panel-padding)" onClick={onEdit}>
+                <Pencil />
+                {product.stockLine === null ? '设置入手价' : '修改入手价'}
+              </Button>
+            )}
+          </div>
+          <div className={overviewRow}>
+            <dt className="text-xs text-ink-3">历史最低单价</dt>{' '}
+            <dd>
+              {product.lowestUnitPrice === null ? (
+                <span className="text-sm text-ink-3">暂无</span>
+              ) : (
+                <UnitPrice cents={product.lowestUnitPrice} product={product} className="text-num-xl text-record-low" />
+              )}
+            </dd>
+            {lowest && <RecordSource record={lowest} />}
+          </div>
+          <div className={overviewRow}>
+            <dt className="text-xs text-ink-3">最近单价</dt>{' '}
+            <dd className="flex items-baseline gap-2">
+              {latest ? (
+                <>
+                  <span>
+                    <UnitPrice cents={latest.unitPrice} product={product} className="text-num-xl" />
+                  </span>
+                  {verdict && <VerdictBadge verdict={verdict} className="ml-auto self-center" />}
+                </>
+              ) : (
+                <span className="text-sm text-ink-3">暂无</span>
+              )}
+            </dd>
+            {latest && <RecordSource record={latest} />}
+          </div>
+        </dl>
+      </section>
+    </Panel>
+  );
+}
+
+function ChannelLowest({ product, records }: { product: Product; records: PriceRecord[] }) {
+  const byChannel = new Map<string, { channel: Channel; lowest: number; count: number }>();
+  for (const r of records) {
+    const entry = byChannel.get(r.channel.id);
+    if (entry) {
+      entry.lowest = Math.min(entry.lowest, r.unitPrice);
+      entry.count += 1;
+    } else byChannel.set(r.channel.id, { channel: r.channel, lowest: r.unitPrice, count: 1 });
+  }
+  const rows = [...byChannel.values()].sort((a, b) => a.lowest - b.lowest);
+  const min = rows[0]!.lowest;
+  const max = rows.at(-1)!.lowest;
+
+  return (
+    <Panel asChild>
+      <section aria-label="各渠道最低单价">
+        <PanelHeader title="各渠道最低单价" />
+        <ul className="flex flex-col gap-3 px-(--panel-padding) py-4">
+          {rows.map(({ channel, lowest, count }, i) => (
+            <li key={channel.id} className="grid grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)_auto] items-center gap-3">
+              <span className="truncate text-[13px]">{channel.name}</span>
+              {/* The cheapest channel fills the track; the dearest keeps a third of it. */}
+              <span aria-hidden className="h-1.5 overflow-hidden rounded-full bg-surface-hover">
+                <span
+                  className={cn('block h-full rounded-full', i === 0 ? 'bg-record-low' : 'bg-ink-4')}
+                  style={{ width: `${max === min ? 100 : 100 - ((lowest - min) / (max - min)) * 66}%` }}
+                />
+              </span>
+              <span className="flex items-baseline justify-end gap-1.5 whitespace-nowrap">
+                <span className={cn('numeric text-num-sm font-semibold', i === 0 && 'text-record-low')}>
+                  {formatYuan(lowest)}
+                </span>
+                <span className="text-[11px] text-ink-3">{count} 条</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="sr-only">单价按 {formatSize(product.baseSize, product.pricingUnit)} 计</p>
+      </section>
+    </Panel>
+  );
+}
+
+const recentReferenceCount = 5;
+// The server stores cents in a Postgres integer column.
+const maxCents = 2_000_000_000;
+
+function StockLineForm({
+  product,
+  records,
+  onClose,
+  onSaved,
+}: {
+  product: ProductDetail;
+  records: PriceRecord[];
+  onClose(): void;
   onSaved(): Promise<void>;
 }) {
   const id = useId();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(product.stockLine === null ? '' : (product.stockLine / 100).toFixed(2));
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
   const baseSize = formatSize(product.baseSize, product.pricingUnit);
-
-  function startEditing() {
-    setDraft(product.stockLine === null ? '' : (product.stockLine / 100).toFixed(2));
-    setError(undefined);
-    setEditing(true);
-  }
 
   async function save(stockLine: number | null) {
     setPending(true);
@@ -321,90 +578,65 @@ function StockLineSection({
     });
     setPending(false);
     if (message) return setError(message);
-    setEditing(false);
+    onClose();
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const stockLine = parseYuan(draft);
-    if (stockLine === null || stockLine === 0) return setError('请填写入手价，最多两位小数，必须大于 0。');
-    if (stockLine > maxCents) return setError('入手价太大了。');
+    if (stockLine === null || stockLine === 0) return setError('入手价需大于 0，最多两位小数');
+    if (stockLine > maxCents) return setError('入手价超出范围');
     save(stockLine);
   }
 
   return (
-    <section aria-label="入手价" className="flex flex-col gap-3 rounded-lg border p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span>
-          入手价{' '}
-          <span className="font-semibold tabular-nums">
-            {product.stockLine === null ? '未设置' : formatUnitPrice(product.stockLine, product)}
-          </span>
-        </span>
-        <span>
-          历史最低单价{' '}
-          <span className="font-semibold tabular-nums">
-            {product.lowestUnitPrice === null ? '暂无' : formatUnitPrice(product.lowestUnitPrice, product)}
-          </span>
-        </span>
-        {!editing && (
-          <Button variant="ghost" size="xs" className="ml-auto" onClick={startEditing}>
-            {product.stockLine === null ? '设置入手价' : '修改入手价'}
+    <form aria-label="设置入手价" className="mt-1 flex flex-col gap-3" onSubmit={handleSubmit}>
+      <Field label={`入手价（元 / ${baseSize}）`} htmlFor={`${id}-stock-line`}>
+        <InputGroup>
+          <InputAddon>¥</InputAddon>
+          <InputGroupInput
+            id={`${id}-stock-line`}
+            inputMode="decimal"
+            required
+            autoFocus
+            className="numeric text-num-sm"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+        </InputGroup>
+      </Field>
+      {records.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-ink-3">最近 {Math.min(records.length, recentReferenceCount)} 条</p>
+          <ul aria-label="参考单价" className="flex flex-col gap-0.5 text-xs text-ink-2">
+            {records.slice(0, recentReferenceCount).map((r) => (
+              <li key={r.id} className="flex gap-2">
+                <span className="numeric text-[13px]">{r.date}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {r.channel.name}
+                  {!r.purchased && '（仅记录）'}
+                </span>{' '}
+                <span className="numeric text-[13px]">{formatUnitPrice(r.unitPrice, product)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {error && <Alert>{error}</Alert>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" size="sm" disabled={pending}>
+          保存入手价
+        </Button>
+        {product.stockLine !== null && (
+          <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => save(null)}>
+            清除入手价
           </Button>
         )}
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          取消
+        </Button>
       </div>
-
-      {editing && (
-        <form aria-label="设置入手价" className="flex flex-col gap-3" onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${id}-stock-line`}>入手价（元 / {baseSize}）</Label>
-            <Input
-              id={`${id}-stock-line`}
-              inputMode="decimal"
-              required
-              autoFocus
-              className="max-w-40"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-          </div>
-          <div aria-label="参考单价" className="text-muted-foreground flex flex-col gap-1">
-            {records.length === 0 ? (
-              <p>还没有价格记录可作参考。</p>
-            ) : (
-              <>
-                {product.lowestUnitPrice !== null && (
-                  <p>历史最低单价 {formatUnitPrice(product.lowestUnitPrice, product)}</p>
-                )}
-                <p>最近 {Math.min(records.length, recentReferenceCount)} 条单价：</p>
-                <ul className="flex flex-col gap-0.5 tabular-nums">
-                  {records.slice(0, recentReferenceCount).map((r) => (
-                    <li key={r.id}>
-                      {r.date} {r.channel.name} {formatUnitPrice(r.unitPrice, product)}
-                      {!r.purchased && '（仅记录）'}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-          {error && <Alert>{error}</Alert>}
-          <div className="flex gap-2">
-            <Button type="submit" disabled={pending}>
-              保存入手价
-            </Button>
-            {product.stockLine !== null && (
-              <Button type="button" variant="outline" disabled={pending} onClick={() => save(null)}>
-                清除入手价
-              </Button>
-            )}
-            <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
-              取消
-            </Button>
-          </div>
-        </form>
-      )}
-    </section>
+    </form>
   );
 }
 
@@ -424,62 +656,70 @@ function PriceRecordItem({
   const { enteredSize, size } = record;
   const converted = enteredSize.unit.name !== size.unit.name;
   const discountTotal = record.listPrice - record.netPrice;
+  const label = recordLabel(record);
+  // The breakdown line already shows the discount total, so only named discounts add anything.
+  const named = record.discounts.filter((d) => d.name);
 
   return (
-    <div className="flex flex-col gap-1 text-sm">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="tabular-nums">{record.date}</span>
-        <span>{record.channel.name}</span>
-        <span className="bg-muted rounded px-1.5 py-0.5 text-xs">{record.purchased ? '已购' : '仅记录'}</span>
-        {record.promotion && (
-          <span aria-label="大促" className="rounded border px-1.5 py-0.5 text-xs">
-            {record.promotion.name}
-          </span>
+    <div className="flex flex-col gap-3 px-(--panel-padding) py-3.5 wide:flex-row wide:items-center wide:gap-5">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <PurchaseBadge purchased={record.purchased} />
+          <span className="numeric text-num-sm font-medium">{record.date}</span>
+          <span className="text-[13px] font-medium">{record.channel.name}</span>
+          {record.promotion && <PromotionTag aria-label="大促">{record.promotion.name}</PromotionTag>}
+        </div>
+        <p className="text-xs text-ink-3">
+          原价 {formatYuan(record.listPrice)}
+          {discountTotal > 0 && ` − 优惠 ${formatYuan(discountTotal)}`} · {record.quantity} 件 ×{' '}
+          {formatSize(size.amount, size.unit)}
+          {converted && `（录入为 ${formatSize(enteredSize.amount, enteredSize.unit)}）`}
+        </p>
+        {named.length > 0 && (
+          <ul aria-label="优惠" className="flex flex-wrap gap-x-3 text-xs text-ink-3">
+            {named.map((d, i) => (
+              <li key={i}>
+                {d.name} {formatYuan(d.amount)}
+              </li>
+            ))}
+          </ul>
         )}
-        <span className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="xs" onClick={onEdit}>
-            编辑
-          </Button>
-          <DeleteButton label={`删除 ${record.date} ${record.channel.name} 的价格记录`} onDelete={onDelete} />
-        </span>
+        {record.note && <p className="text-[13px] whitespace-pre-wrap text-ink-2">{record.note}</p>}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-0.5">
+          <p className="text-xs text-ink-3">录入人 {record.recordedBy?.name ?? '已离开的成员'}</p>
+          <EvidenceList record={record} label={label} onChanged={onEvidenceChanged} />
+        </div>
       </div>
-      <p>
-        单价 <span className="text-base font-semibold tabular-nums">{formatUnitPrice(record.unitPrice, product)}</span>
-        <span className="text-muted-foreground"> · 到手价 </span>
-        <span className="tabular-nums">{formatYuan(record.netPrice)}</span>
-      </p>
-      <p className="text-muted-foreground tabular-nums">
-        原价 {formatYuan(record.listPrice)}
-        {discountTotal > 0 && ` − 优惠 ${formatYuan(discountTotal)}`} · {record.quantity} 件 ×{' '}
-        {formatSize(size.amount, size.unit)}
-        {converted && `（录入为 ${formatSize(enteredSize.amount, enteredSize.unit)}）`}
-      </p>
-      {record.discounts.length > 0 && (
-        <ul aria-label="优惠" className="text-muted-foreground flex flex-wrap gap-x-3">
-          {record.discounts.map((d, i) => (
-            <li key={i}>
-              {d.name ?? '优惠'} {formatYuan(d.amount)}
-            </li>
-          ))}
-        </ul>
-      )}
-      {record.note && <p className="whitespace-pre-wrap">{record.note}</p>}
-      <p className="text-muted-foreground text-xs">录入人 {record.recordedBy?.name ?? '已离开的成员'}</p>
-      <EvidenceList record={record} onChanged={onEvidenceChanged} />
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col wide:items-end">
+          <p className="whitespace-nowrap">
+            <span className="sr-only">单价 </span>
+            <UnitPrice cents={record.unitPrice} product={product} className="text-num-lg" />
+          </p>
+          <p className="text-xs whitespace-nowrap text-ink-3">
+            到手价 <span className="numeric text-[13px] text-ink-2">{formatYuan(record.netPrice)}</span>
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon-xs" aria-label={`编辑 ${label} 的价格记录`} onClick={onEdit}>
+            <Pencil />
+          </Button>
+          <DeleteButton label={`删除 ${label} 的价格记录`} onDelete={onDelete} />
+        </div>
+      </div>
     </div>
   );
 }
 
 const evidenceErrors = {
-  unsupported_evidence_type: '凭证只支持 PNG、JPEG、WebP 或 GIF 图片。',
-  evidence_too_large: '每张凭证不能超过 10 MB。',
+  unsupported_evidence_type: '凭证仅支持 PNG、JPEG、WebP、GIF',
+  evidence_too_large: '单张凭证不超过 10 MB',
 };
 
-function EvidenceList({ record, onChanged }: { record: PriceRecord; onChanged(): Promise<void> }) {
+function EvidenceList({ record, label, onChanged }: { record: PriceRecord; label: string; onChanged(): Promise<void> }) {
   const inputId = useId();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
-  const label = `${record.date} ${record.channel.name}`;
 
   async function upload(files: File[]) {
     if (files.length === 0) return;
@@ -494,33 +734,43 @@ function EvidenceList({ record, onChanged }: { record: PriceRecord; onChanged():
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <ul aria-label="凭证" className="flex flex-wrap items-end gap-2">
-        {(record.evidence ?? []).map((e, i) => (
-          <li key={e.id} className="flex flex-col items-start gap-0.5">
-            <a href={api.evidenceUrl(e.id)} target="_blank" rel="noreferrer">
-              <img
-                src={api.evidenceUrl(e.id)}
-                alt={`${label} 的凭证 ${i + 1}`}
-                loading="lazy"
-                className="size-20 rounded border object-cover"
-              />
-            </a>
-            <DeleteButton
-              label={`删除 ${label} 的凭证 ${i + 1}`}
-              onDelete={() =>
-                attempt(async () => {
-                  await api.deleteEvidence(e.id);
-                  await onChanged();
-                })
-              }
-            />
-          </li>
-        ))}
-      </ul>
-      <div>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-start gap-2">
+        {(record.evidence?.length ?? 0) > 0 && (
+          <ul aria-label="凭证" className="flex flex-wrap items-start gap-2">
+            {record.evidence!.map((e, i) => (
+              <li key={e.id} className="flex flex-col items-center gap-0.5">
+                <a
+                  href={api.evidenceUrl(e.id)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md focus-visible:shadow-focus"
+                >
+                  <img
+                    src={api.evidenceUrl(e.id)}
+                    alt={`${label} 的凭证 ${i + 1}`}
+                    loading="lazy"
+                    className="size-12 rounded-md border border-line object-cover"
+                  />
+                </a>
+                <DeleteButton
+                  label={`删除 ${label} 的凭证 ${i + 1}`}
+                  onDelete={() =>
+                    attempt(async () => {
+                      await api.deleteEvidence(e.id);
+                      await onChanged();
+                    })
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        )}
         <Button variant="outline" size="xs" disabled={uploading} asChild>
-          <label htmlFor={inputId}>{uploading ? '上传中…' : '添加凭证'}</label>
+          <label htmlFor={inputId}>
+            <ImagePlus />
+            {uploading ? '上传中…' : '添加凭证'}
+          </label>
         </Button>
         <input
           id={inputId}
@@ -615,7 +865,7 @@ function PriceRecordForm({
     event.preventDefault();
     if ('error' in read) return setError(read.error);
     if (typeof price === 'string') return setError(price);
-    if (!channelId) return setError('请选择渠道。');
+    if (!channelId) return setError('未选择渠道');
     const input = { ...read.input, date, channelId, purchased, promotionId: promotionId || null, note };
     setPending(true);
     setError(
@@ -629,209 +879,210 @@ function PriceRecordForm({
   }
 
   return (
-    <form
-      aria-label={record ? '编辑价格记录' : '新建价格记录'}
-      className="flex flex-col gap-3 rounded-lg border p-3"
-      onSubmit={handleSubmit}
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`${id}-date`}>日期</Label>
-          <Input id={`${id}-date`} type="date" required value={date} onChange={(e) => changeDate(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`${id}-channel`}>渠道</Label>
-          <select
-            id={`${id}-channel`}
-            className={cn(fieldClass, 'h-9')}
-            required
-            value={channelId}
-            onChange={(e) => setChannelId(e.target.value)}
-          >
-            {choices.length === 0 && <option value="">先在「渠道」页添加渠道</option>}
-            {choices.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.archived ? `${c.name}（已归档）` : c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${id}-promotion`}>大促</Label>
-        <select
-          id={`${id}-promotion`}
-          className={cn(fieldClass, 'h-9 max-w-60')}
-          value={promotionId}
-          onChange={(e) => {
-            setPromotionId(e.target.value);
-            setPromotionPicked(true);
-          }}
-        >
-          <option value="">无</option>
-          {promotions.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <fieldset className="flex gap-4 text-sm">
-        <legend className="sr-only">已购还是仅记录</legend>
-        <label className="flex items-center gap-2">
-          <input type="radio" name="purchased" checked={purchased} onChange={() => setPurchased(true)} />
-          已购
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="radio" name="purchased" checked={!purchased} onChange={() => setPurchased(false)} />
-          仅记录
-        </label>
-      </fieldset>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${id}-list`}>原价（元）</Label>
-        <Input
-          id={`${id}-list`}
-          inputMode="decimal"
-          required
-          placeholder="99.00"
-          className="max-w-40"
-          value={listPrice}
-          onChange={(e) => setListPrice(e.target.value)}
-        />
-      </div>
-
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 text-sm font-medium">优惠</legend>
-        {discounts.map((d, i) => (
-          <div key={d.key} className="flex gap-2">
+    <form aria-label={record ? '编辑价格记录' : '新建价格记录'} onSubmit={handleSubmit}>
+      <div className="flex max-w-4xl flex-col gap-4 px-(--panel-padding) py-4">
+        <div className="grid gap-4 wide:grid-cols-3">
+          <Field label="日期" htmlFor={`${id}-date`}>
             <Input
-              aria-label={`优惠 ${i + 1} 金额（元）`}
-              inputMode="decimal"
-              placeholder="金额"
-              className="max-w-28"
-              value={d.amount}
-              onChange={(e) => updateDiscount(d.key, { amount: e.target.value })}
-            />
-            <Input
-              aria-label={`优惠 ${i + 1} 名称`}
-              placeholder="名称（可选），如 满 199 减 100"
-              maxLength={50}
-              value={d.name}
-              onChange={(e) => updateDiscount(d.key, { name: e.target.value })}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={`移除优惠 ${i + 1}`}
-              onClick={() => setDiscounts((all) => all.filter((x) => x.key !== d.key))}
-            >
-              <X />
-            </Button>
-          </div>
-        ))}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="self-start"
-          onClick={() => setDiscounts((all) => [...all, discountDraft()])}
-        >
-          <Plus />
-          添加优惠
-        </Button>
-      </fieldset>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`${id}-quantity`}>件数</Label>
-          <Input
-            id={`${id}-quantity`}
-            required
-            placeholder="3 × 6"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
-          <p className="text-muted-foreground text-xs">
-            {multiplied !== null ? `共 ${multiplied} 件，` : ''}赠品也计入件数
-          </p>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`${id}-size`}>每件规格</Label>
-          <div className="flex gap-2">
-            <Input
-              id={`${id}-size`}
-              inputMode="decimal"
+              id={`${id}-date`}
+              type="date"
               required
-              placeholder="130"
-              value={sizeAmount}
-              onChange={(e) => setSizeAmount(e.target.value)}
+              className="numeric text-[15px]"
+              value={date}
+              onChange={(e) => changeDate(e.target.value)}
             />
-            <select
-              aria-label="规格单位"
-              className={cn(fieldClass, 'h-9 w-20 shrink-0')}
-              value={sizeUnitName}
-              onChange={(e) => setSizeUnitName(e.target.value)}
+          </Field>
+          <Field label="渠道" htmlFor={`${id}-channel`}>
+            <NativeSelect
+              id={`${id}-channel`}
+              required
+              value={channelId}
+              onChange={(e) => setChannelId(e.target.value)}
             >
-              {unitsLike(product.pricingUnit).map((u) => (
-                <option key={u.name} value={u.name}>
-                  {u.name}
+              {choices.length === 0 && <option value="">暂无渠道</option>}
+              {choices.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.archived ? `${c.name}（已归档）` : c.name}
                 </option>
               ))}
-            </select>
-          </div>
+            </NativeSelect>
+          </Field>
+          <Field label="大促" htmlFor={`${id}-promotion`}>
+            <NativeSelect
+              id={`${id}-promotion`}
+              value={promotionId}
+              onChange={(e) => {
+                setPromotionId(e.target.value);
+                setPromotionPicked(true);
+              }}
+            >
+              <option value="">无</option>
+              {promotions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
         </div>
-      </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${id}-note`}>备注</Label>
-        <textarea
-          id={`${id}-note`}
-          rows={2}
-          maxLength={500}
-          placeholder="如 凑单买的洗衣液"
-          className={cn(fieldClass, 'py-2')}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
+        <SegmentedControl<boolean>
+          aria-label="已购还是仅记录"
+          className="self-start"
+          options={[
+            { value: true, label: '已购' },
+            { value: false, label: '仅记录' },
+          ]}
+          value={purchased}
+          onValueChange={setPurchased}
         />
-      </div>
 
-      <output aria-label="价格预览" className="bg-muted/50 flex flex-wrap gap-x-4 rounded-md px-3 py-2 text-sm">
-        {price === null && <span className="text-muted-foreground">填写原价、件数和规格后显示到手价和单价</span>}
-        {typeof price === 'string' && <span className="text-destructive">{price}</span>}
-        {price !== null && typeof price === 'object' && (
-          <>
-            <span>
-              到手价 <span className="font-semibold tabular-nums">{formatYuan(price.netPrice)}</span>
-            </span>
-            <span>
-              单价 <span className="font-semibold tabular-nums">{formatUnitPrice(price.unitPrice, product)}</span>
-            </span>
-            {judgment && <JudgmentSummary judgment={judgment} />}
-            {lowest !== null && (
-              <span className="text-muted-foreground">历史最低单价 {formatUnitPrice(lowest, product)}</span>
-            )}
-            {datePromotion && lastYearLowest !== null && (
-              <span className="text-muted-foreground">
-                去年{datePromotion.name}最低单价 {formatUnitPrice(lastYearLowest, product)}
+        <div className="grid gap-4 wide:grid-cols-3">
+          <Field label="原价（元）" htmlFor={`${id}-list`}>
+            <InputGroup>
+              <InputAddon>¥</InputAddon>
+              <InputGroupInput
+                id={`${id}-list`}
+                inputMode="decimal"
+                required
+                className="numeric text-num-sm"
+                value={listPrice}
+                onChange={(e) => setListPrice(e.target.value)}
+              />
+            </InputGroup>
+          </Field>
+          <Field
+            label="件数"
+            htmlFor={`${id}-quantity`}
+            hint={`${multiplied !== null ? `共 ${multiplied} 件 · ` : ''}含赠品`}
+          >
+            <Input
+              id={`${id}-quantity`}
+              required
+              className="numeric text-num-sm"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+            />
+          </Field>
+          <Field label="每件规格" htmlFor={`${id}-size`}>
+            <div className="flex gap-2">
+              <Input
+                id={`${id}-size`}
+                inputMode="decimal"
+                required
+                className="numeric text-num-sm"
+                value={sizeAmount}
+                onChange={(e) => setSizeAmount(e.target.value)}
+              />
+              <NativeSelect
+                aria-label="规格单位"
+                className="w-20 shrink-0"
+                value={sizeUnitName}
+                onChange={(e) => setSizeUnitName(e.target.value)}
+              >
+                {unitsLike(product.pricingUnit).map((u) => (
+                  <option key={u.name} value={u.name}>
+                    {u.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          </Field>
+        </div>
+
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1.5 text-xs font-medium text-ink-2">优惠</legend>
+          {discounts.map((d, i) => (
+            <div key={d.key} className="flex gap-2 wide:max-w-xl">
+              <InputGroup className="w-32 shrink-0">
+                <InputAddon>¥</InputAddon>
+                <InputGroupInput
+                  aria-label={`优惠 ${i + 1} 金额（元）`}
+                  inputMode="decimal"
+                  placeholder="金额"
+                  className="numeric text-num-sm"
+                  value={d.amount}
+                  onChange={(e) => updateDiscount(d.key, { amount: e.target.value })}
+                />
+              </InputGroup>
+              <Input
+                aria-label={`优惠 ${i + 1} 名称`}
+                placeholder="名称（可选）"
+                maxLength={50}
+                value={d.name}
+                onChange={(e) => updateDiscount(d.key, { name: e.target.value })}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`移除优惠 ${i + 1}`}
+                onClick={() => setDiscounts((all) => all.filter((x) => x.key !== d.key))}
+              >
+                <X />
+              </Button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={() => setDiscounts((all) => [...all, discountDraft()])}
+          >
+            <Plus />
+            添加优惠
+          </Button>
+        </fieldset>
+
+        <Field label="备注" htmlFor={`${id}-note`}>
+          <Textarea
+            id={`${id}-note`}
+            rows={2}
+            maxLength={500}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </Field>
+
+        <output
+          aria-label="价格预览"
+          className="flex flex-wrap items-baseline gap-x-5 gap-y-2 rounded-md bg-surface-subtle px-3 py-2.5 text-[13px]"
+        >
+          {price === null && <span className="text-ink-3">填写原价、件数和规格</span>}
+          {typeof price === 'string' && <span className="text-destructive">{price}</span>}
+          {price !== null && typeof price === 'object' && (
+            <>
+              <span>
+                <span className="text-xs text-ink-3">单价 </span>
+                <UnitPrice cents={price.unitPrice} product={product} className="text-num-md" />
               </span>
-            )}
-          </>
-        )}
-      </output>
-
-      {error && <Alert>{error}</Alert>}
-      <div className="flex gap-2">
+              <span>
+                <span className="text-xs text-ink-3">到手价 </span>
+                <span className="numeric text-num-sm font-semibold">{formatYuan(price.netPrice)}</span>
+              </span>
+              {judgment && <JudgmentSummary judgment={judgment} />}
+              {lowest !== null && (
+                <span className="text-xs text-ink-3">历史最低单价 {formatUnitPrice(lowest, product)}</span>
+              )}
+              {datePromotion && lastYearLowest !== null && (
+                <span className="text-xs text-ink-3">
+                  去年{datePromotion.name}最低单价 {formatUnitPrice(lastYearLowest, product)}
+                </span>
+              )}
+            </>
+          )}
+        </output>
+        {error && <Alert>{error}</Alert>}
+      </div>
+      <PanelFooter>
         <Button type="submit" disabled={pending}>
           {record ? '保存' : '保存记录'}
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel}>
           取消
         </Button>
-      </div>
+      </PanelFooter>
     </form>
   );
 }

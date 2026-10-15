@@ -41,7 +41,7 @@ test('a member records, edits and deletes prices on a product page', async ({ pa
   const form = page.getByRole('form', { name: '新建价格记录' });
   await form.getByLabel('日期').fill('2026-06-18');
   await form.getByLabel('渠道').selectOption({ label: channelName });
-  await form.getByLabel('仅记录').check();
+  await form.getByRole('radio', { name: '仅记录' }).click();
   await form.getByLabel('原价（元）').fill('509');
   await form.getByLabel('优惠 1 金额（元）').fill('40');
   await form.getByLabel('优惠 1 名称').fill('会员券');
