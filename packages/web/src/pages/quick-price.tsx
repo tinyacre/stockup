@@ -30,6 +30,7 @@ import {
   type Promotion,
 } from '@/lib/api';
 import { formatSize, formatStockLineGap, formatYuan } from '@/lib/format';
+import { Link, productPath } from '@/lib/navigation';
 import { useHistoryState } from '@/lib/history';
 import { useOnline } from '@/lib/online';
 import { useLocalProductSearch } from '@/lib/search';
@@ -85,7 +86,7 @@ function useWideScreen() {
 // A column that stays in view under the page bar and scrolls on its own.
 const stickyColumn = 'sticky top-(--page-bar-height) h-[calc(100svh-var(--page-bar-height))] overflow-y-auto';
 
-export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): void }) {
+export function QuickPricePage() {
   const wide = useWideScreen();
   const online = useOnline();
   const [household, setHousehold] = useState<Household>();
@@ -252,7 +253,6 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
         online={online}
         onSaved={refresh}
         onClear={() => pick(product.id)}
-        onOpenProduct={() => onOpenProduct(product.id)}
       />
     );
 
@@ -271,10 +271,10 @@ export function QuickPricePage({ onOpenProduct }: { onOpenProduct(id: string): v
         title="算价"
         actions={
           <Button variant="outline" size="sm" asChild>
-            <a href="/recognitions">
+            <Link href="/recognitions">
               <ScanText />
               识别截图
-            </a>
+            </Link>
           </Button>
         }
       />
@@ -484,7 +484,6 @@ function QuickPrice({
   online,
   onSaved,
   onClear,
-  onOpenProduct,
 }: {
   layout: Layout;
   product: ProductSummary;
@@ -492,7 +491,6 @@ function QuickPrice({
   online: boolean;
   onSaved(): Promise<unknown>;
   onClear(): void;
-  onOpenProduct(): void;
 }) {
   const id = useId();
   const { promotions } = household;
@@ -594,10 +592,10 @@ function QuickPrice({
         <p className="flex items-center gap-1.5 text-xs text-ink-3">
           每 {perBase(product)}
           <span aria-hidden>·</span>
-          <button type="button" className="flex items-center text-ink-2 underline-offset-4 hover:underline" onClick={onOpenProduct}>
+          <Link href={productPath(product.id)} className="flex items-center text-ink-2 underline-offset-4 hover:underline">
             详情
             <ChevronRight className="size-3.5" />
-          </button>
+          </Link>
         </p>
       </div>
       <dl className="hidden divide-x divide-line rounded-md border border-line bg-surface wide:flex">
@@ -797,10 +795,10 @@ function QuickPrice({
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-ink-3">暂无渠道</span>
                   <Button variant="outline" size="sm" asChild>
-                    <a href="/channels">
+                    <Link href="/channels">
                       <Plus />
                       新建渠道
-                    </a>
+                    </Link>
                   </Button>
                 </div>
               ) : (
@@ -866,8 +864,8 @@ function QuickPrice({
   const savedStatus = saved && (
     <p role="status" className="flex items-center justify-between gap-3 rounded-md bg-ink px-3 py-2 text-sm text-background">
       {saved}
-      <Button variant="link" size="sm" className="text-background" onClick={onOpenProduct}>
-        查看记录
+      <Button variant="link" size="sm" className="text-background" asChild>
+        <Link href={productPath(product.id)}>查看记录</Link>
       </Button>
     </p>
   );

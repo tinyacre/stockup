@@ -25,6 +25,7 @@ import {
   type RecognitionDraft,
 } from '@/lib/api';
 import { formatSize, formatYuan } from '@/lib/format';
+import { Link, productPath } from '@/lib/navigation';
 import { parseYuan, today, unitsLike } from '@/lib/pricing';
 import { useProductSearch } from '@/lib/search';
 
@@ -112,12 +113,10 @@ export function RecognitionUploadPage({ onStarted }: { onStarted(id: string): vo
 export function RecognitionPage({
   recognitionId,
   onManualEntry,
-  onOpenProduct,
   onUploadAnother,
 }: {
   recognitionId: string;
   onManualEntry(): void;
-  onOpenProduct(id: string): void;
   onUploadAnother(): void;
 }) {
   const [recognition, setRecognition] = useState<Recognition>();
@@ -182,7 +181,7 @@ export function RecognitionPage({
               <ManualEntry message={failures[recognition.error!]} onManualEntry={onManualEntry} />
             )}
             {confirmed ? (
-              <Confirmed {...confirmed} onOpenProduct={onOpenProduct} />
+              <Confirmed {...confirmed} />
             ) : recognition.confirmedAt ? (
               <p role="status" className="text-sm">
                 已确认入库
@@ -195,7 +194,6 @@ export function RecognitionPage({
                   <Review
                     recognition={recognition}
                     onChange={setRecognition}
-                    onOpenProduct={onOpenProduct}
                     onConfirmed={(records) => {
                       const names = new Map<string, string>(
                         recognition.drafts.flatMap((d) =>
@@ -238,30 +236,21 @@ function sum(discounts: readonly Discount[]) {
   return discounts.reduce((total, d) => total + d.amount, 0);
 }
 
-function ProductLink({ id, name, onOpenProduct }: { id: string; name: string; onOpenProduct(id: string): void }) {
+function ProductLink({ id, name }: { id: string; name: string }) {
   return (
-    <a
-      href={`/products/${encodeURIComponent(id)}`}
-      className="underline underline-offset-2"
-      onClick={(event) => {
-        event.preventDefault();
-        onOpenProduct(id);
-      }}
-    >
+    <Link href={productPath(id)} className="underline underline-offset-2">
       {name}
-    </a>
+    </Link>
   );
 }
 
 function Review({
   recognition,
   onChange,
-  onOpenProduct,
   onConfirmed,
 }: {
   recognition: Recognition;
   onChange(recognition: Recognition): void;
-  onOpenProduct(id: string): void;
   onConfirmed(records: PriceRecord[]): void;
 }) {
   const [household, setHousehold] = useState<{ groups: CategoryGroup[]; channels: Channel[] }>();
@@ -308,7 +297,6 @@ function Review({
                 draft={draft}
                 groups={household?.groups}
                 onChange={onChange}
-                onOpenProduct={onOpenProduct}
               />
             ))}
           </List>
@@ -333,11 +321,9 @@ function Review({
 function Confirmed({
   records,
   names,
-  onOpenProduct,
 }: {
   records: PriceRecord[];
   names: Map<string, string>;
-  onOpenProduct(id: string): void;
 }) {
   return (
     <Panel asChild>
@@ -349,7 +335,7 @@ function Confirmed({
         <List variant="ruled">
           {records.map((r) => (
             <li key={r.id} className="flex items-baseline gap-3 px-4 py-3 text-sm price-tag:px-0">
-              <ProductLink id={r.productId} name={names.get(r.productId) ?? '商品'} onOpenProduct={onOpenProduct} />
+              <ProductLink id={r.productId} name={names.get(r.productId) ?? '商品'} />
               <span className="text-ink-3 ml-auto">到手价 {formatYuan(r.netPrice)}</span>
             </li>
           ))}
@@ -370,13 +356,11 @@ function DraftItem({
   draft,
   groups,
   onChange,
-  onOpenProduct,
 }: {
   recognition: Recognition;
   draft: RecognitionDraft;
   groups: CategoryGroup[] | undefined;
   onChange(recognition: Recognition): void;
-  onOpenProduct(id: string): void;
 }) {
   const [mode, setMode] = useState<'view' | 'edit' | 'pick'>('view');
   const [error, setError] = useState<string>();
@@ -432,7 +416,7 @@ function DraftItem({
           )}
           <div className="flex flex-wrap items-center gap-2 text-sm">
             {draft.suggestedProduct ? (
-              <ProductLink id={draft.suggestedProduct.id} name={draft.suggestedProduct.name} onOpenProduct={onOpenProduct} />
+              <ProductLink id={draft.suggestedProduct.id} name={draft.suggestedProduct.name} />
             ) : (
               <Badge tone="outline">未匹配商品</Badge>
             )}

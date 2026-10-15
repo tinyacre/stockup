@@ -17,13 +17,14 @@ import { Alert, attempt, describeError, NameForm, nameTaken, RetryAlert, type Ac
 import { NewProductForm, NoteField } from '@/components/product-form';
 import { api, type CategoryGroup, type Product, type ProductSummary } from '@/lib/api';
 import { formatSize } from '@/lib/format';
+import { Link, productPath } from '@/lib/navigation';
 import { useHistoryState } from '@/lib/history';
 import { useProductSearch } from '@/lib/search';
 import { cn } from '@/lib/utils';
 
 type PlacedCategory = CategoryGroup['categories'][number] & { group: CategoryGroup };
 
-export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void }) {
+export function CatalogPage() {
   const [groups, setGroups] = useState<CategoryGroup[]>();
   const [loadError, setLoadError] = useState<string>();
   const [selectedId, setSelectedId] = useHistoryState<string | undefined>('categoryId', undefined);
@@ -112,7 +113,7 @@ export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void
         <PageContent>
           {loadAlert}
           <section aria-label="搜索结果">
-            <SearchResults query={trimmed} categories={categories} onOpenProduct={onOpenProduct} />
+            <SearchResults query={trimmed} categories={categories} />
           </section>
         </PageContent>
       </>
@@ -147,7 +148,6 @@ export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void
               groups={groups}
               creating={creating}
               onCreatingChange={setCreating}
-              onOpenProduct={onOpenProduct}
               onBack={() => {
                 setCreating(false);
                 setSelectedId(undefined);
@@ -181,11 +181,9 @@ function CatalogSkeleton() {
 function SearchResults({
   query,
   categories,
-  onOpenProduct,
 }: {
   query: string;
   categories: PlacedCategory[];
-  onOpenProduct(id: string): void;
 }) {
   const { found, error } = useProductSearch(query);
 
@@ -209,7 +207,7 @@ function SearchResults({
             <li key={product.id} aria-label={product.name}>
               <ListRow className="py-2.5">
                 <div className="flex min-w-0 flex-col gap-0.5">
-                  <ProductLink product={product} onOpenProduct={onOpenProduct} />
+                  <ProductLink product={product} />
                   <span className="text-xs text-ink-3">
                     {category && `${category.group.name} / ${category.name} · `}基准规格{' '}
                     {formatSize(product.baseSize, product.pricingUnit)}
@@ -224,18 +222,14 @@ function SearchResults({
   );
 }
 
-function ProductLink({ product, onOpenProduct }: { product: Product; onOpenProduct(id: string): void }) {
+function ProductLink({ product }: { product: Product }) {
   return (
-    <a
-      href={`/products/${encodeURIComponent(product.id)}`}
+    <Link
+      href={productPath(product.id)}
       className="min-w-0 truncate text-[13px] font-medium text-ink underline-offset-4 hover:underline"
-      onClick={(event) => {
-        event.preventDefault();
-        onOpenProduct(product.id);
-      }}
     >
       {product.name}
-    </a>
+    </Link>
   );
 }
 
@@ -435,7 +429,6 @@ function CategoryPanel({
   groups,
   creating,
   onCreatingChange,
-  onOpenProduct,
   onBack,
   onChange,
   onDeleted,
@@ -444,7 +437,6 @@ function CategoryPanel({
   groups: CategoryGroup[];
   creating: boolean;
   onCreatingChange(creating: boolean): void;
-  onOpenProduct(id: string): void;
   onBack(): void;
   onChange(): Promise<void>;
   onDeleted(): Promise<void>;
@@ -615,7 +607,6 @@ function CategoryPanel({
                 ) : (
                   <ProductRow
                     product={product}
-                    onOpenProduct={onOpenProduct}
                     onEdit={() => setEditingId(product.id)}
                     onDelete={() =>
                       attempt(
@@ -633,19 +624,17 @@ function CategoryPanel({
           </List>
         </Panel>
       )}
-      <ArchivedProducts categoryId={category.id} onOpenProduct={onOpenProduct} />
+      <ArchivedProducts categoryId={category.id} />
     </PageContent>
   );
 }
 
 function ProductRow({
   product,
-  onOpenProduct,
   onEdit,
   onDelete,
 }: {
   product: ProductSummary;
-  onOpenProduct(id: string): void;
   onEdit(): void;
   onDelete: Action;
 }) {
@@ -653,7 +642,7 @@ function ProductRow({
   return (
     <ListRow className={cn('group/row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 py-3', rowGrid)}>
       <div className="flex min-w-0 flex-col">
-        <ProductLink product={product} onOpenProduct={onOpenProduct} />
+        <ProductLink product={product} />
         {product.note && <p className="truncate text-xs text-ink-3">{product.note}</p>}
       </div>
       <div className="col-span-2 text-xs text-ink-3 wide:col-span-1 wide:text-[13px] wide:text-ink-2">
@@ -713,7 +702,7 @@ function PriceSummary({ product }: { product: ProductSummary }) {
   );
 }
 
-function ArchivedProducts({ categoryId, onOpenProduct }: { categoryId: string; onOpenProduct(id: string): void }) {
+function ArchivedProducts({ categoryId }: { categoryId: string }) {
   const [archived, setArchived] = useState<Product[]>([]);
   useEffect(() => {
     api.products(categoryId, { includeArchived: true }).then(
@@ -735,7 +724,7 @@ function ArchivedProducts({ categoryId, onOpenProduct }: { categoryId: string; o
           {archived.map((product) => (
             <li key={product.id} aria-label={product.name}>
               <ListRow className="min-h-10 opacity-70 group-data-[variant=ruled]/list:min-h-10">
-                <ProductLink product={product} onOpenProduct={onOpenProduct} />
+                <ProductLink product={product} />
                 <span className="ml-auto text-xs text-ink-3">
                   基准规格 {formatSize(product.baseSize, product.pricingUnit)}
                 </span>

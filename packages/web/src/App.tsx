@@ -5,6 +5,7 @@ import { BrandLogo } from '@/components/brand';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
 import { api, ApiError, type Me } from '@/lib/api';
+import { NavigationProvider } from '@/lib/navigation';
 import { applyTheme } from '@/lib/theme';
 import { CatalogPage } from '@/pages/catalog';
 import { ChannelsPage } from '@/pages/channels';
@@ -164,7 +165,6 @@ function useRoute() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
-  // The state travels with the history entry, so pages can restore what they showed there.
   const navigate = (path: string, state: unknown = null) => {
     if (path !== window.location.pathname) window.history.pushState(state, '', path);
     setRoute(currentRoute());
@@ -177,43 +177,43 @@ function Home({ me, onSignOut, onSessionChange }: { me: Me; onSignOut(): void; o
   const { productId, recognitionId } = route;
   // A section the member may no longer see, as after handing over the admin role, shows quick price.
   const section = sections.some((s) => s.path === route.section && canSee(me, s)) ? route.section : '/';
-  const openProduct = (id: string) => navigate(`/products/${encodeURIComponent(id)}`);
   useEffect(() => applyTheme(me.user.theme), [me.user.theme]);
   return (
-    <AppShell me={me} current={section} onNavigate={navigate} onSignOut={onSignOut}>
-      {productId ? (
-        <ProductPage
-          key={productId}
-          productId={productId}
-          onBack={(categoryId) => navigate('/products', { categoryId })}
-        />
-      ) : recognitionId ? (
-        <RecognitionPage
-          key={recognitionId}
-          recognitionId={recognitionId}
-          onManualEntry={() => navigate('/')}
-          onOpenProduct={openProduct}
-          onUploadAnother={() => navigate('/recognitions')}
-        />
-      ) : section === '/recognitions' ? (
-        <RecognitionUploadPage onStarted={(id) => navigate(`/recognitions/${encodeURIComponent(id)}`)} />
-      ) : section === '/channels' ? (
-        <ChannelsPage />
-      ) : section === '/promotions' ? (
-        <PromotionsPage />
-      ) : section === '/members' ? (
-        <MembersPage meId={me.user.id} onRoleHandedOver={onSessionChange} />
-      ) : section === '/invitations' ? (
-        <InvitationsPage />
-      ) : section === '/households' ? (
-        <HouseholdsPage />
-      ) : section === '/settings' ? (
-        <SettingsPage me={me} onRenamed={onSessionChange} />
-      ) : section === '/products' ? (
-        <CatalogPage onOpenProduct={openProduct} />
-      ) : (
-        <QuickPricePage onOpenProduct={openProduct} />
-      )}
-    </AppShell>
+    <NavigationProvider value={navigate}>
+      <AppShell me={me} current={section} onSignOut={onSignOut}>
+        {productId ? (
+          <ProductPage
+            key={productId}
+            productId={productId}
+            onBack={(categoryId) => navigate('/products', { categoryId })}
+          />
+        ) : recognitionId ? (
+          <RecognitionPage
+            key={recognitionId}
+            recognitionId={recognitionId}
+            onManualEntry={() => navigate('/')}
+            onUploadAnother={() => navigate('/recognitions')}
+          />
+        ) : section === '/recognitions' ? (
+          <RecognitionUploadPage onStarted={(id) => navigate(`/recognitions/${encodeURIComponent(id)}`)} />
+        ) : section === '/channels' ? (
+          <ChannelsPage />
+        ) : section === '/promotions' ? (
+          <PromotionsPage />
+        ) : section === '/members' ? (
+          <MembersPage meId={me.user.id} onRoleHandedOver={onSessionChange} />
+        ) : section === '/invitations' ? (
+          <InvitationsPage />
+        ) : section === '/households' ? (
+          <HouseholdsPage />
+        ) : section === '/settings' ? (
+          <SettingsPage me={me} onRenamed={onSessionChange} />
+        ) : section === '/products' ? (
+          <CatalogPage />
+        ) : (
+          <QuickPricePage />
+        )}
+      </AppShell>
+    </NavigationProvider>
   );
 }

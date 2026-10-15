@@ -79,7 +79,7 @@ test('a member prices a product from the home page and keeps it as seen only', a
   await page.getByRole('button', { name: '存为仅记录' }).click();
   await expect(page.getByRole('status').filter({ hasText: '已存为仅记录' })).toBeVisible();
 
-  await page.getByRole('button', { name: '查看记录' }).click();
+  await page.getByRole('link', { name: '查看记录' }).click();
   await expect(page).toHaveURL(new RegExp(`/products/${product.id}$`));
   const records = page
     .getByRole('list', { name: '价格记录列表' })

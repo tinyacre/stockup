@@ -14,6 +14,7 @@ import {
 import { BrandLogo } from '@/components/brand';
 import { PageBar, PageBarProvider } from '@/components/ui/page';
 import type { Me } from '@/lib/api';
+import { Link } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
 
 export const sections = [
@@ -49,13 +50,11 @@ export function canSee(me: Me, section: Section) {
 export function AppShell({
   me,
   current,
-  onNavigate,
   onSignOut,
   children,
 }: {
   me: Me;
   current: SectionPath;
-  onNavigate(path: SectionPath): void;
   onSignOut(): void;
   children: ReactNode;
 }) {
@@ -113,7 +112,7 @@ export function AppShell({
                 {items.map((s) => {
                   const Icon = s.icon;
                   return (
-                    <a
+                    <Link
                       key={s.path}
                       href={s.path}
                       aria-current={s.path === current ? 'page' : undefined}
@@ -126,10 +125,6 @@ export function AppShell({
                         'price-tag:wide:aria-[current=page]:shadow-[inset_3px_0_0_var(--gold)] price-tag:wide:aria-[current=page]:before:hidden',
                         'price-tag:aria-[current=page]:shadow-[inset_0_-2px_0_var(--gold)]',
                       )}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        onNavigate(s.path);
-                      }}
                     >
                       <Icon
                         aria-hidden
@@ -139,7 +134,7 @@ export function AppShell({
                         )}
                       />
                       {s.label}
-                    </a>
+                    </Link>
                   );
                 })}
               </div>
