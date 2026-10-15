@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { List, ListRow } from '@/components/ui/list';
+import { List, ListCell, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
-import { Alert, attempt, describeError, ListSkeleton, listPageClass, RetryAlert } from '@/components/editing';
+import { Alert, attempt, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
 import { api, type Household } from '@/lib/api';
 
 const fields = [
@@ -19,6 +20,7 @@ const fields = [
 export function HouseholdsPage() {
   const [households, setHouseholds] = useState<Household[]>();
   const [loadError, setLoadError] = useState<string>();
+  const [creating, setCreating] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -33,10 +35,28 @@ export function HouseholdsPage() {
   }, [reload]);
 
   return (
-    <PageContent className={listPageClass}>
-      <PageHeader title="家庭" />
+    <PageContent>
+      <PageHeader
+        title="家庭"
+        actions={
+          !creating && (
+            <Button onClick={() => setCreating(true)}>
+              <Plus />
+              新建家庭
+            </Button>
+          )
+        }
+      />
       {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
-      <NewHouseholdForm onCreated={reload} />
+      {creating && (
+        <NewHouseholdForm
+          onCancel={() => setCreating(false)}
+          onCreated={async () => {
+            await reload();
+            setCreating(false);
+          }}
+        />
+      )}
       <Panel>
         <PanelHeader title="全部家庭" count={households?.length} />
         {!households && <ListSkeleton />}
@@ -44,9 +64,11 @@ export function HouseholdsPage() {
         {households && households.length > 0 && (
           <List variant="ruled" aria-label="所有家庭">
             {households.map((household) => (
-              <ListRow key={household.id} asChild className="justify-between py-2 text-sm">
+              <ListRow key={household.id} asChild className="py-2 text-sm">
                 <li>
-                  <span className="font-medium">{household.name}</span>
+                  <ListCell lead className="font-medium">
+                    {household.name}
+                  </ListCell>
                   <span className="text-ink-3">{household.memberCount} 位成员</span>
                 </li>
               </ListRow>
@@ -58,7 +80,7 @@ export function HouseholdsPage() {
   );
 }
 
-function NewHouseholdForm({ onCreated }: { onCreated(): Promise<void> }) {
+function NewHouseholdForm({ onCreated, onCancel }: { onCreated(): Promise<void>; onCancel(): void }) {
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
 
@@ -74,7 +96,6 @@ function NewHouseholdForm({ onCreated }: { onCreated(): Promise<void> }) {
           householdName: value('householdName').trim(),
           admin: { name: value('name').trim(), username: value('username'), password: value('password') },
         });
-        form.reset();
         await onCreated();
       },
       { username_taken: '用户名已被使用' },
@@ -88,17 +109,20 @@ function NewHouseholdForm({ onCreated }: { onCreated(): Promise<void> }) {
       <form aria-label="新建家庭" onSubmit={handleSubmit}>
         <PanelHeader title="新建家庭" />
         <PanelBody className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            {fields.map(({ name, label, hint, ...input }) => (
+          <div className="grid max-w-3xl gap-4 sm:grid-cols-2">
+            {fields.map(({ name, label, hint, ...input }, i) => (
               <Field key={name} label={label} htmlFor={name} hint={hint}>
-                <Input id={name} name={name} required {...input} />
+                <Input id={name} name={name} required autoFocus={i === 0} {...input} />
               </Field>
             ))}
           </div>
           {error && <Alert>{error}</Alert>}
-          <div>
-            <Button type="submit" variant="outline" disabled={pending}>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={pending}>
               新建家庭
+            </Button>
+            <Button type="button" variant="ghost" onClick={onCancel}>
+              取消
             </Button>
           </div>
         </PanelBody>

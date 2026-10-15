@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
-import { List, ListRow } from '@/components/ui/list';
+import { List, ListCell, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelHeader } from '@/components/ui/panel';
-import { attempt, ConfirmButton, describeError, ListSkeleton, listPageClass, RetryAlert } from '@/components/editing';
+import { attempt, ConfirmButton, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
 import { api, type Member } from '@/lib/api';
 
 const gone = { not_found: '该成员已不在家庭中' };
@@ -27,7 +27,7 @@ export function MembersPage({ meId, onRoleHandedOver }: { meId: string; onRoleHa
   }, [reload]);
 
   return (
-    <PageContent className={listPageClass}>
+    <PageContent>
       <PageHeader title="成员" />
       {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
       <Panel>
@@ -39,13 +39,13 @@ export function MembersPage({ meId, onRoleHandedOver }: { meId: string; onRoleHa
             {members.map((member) => (
               <ListRow key={member.id} asChild className="flex-wrap gap-1 py-2">
                 <li>
-                  <div className="mr-auto min-w-0">
+                  <ListCell lead>
                     <p className="flex items-center gap-2 text-sm font-medium">
                       {member.name}
                       {member.role === 'admin' && <Badge tone="outline">管理员</Badge>}
                     </p>
                     <p className="text-xs text-ink-3">{member.username}</p>
-                  </div>
+                  </ListCell>
                   {member.id !== meId && (
                     <>
                       <ConfirmButton

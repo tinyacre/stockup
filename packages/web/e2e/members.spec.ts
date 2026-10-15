@@ -30,6 +30,7 @@ async function newHousehold(page: Page) {
 
   await signIn(page, founder.username, founder.password);
   await openSection(page, '家庭');
+  await page.getByRole('button', { name: '新建家庭' }).click();
   const form = page.getByRole('form', { name: '新建家庭' });
   await form.getByLabel('家庭名称').fill(householdName);
   await form.getByLabel('管理员显示名称').fill(admin.name);

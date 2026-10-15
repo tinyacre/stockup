@@ -20,6 +20,7 @@ test('a member adjusts promotions and sees them tag price records', async ({ pag
   const promotions = page.getByRole('list', { name: '大促列表' });
   await expect(promotions.getByRole('listitem', { name: '618' })).toContainText('05-31 至 06-20');
 
+  await page.getByRole('button', { name: '新建大促' }).click();
   const newPromotion = page.getByRole('form', { name: '新建大促' });
   await newPromotion.getByLabel('新大促名称').fill(promotionName);
   await newPromotion.getByLabel('开始（月-日）').fill(`${month}-10`);
@@ -40,6 +41,7 @@ test('a member adjusts promotions and sees them tag price records', async ({ pag
   await expect(promotion).toContainText(`${month}-01 至 ${month}-05`);
 
   await nav.getByRole('link', { name: '渠道' }).click();
+  await page.getByRole('button', { name: '新建渠道' }).click();
   await page.getByLabel('新渠道名称').fill(channelName);
   await page.getByRole('button', { name: '新建渠道' }).click();
   await expect(page.getByRole('listitem', { name: channelName })).toBeVisible();

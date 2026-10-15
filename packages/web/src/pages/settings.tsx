@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { List, ListRow } from '@/components/ui/list';
+import { List, ListCell, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { Alert, attempt, describeError, ListSkeleton, listPageClass, RetryAlert } from '@/components/editing';
+import { Alert, attempt, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
 import { api, type AuthorizedClient, type Me } from '@/lib/api';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
 import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
@@ -14,7 +14,7 @@ import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
 // The header shows the display name and the shell applies the theme, so `onRenamed` reloads the session.
 export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
   return (
-    <PageContent className={listPageClass}>
+    <PageContent className="grid items-stretch min-[1200px]:grid-cols-2">
       <PageHeader title="个人设置" />
       <ThemeSetting theme={me.user.theme} onChanged={onRenamed} />
       <SettingsForm
@@ -125,7 +125,7 @@ function AuthorizedClients() {
   }, [reload]);
 
   return (
-    <Panel asChild>
+    <Panel asChild className="col-span-full">
       <section aria-label="已授权的应用">
         <PanelHeader title="已授权的应用" />
         {loadError && (
@@ -159,13 +159,13 @@ function AuthorizedClientItem({ client, onRevoked }: { client: AuthorizedClient;
 
   return (
     <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1">
-      <div className="mr-auto flex min-w-0 flex-col">
+      <ListCell lead className="flex flex-col">
         <span className="text-sm font-medium">{client.name ? `${client.name}（${host}）` : host}</span>
         <span className="text-xs text-ink-3">{new Date(client.authorizedAt).toLocaleDateString('zh-CN')} 授权</span>
         {scopes.length > 0 && (
           <span className="text-xs text-ink-3">{scopes.map((scope) => scopeDescriptions[scope] ?? scope).join('、')}</span>
         )}
-      </div>
+      </ListCell>
       <Button
         variant="outline"
         size="xs"

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
+import { Plus } from 'lucide-react';
 import { isMonthDay } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -13,7 +14,6 @@ import {
   describeError,
   EditableTitle,
   ListSkeleton,
-  listPageClass,
   nameTaken,
   RetryAlert,
 } from '@/components/editing';
@@ -34,6 +34,7 @@ const rangeError = '日期格式应为 月-日';
 export function PromotionsPage() {
   const [promotions, setPromotions] = useState<Promotion[]>();
   const [loadError, setLoadError] = useState<string>();
+  const [creating, setCreating] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -48,10 +49,28 @@ export function PromotionsPage() {
   }, [reload]);
 
   return (
-    <PageContent className={listPageClass}>
-      <PageHeader title="大促" />
+    <PageContent>
+      <PageHeader
+        title="大促"
+        actions={
+          !creating && (
+            <Button onClick={() => setCreating(true)}>
+              <Plus />
+              新建大促
+            </Button>
+          )
+        }
+      />
       {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
-      <NewPromotionForm onCreated={reload} />
+      {creating && (
+        <NewPromotionForm
+          onCancel={() => setCreating(false)}
+          onCreated={async () => {
+            await reload();
+            setCreating(false);
+          }}
+        />
+      )}
       <Panel>
         <PanelHeader title="全部大促" count={promotions?.length} />
         {!promotions && <ListSkeleton />}
@@ -100,7 +119,7 @@ function RangeFields({ range, onChange }: { range: Range; onChange(range: Range)
   );
 }
 
-function NewPromotionForm({ onCreated }: { onCreated(): Promise<void> }) {
+function NewPromotionForm({ onCreated, onCancel }: { onCreated(): Promise<void>; onCancel(): void }) {
   const id = useId();
   const [name, setName] = useState('');
   const [range, setRange] = useState<Range>({ startsOn: '', endsOn: '' });
@@ -117,9 +136,6 @@ function NewPromotionForm({ onCreated }: { onCreated(): Promise<void> }) {
     }, nameTaken);
     setPending(false);
     setError(message ?? undefined);
-    if (message) return;
-    setName('');
-    setRange({ startsOn: '', endsOn: '' });
   }
 
   return (
@@ -128,19 +144,25 @@ function NewPromotionForm({ onCreated }: { onCreated(): Promise<void> }) {
         <PanelHeader title="新建大促" />
         <PanelBody className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end gap-3">
-            <Field label="新大促名称" htmlFor={`${id}-name`} className="min-w-48 flex-1">
+            <Field label="新大促名称" htmlFor={`${id}-name`} className="w-full sm:w-64">
               <Input
                 id={`${id}-name`}
                 required
+                autoFocus
                 maxLength={50}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </Field>
             <RangeFields range={range} onChange={setRange} />
-            <Button type="submit" variant="outline" disabled={pending}>
-              新建大促
-            </Button>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={pending}>
+                新建大促
+              </Button>
+              <Button type="button" variant="ghost" onClick={onCancel}>
+                取消
+              </Button>
+            </div>
           </div>
           {error && <Alert>{error}</Alert>}
         </PanelBody>
@@ -183,7 +205,7 @@ function PromotionItem({ promotion, onChange }: { promotion: Promotion; onChange
         actions={
           !editing && (
             <>
-              <span className="numeric mx-2 text-sm text-ink-3">{formatRange(promotion)}</span>
+              <span className="numeric mx-2 text-sm text-ink-3 wide:mx-0 wide:w-48">{formatRange(promotion)}</span>
               <Button
                 variant="ghost"
                 size="xs"

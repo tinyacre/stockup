@@ -36,6 +36,7 @@ test('a member re-bases, merges and archives products', async ({ page, household
 
   const nav = page.getByRole('navigation', { name: '主导航' });
   await nav.getByRole('link', { name: '渠道' }).click();
+  await page.getByRole('button', { name: '新建渠道' }).click();
   await page.getByLabel('新渠道名称').fill(channelName);
   await page.getByRole('button', { name: '新建渠道' }).click();
   await expect(page.getByRole('listitem', { name: channelName })).toBeVisible();

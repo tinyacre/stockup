@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { List, ListRow } from '@/components/ui/list';
+import { List, ListCell, ListRow } from '@/components/ui/list';
 import { NativeSelect } from '@/components/ui/native-select';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelHeader } from '@/components/ui/panel';
-import { Alert, attempt, describeError, ListSkeleton, listPageClass, RetryAlert } from '@/components/editing';
+import { Alert, attempt, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
 import { api, type Invitation } from '@/lib/api';
 
 const expiryOptions = [
@@ -57,13 +58,11 @@ export function InvitationsPage() {
   const past = invitations?.filter((i) => i.status !== 'pending') ?? [];
 
   return (
-    <PageContent className={listPageClass}>
-      <PageHeader title="邀请" />
+    <PageContent>
+      <PageHeader title="邀请" actions={<NewInvitationForm onCreated={reload} />} />
       {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
       <Panel>
-        <PanelHeader title="待使用" count={invitations && pending.length}>
-          <NewInvitationForm onCreated={reload} />
-        </PanelHeader>
+        <PanelHeader title="待使用" count={invitations && pending.length} />
         {!invitations && <ListSkeleton />}
         {invitations && pending.length === 0 && <EmptyState title="暂无待使用的邀请" />}
         {pending.length > 0 && (
@@ -84,11 +83,11 @@ export function InvitationsPage() {
             <PanelHeader title="已失效" count={past.length} />
             <List variant="ruled">
               {past.map((invitation) => (
-                <ListRow key={invitation.id} asChild className="justify-between text-sm text-ink-2">
+                <ListRow key={invitation.id} asChild className="text-sm text-ink-2">
                   <li>
-                    <span>
+                    <ListCell lead>
                       {invitation.invitedBy.name} 创建于 {formatTime(invitation.createdAt)}
-                    </span>
+                    </ListCell>
                     <Badge tone="outline">{statusLabels[invitation.status]}</Badge>
                   </li>
                 </ListRow>
@@ -119,7 +118,7 @@ function NewInvitationForm({ onCreated }: { onCreated(): Promise<void> }) {
   }
 
   return (
-    <form className="ml-auto flex flex-wrap items-center gap-2" onSubmit={handleSubmit}>
+    <form className="flex items-center gap-2" onSubmit={handleSubmit}>
       <Label htmlFor="expiresInDays" className="text-ink-3">
         有效期
       </Label>
@@ -130,10 +129,11 @@ function NewInvitationForm({ onCreated }: { onCreated(): Promise<void> }) {
           </option>
         ))}
       </NativeSelect>
-      <Button type="submit" size="sm" disabled={pending}>
+      <Button type="submit" disabled={pending}>
+        <Plus />
         生成邀请链接
       </Button>
-      {error && <Alert className="basis-full">{error}</Alert>}
+      {error && <Alert>{error}</Alert>}
     </form>
   );
 }
@@ -144,10 +144,16 @@ function PendingInvitation({ invitation, onChange }: { invitation: Invitation; o
   const link = invitationLink(invitation.id);
 
   return (
-    <div className="flex w-full flex-col gap-2">
-      <Input readOnly aria-label="邀请链接" value={link} onFocus={(event) => event.currentTarget.select()} />
+    <div className="flex w-full flex-col gap-2 wide:flex-row wide:items-center wide:gap-4">
+      <Input
+        readOnly
+        aria-label="邀请链接"
+        value={link}
+        className="wide:w-[34rem] wide:shrink-0"
+        onFocus={(event) => event.currentTarget.select()}
+      />
       <div className="flex flex-wrap items-center gap-1">
-        <span className="mr-auto text-xs text-ink-3">
+        <span className="mr-auto text-xs text-ink-3 wide:mr-3">
           {invitation.invitedBy.name} 创建 · {formatTime(invitation.expiresAt)} 过期
         </span>
         <Button

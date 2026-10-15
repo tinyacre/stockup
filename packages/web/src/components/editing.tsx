@@ -1,15 +1,13 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ListCell } from '@/components/ui/list';
 import { controlClass, Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, NetworkError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 export const fieldClass = cn(controlClass, 'px-2.5 py-1 text-base wide:text-[13px] price-tag:wide:text-sm');
-
-// Caps list-style pages so rows stay readable on wide screens while aligning left with the page header.
-export const listPageClass = 'max-w-[calc(52rem+2*var(--gutter))]';
 
 // Resolves to an error message for the member, or nothing when the action succeeded.
 export type Action = () => Promise<string | void>;
@@ -63,7 +61,7 @@ export function NameForm({
   }
 
   return (
-    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+    <form className="flex w-full max-w-md flex-col gap-2" onSubmit={handleSubmit}>
       <div className="flex gap-2">
         <Input
           name="name"
@@ -125,10 +123,12 @@ export function EditableTitle({
 
   return (
     <div className="flex w-full flex-wrap items-center gap-1">
-      <Heading className={cn('mr-auto min-w-0 truncate text-sm font-medium', className)}>{name}</Heading>
-      <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${name}`} onClick={() => setEditing(true)}>
-        <Pencil />
-      </Button>
+      <ListCell lead className="flex items-center gap-1">
+        <Heading className={cn('min-w-0 truncate text-sm font-medium', className)}>{name}</Heading>
+        <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${name}`} onClick={() => setEditing(true)}>
+          <Pencil />
+        </Button>
+      </ListCell>
       {actions}
     </div>
   );

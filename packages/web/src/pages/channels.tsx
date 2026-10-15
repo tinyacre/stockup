@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { List, ListRow } from '@/components/ui/list';
@@ -11,7 +12,6 @@ import {
   describeError,
   EditableTitle,
   ListSkeleton,
-  listPageClass,
   NameForm,
   RetryAlert,
 } from '@/components/editing';
@@ -23,6 +23,8 @@ const nameTaken = { name_taken: '名称已被使用（含已归档）' };
 export function ChannelsPage() {
   const [channels, setChannels] = useState<Channel[]>();
   const [loadError, setLoadError] = useState<string>();
+
+  const [creating, setCreating] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -40,23 +42,42 @@ export function ChannelsPage() {
   const archived = channels?.filter((c) => c.archived) ?? [];
 
   return (
-    <PageContent className={listPageClass}>
-      <PageHeader title="渠道" />
+    <PageContent>
+      <PageHeader
+        title="渠道"
+        actions={
+          !creating && (
+            <Button onClick={() => setCreating(true)}>
+              <Plus />
+              新建渠道
+            </Button>
+          )
+        }
+      />
       {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
+      {creating && (
+        <Panel>
+          <PanelHeader title="新建渠道" />
+          <PanelBody>
+            <NameForm
+              label="新渠道名称"
+              submitLabel="新建渠道"
+              autoFocus
+              onCancel={() => setCreating(false)}
+              onSubmit={async (name) => {
+                const message = await attempt(async () => {
+                  await api.createChannel({ name });
+                  await reload();
+                }, nameTaken);
+                if (!message) setCreating(false);
+                return message;
+              }}
+            />
+          </PanelBody>
+        </Panel>
+      )}
       <Panel>
         <PanelHeader title="使用中" count={channels && active.length} />
-        <PanelBody className="border-b border-line">
-          <NameForm
-            label="新渠道名称"
-            submitLabel="新建渠道"
-            onSubmit={(name) =>
-              attempt(async () => {
-                await api.createChannel({ name });
-                await reload();
-              }, nameTaken)
-            }
-          />
-        </PanelBody>
         {!channels && <ListSkeleton />}
         {channels && active.length === 0 && <EmptyState title="暂无渠道" />}
         {active.length > 0 && <ChannelList label="使用中的渠道" channels={active} onChange={reload} />}

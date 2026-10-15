@@ -13,12 +13,14 @@ test('a member adds, renames, archives and restores channels', async ({ page, ho
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '渠道' }).click();
   await expect(page).toHaveURL(/\/channels$/);
 
+  await page.getByRole('button', { name: '新建渠道' }).click();
   await page.getByLabel('新渠道名称').fill(name);
   await page.getByRole('button', { name: '新建渠道' }).click();
   const active = page.getByRole('list', { name: '使用中的渠道' });
   const channel = active.getByRole('listitem', { name });
   await expect(channel).toBeVisible();
 
+  await page.getByRole('button', { name: '新建渠道' }).click();
   await page.getByLabel('新渠道名称').fill(name);
   await page.getByRole('button', { name: '新建渠道' }).click();
   await expect(page.getByRole('alert')).toContainText('名称已被使用');
