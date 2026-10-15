@@ -16,7 +16,7 @@ export function SignInPage({ onDone, oauthQuery }: { onDone(): void; oauthQuery?
           try {
             ({ url: next } = await api.signIn({ username: values.username!, password: values.password!, oauthQuery }));
           } catch (error) {
-            if (error instanceof ApiError && error.status === 401) return '用户名或密码不正确。';
+            if (error instanceof ApiError && error.status === 401) return '用户名或密码错误';
             throw error;
           }
           // An authorization request continues at the page the response names; without one, the app opens.

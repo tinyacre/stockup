@@ -93,5 +93,5 @@ test('a member revokes Claude in settings', async ({ page, request }) => {
   await expect(authorized.getByText('Claude（claude.ai）')).toBeVisible();
   await expect(authorized.getByText('查看家庭的商品和价格、以你的名义新建商品和价格记录')).toBeVisible();
   await authorized.getByRole('button', { name: '撤销 Claude' }).click();
-  await expect(authorized.getByText('还没有授权任何应用。')).toBeVisible();
+  await expect(authorized.getByText('暂无授权的应用')).toBeVisible();
 });

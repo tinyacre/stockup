@@ -159,13 +159,13 @@ test('a member renames themselves, changes the password and signs out other devi
   await password.getByLabel('当前密码').fill('wrong-password');
   await password.getByLabel('新密码').fill('a-brand-new-password');
   await password.getByRole('button', { name: '修改密码' }).click();
-  await expect(password.getByRole('alert')).toHaveText('当前密码不正确。');
+  await expect(password.getByRole('alert')).toHaveText('当前密码错误');
   await password.getByLabel('当前密码').fill(admin.password);
   await password.getByRole('button', { name: '修改密码' }).click();
   await expect(password.getByRole('status')).toContainText('密码已修改');
 
   await page.getByRole('button', { name: '登出其他设备' }).click();
-  await expect(page.getByRole('status').last()).toHaveText('其他设备已登出。');
+  await expect(page.getByRole('status').last()).toHaveText('其他设备已登出');
   await other.reload();
   await expect(other.getByRole('button', { name: '登录' })).toBeVisible();
 

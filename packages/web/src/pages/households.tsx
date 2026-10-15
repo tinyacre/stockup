@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, attempt, describeError, RetryAlert } from '@/components/editing';
+import { List, ListRow } from '@/components/ui/list';
+import { PageContent, PageHeader } from '@/components/ui/page';
+import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
+import { Alert, attempt, describeError, ListSkeleton, listPageClass, RetryAlert } from '@/components/editing';
 import { api, type Household } from '@/lib/api';
 
 const fields = [
@@ -29,26 +33,28 @@ export function HouseholdsPage() {
   }, [reload]);
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-6 p-4">
-      <div>
-        <h2 className="text-xl font-semibold">家庭</h2>
-        <p className="text-muted-foreground text-sm">
-          这个 StockUp 上的所有家庭，数据彼此隔离。新家庭会带上预设的大促，由你指定的管理员邀请家人加入。
-        </p>
-      </div>
-      {loadError && <RetryAlert message={`家庭加载失败：${loadError}`} onRetry={reload} />}
+    <PageContent className={listPageClass}>
+      <PageHeader title="家庭" />
+      {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
       <NewHouseholdForm onCreated={reload} />
-      {households && (
-        <ul aria-label="所有家庭" className="flex flex-col gap-2">
-          {households.map((household) => (
-            <li key={household.id} className="flex justify-between rounded-lg border px-3 py-2">
-              <span>{household.name}</span>
-              <span className="text-muted-foreground text-sm">{household.memberCount} 位成员</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+      <Panel>
+        <PanelHeader title="全部家庭" count={households?.length} />
+        {!households && <ListSkeleton />}
+        {households?.length === 0 && <EmptyState title="暂无家庭" />}
+        {households && households.length > 0 && (
+          <List variant="ruled" aria-label="所有家庭">
+            {households.map((household) => (
+              <ListRow key={household.id} asChild className="justify-between py-2 text-sm">
+                <li>
+                  <span className="font-medium">{household.name}</span>
+                  <span className="text-ink-3">{household.memberCount} 位成员</span>
+                </li>
+              </ListRow>
+            ))}
+          </List>
+        )}
+      </Panel>
+    </PageContent>
   );
 }
 
@@ -71,27 +77,32 @@ function NewHouseholdForm({ onCreated }: { onCreated(): Promise<void> }) {
         form.reset();
         await onCreated();
       },
-      { username_taken: '这个用户名已经被使用，请换一个。' },
+      { username_taken: '用户名已被使用' },
     );
     setError(message ?? undefined);
     setPending(false);
   }
 
   return (
-    <form aria-label="新建家庭" className="flex flex-col gap-3 rounded-lg border p-3" onSubmit={handleSubmit}>
-      {fields.map(({ name, label, hint, ...input }) => (
-        <div key={name} className="flex flex-col gap-2">
-          <Label htmlFor={name}>{label}</Label>
-          <Input id={name} name={name} required {...input} />
-          {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
-        </div>
-      ))}
-      <div>
-        <Button type="submit" variant="outline" disabled={pending}>
-          新建家庭
-        </Button>
-      </div>
-      {error && <Alert>{error}</Alert>}
-    </form>
+    <Panel asChild>
+      <form aria-label="新建家庭" onSubmit={handleSubmit}>
+        <PanelHeader title="新建家庭" />
+        <PanelBody className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {fields.map(({ name, label, hint, ...input }) => (
+              <Field key={name} label={label} htmlFor={name} hint={hint}>
+                <Input id={name} name={name} required {...input} />
+              </Field>
+            ))}
+          </div>
+          {error && <Alert>{error}</Alert>}
+          <div>
+            <Button type="submit" variant="outline" disabled={pending}>
+              新建家庭
+            </Button>
+          </div>
+        </PanelBody>
+      </form>
+    </Panel>
   );
 }

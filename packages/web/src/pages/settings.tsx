@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { List, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
+import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { Alert, attempt, describeError, RetryAlert } from '@/components/editing';
+import { Alert, attempt, describeError, ListSkeleton, listPageClass, RetryAlert } from '@/components/editing';
 import { api, type AuthorizedClient, type Me } from '@/lib/api';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
 import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
@@ -12,20 +14,19 @@ import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
 // The header shows the display name and the shell applies the theme, so `onRenamed` reloads the session.
 export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
   return (
-    <PageContent width="narrow" className="gap-8">
+    <PageContent className={listPageClass}>
       <PageHeader title="个人设置" />
       <ThemeSetting theme={me.user.theme} onChanged={onRenamed} />
       <SettingsForm
         title="显示名称"
-        description="家人在价格记录上看到的名字，修改后已有的记录也会显示新名字。"
         submitLabel="保存名称"
         onSubmit={async (data) => {
           const message = await attempt(() => api.rename({ name: String(data.get('name')).trim() }));
           if (!message) onRenamed();
-          return message ? { error: message } : { done: '名称已保存。' };
+          return message ? { error: message } : { done: '名称已保存' };
         }}
       >
-        <Field name="name" label="显示名称" defaultValue={me.user.name} maxLength={50} />
+        <TextField name="name" label="显示名称" defaultValue={me.user.name} maxLength={50} />
       </SettingsForm>
       <SettingsForm
         title="密码"
@@ -38,13 +39,13 @@ export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
                 currentPassword: String(data.get('currentPassword')),
                 newPassword: String(data.get('newPassword')),
               }),
-            { wrong_password: '当前密码不正确。' },
+            { wrong_password: '当前密码错误' },
           );
-          return message ? { error: message } : { done: '密码已修改，下次登录请使用新密码。', reset: true };
+          return message ? { error: message } : { done: '密码已修改', reset: true };
         }}
       >
-        <Field name="currentPassword" label="当前密码" type="password" autoComplete="current-password" />
-        <Field
+        <TextField name="currentPassword" label="当前密码" type="password" autoComplete="current-password" />
+        <TextField
           name="newPassword"
           label="新密码"
           type="password"
@@ -55,11 +56,10 @@ export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
       </SettingsForm>
       <SettingsForm
         title="登出所有设备"
-        description="手机丢了或在别人的设备上登录过时使用：其他设备上的登录会立即失效，这台设备保持登录。"
         submitLabel="登出其他设备"
         onSubmit={async () => {
           const message = await attempt(() => api.signOutOthers());
-          return message ? { error: message } : { done: '其他设备已登出。' };
+          return message ? { error: message } : { done: '其他设备已登出' };
         }}
       />
       <AuthorizedClients />
@@ -86,17 +86,21 @@ function ThemeSetting({ theme, onChanged }: { theme: Theme; onChanged(): void })
   }
 
   return (
-    <section aria-label="主题" className="flex flex-col gap-3">
-      <h3 className="font-medium">主题</h3>
-      <SegmentedControl
-        aria-label="主题"
-        className="self-start"
-        options={themes.map((value) => ({ value, label: themeLabels[value] }))}
-        value={shown}
-        onValueChange={choose}
-      />
-      {error && <Alert>{error}</Alert>}
-    </section>
+    <Panel asChild>
+      <section aria-label="主题">
+        <PanelHeader title="主题" />
+        <PanelBody className="flex flex-col gap-3">
+          <SegmentedControl
+            aria-label="主题"
+            className="self-start"
+            options={themes.map((value) => ({ value, label: themeLabels[value] }))}
+            value={shown}
+            onValueChange={choose}
+          />
+          {error && <Alert>{error}</Alert>}
+        </PanelBody>
+      </section>
+    </Panel>
   );
 }
 
@@ -117,25 +121,29 @@ function AuthorizedClients() {
   }, [reload]);
 
   return (
-    <section aria-label="已授权的应用" className="flex flex-col gap-3">
-      <div>
-        <h3 className="font-medium">已授权的应用</h3>
-        <p className="text-muted-foreground text-sm">
-          你允许通过 MCP 访问 StockUp 的应用，如 Claude。撤销后它立即无法再访问，需要你重新授权。
-        </p>
-      </div>
-      {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
-      {clients?.length === 0 && <p className="text-muted-foreground text-sm">还没有授权任何应用。</p>}
-      {clients && clients.length > 0 && (
-        <ul className="flex flex-col gap-2">
-          {clients.map((client) => (
-            <li key={client.clientId} className="rounded-lg border px-3 py-2">
-              <AuthorizedClientItem client={client} onRevoked={reload} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <Panel asChild>
+      <section aria-label="已授权的应用">
+        <PanelHeader title="已授权的应用" />
+        {loadError && (
+          <PanelBody>
+            <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />
+          </PanelBody>
+        )}
+        {!clients && !loadError && <ListSkeleton />}
+        {clients?.length === 0 && <p className="px-(--panel-padding) py-4 text-sm text-ink-3">暂无授权的应用</p>}
+        {clients && clients.length > 0 && (
+          <List variant="ruled">
+            {clients.map((client) => (
+              <ListRow key={client.clientId} asChild className="py-2.5">
+                <li>
+                  <AuthorizedClientItem client={client} onRevoked={reload} />
+                </li>
+              </ListRow>
+            ))}
+          </List>
+        )}
+      </section>
+    </Panel>
   );
 }
 
@@ -146,15 +154,13 @@ function AuthorizedClientItem({ client, onRevoked }: { client: AuthorizedClient;
   const scopes = client.scopes.filter((scope) => scope.startsWith('stockup:'));
 
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <div className="mr-auto flex flex-col">
-        <span className="text-sm font-medium">
-          {client.name ? `${client.name}（${host}）` : host}
-        </span>
-        <span className="text-muted-foreground text-xs">
-          {new Date(client.authorizedAt).toLocaleDateString('zh-CN')} 授权
-          {scopes.length > 0 && `：${scopes.map((scope) => scopeDescriptions[scope] ?? scope).join('、')}`}
-        </span>
+    <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1">
+      <div className="mr-auto flex min-w-0 flex-col">
+        <span className="text-sm font-medium">{client.name ? `${client.name}（${host}）` : host}</span>
+        <span className="text-xs text-ink-3">{new Date(client.authorizedAt).toLocaleDateString('zh-CN')} 授权</span>
+        {scopes.length > 0 && (
+          <span className="text-xs text-ink-3">{scopes.map((scope) => scopeDescriptions[scope] ?? scope).join('、')}</span>
+        )}
       </div>
       <Button
         variant="outline"
@@ -164,7 +170,7 @@ function AuthorizedClientItem({ client, onRevoked }: { client: AuthorizedClient;
         onClick={async () => {
           setPending(true);
           const message = await attempt(() => api.revokeClient(client.clientId), {
-            not_found: '这个应用的授权已经撤销了，请刷新页面。',
+            not_found: '授权已撤销，请刷新页面',
           });
           setError(message ?? undefined);
           if (!message) await onRevoked();
@@ -188,7 +194,7 @@ function SettingsForm({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   submitLabel: string;
   onSubmit(data: FormData): Promise<Outcome>;
   children?: ReactNode;
@@ -208,30 +214,33 @@ function SettingsForm({
   }
 
   return (
-    <section aria-label={title} className="flex flex-col gap-3">
-      <div>
-        <h3 className="font-medium">{title}</h3>
-        <p className="text-muted-foreground text-sm">{description}</p>
-      </div>
-      <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-        {children}
-        <div>
-          <Button type="submit" variant="outline" disabled={pending}>
-            {submitLabel}
-          </Button>
-        </div>
-        {outcome && 'error' in outcome && <Alert>{outcome.error}</Alert>}
-        {outcome && 'done' in outcome && (
-          <p role="status" className="text-sm">
-            {outcome.done}
-          </p>
-        )}
-      </form>
-    </section>
+    <Panel asChild>
+      <section aria-label={title}>
+        <PanelHeader title={title}>
+          {description && <span className="text-xs text-ink-3">{description}</span>}
+        </PanelHeader>
+        <PanelBody>
+          <form className="flex max-w-sm flex-col gap-4" onSubmit={handleSubmit}>
+            {children}
+            <div>
+              <Button type="submit" variant="outline" disabled={pending}>
+                {submitLabel}
+              </Button>
+            </div>
+            {outcome && 'error' in outcome && <Alert>{outcome.error}</Alert>}
+            {outcome && 'done' in outcome && (
+              <p role="status" className="text-sm">
+                {outcome.done}
+              </p>
+            )}
+          </form>
+        </PanelBody>
+      </section>
+    </Panel>
   );
 }
 
-function Field({
+function TextField({
   name,
   label,
   hint,
@@ -247,10 +256,8 @@ function Field({
   minLength?: number;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <Label htmlFor={name}>{label}</Label>
+    <Field label={label} htmlFor={name} hint={hint}>
       <Input id={name} name={name} required {...input} />
-      {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
-    </div>
+    </Field>
   );
 }

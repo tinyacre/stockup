@@ -23,7 +23,7 @@ test('a member adds, renames, archives and restores channels', async ({ page }) 
 
   await page.getByLabel('新渠道名称').fill(name);
   await page.getByRole('button', { name: '新建渠道' }).click();
-  await expect(page.getByRole('alert')).toContainText('这个名称已经被使用');
+  await expect(page.getByRole('alert')).toContainText('名称已被使用');
 
   await channel.getByRole('button', { name: `重命名 ${name}` }).click();
   await channel.getByLabel('渠道名称').fill(renamed);
