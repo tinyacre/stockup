@@ -1,4 +1,4 @@
-import type { Discount, PromotionLowest, Size, Unit } from '@stockup/domain';
+import type { Discount, PromotionLowest, Size, Unit, Verdict } from '@stockup/domain';
 import type { Theme } from '@/lib/theme';
 
 export interface Me {
@@ -81,7 +81,8 @@ export interface ProductDetail extends Product {
 }
 
 export interface ProductSummary extends ProductDetail {
-  latestPrice: { date: string; unitPrice: number } | null;
+  // Judged against the current stock line and the lowest unit price among the product's other records.
+  latestPrice: { date: string; unitPrice: number; verdict: Verdict | null } | null;
 }
 
 export interface ProductChanges {

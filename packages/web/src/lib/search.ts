@@ -52,7 +52,7 @@ function loadSearch() {
 
 // Searches the products already on the device as the server's product search does, so it works offline.
 // Undefined until the search has loaded.
-export function useLocalProductSearch(products: Product[] | undefined, query: string, limit = 20) {
+export function useLocalProductSearch<P extends Product>(products: P[] | undefined, query: string, limit = 20) {
   const [searchByName, setSearchByName] = useState<SearchByName>();
   useEffect(() => {
     loadSearch().then((search) => setSearchByName(() => search));
