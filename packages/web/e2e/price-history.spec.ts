@@ -9,6 +9,7 @@ async function post<T>(request: APIRequestContext, path: string, data: object, m
 }
 
 test('a member browses a category, then filters and charts a product’s price records', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-15T12:00:00+08:00'));
   // Desktop and phone runs share one household, so every name carries a run-specific suffix.
   const suffix = crypto.randomUUID().slice(0, 6);
   const groupName = `生活用品 ${suffix}`;
@@ -73,15 +74,26 @@ test('a member browses a category, then filters and charts a product’s price r
 
   await page.getByRole('link', { name: productName }).click();
   const chart = page.getByRole('figure', { name: '单价走势' });
-  await expect(chart).toContainText('入手价 ¥50.00 / 90 抽');
-  await expect(chart).toContainText('历史最低单价 ¥45.00 / 90 抽');
+  await expect(chart).toContainText('元 / 90 抽');
+  await expect(chart).toContainText('入手价 ¥50.00');
+  await expect(chart).toContainText('历史最低 ¥45.00');
   await expect(chart.locator('.recharts-line-dots circle')).toHaveCount(3);
+  await chart.getByRole('radio', { name: '近 6 月' }).click();
+  await expect(chart.locator('.recharts-line-dots circle')).toHaveCount(2);
+  await chart.getByRole('radio', { name: '近 1 年' }).click();
+  await expect(chart.locator('.recharts-line-dots circle')).toHaveCount(3);
+  await chart.getByRole('radio', { name: '全部' }).click();
+
+  const channels = page.getByRole('region', { name: '各渠道最低单价' }).getByRole('listitem');
+  await expect(channels).toHaveCount(2);
+  for (const text of [jd, '¥45.00', '2 条']) await expect(channels.first()).toContainText(text);
+  for (const text of [sams, '¥60.00', '1 条']) await expect(channels.nth(1)).toContainText(text);
 
   const records = page.getByRole('list', { name: '价格记录列表' }).getByRole('listitem');
   const filters = page.getByRole('group', { name: '筛选价格记录' });
   await expect(records).toHaveCount(3);
 
-  await filters.getByLabel('购买情况').selectOption({ label: '仅记录' });
+  await filters.getByRole('radio', { name: '仅记录' }).click();
   await expect(records).toHaveCount(1);
   await expect(records.first()).toHaveAccessibleName(`2026-10-01 ${sams}`);
   await expect(chart.locator('.recharts-line-dots circle')).toHaveCount(1);
@@ -95,8 +107,8 @@ test('a member browses a category, then filters and charts a product’s price r
   await filters.getByLabel('大促').selectOption({ label: '618' });
   await expect(records.first()).toHaveAccessibleName(`2026-06-18 ${jd}`);
 
-  await filters.getByLabel('购买情况').selectOption({ label: '仅记录' });
-  await expect(page.getByText('没有符合筛选条件的价格记录。')).toBeVisible();
+  await filters.getByRole('radio', { name: '仅记录' }).click();
+  await expect(page.getByText('无匹配的价格记录')).toBeVisible();
   await expect(chart).toBeHidden();
   await filters.getByRole('button', { name: '清除筛选' }).click();
   await expect(records).toHaveCount(3);

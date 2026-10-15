@@ -1,63 +1,126 @@
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { DropdownMenu } from 'radix-ui';
+import { Archive, ArchiveRestore, Combine, Ellipsis, Ruler } from 'lucide-react';
 import { convert, isConvertible } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, attempt, describeError, fieldClass } from '@/components/editing';
+import { Field } from '@/components/ui/field';
+import { InputGroup, InputGroupInput, InputAddon } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Panel, PanelBody, PanelFooter, PanelHeader } from '@/components/ui/panel';
+import { Alert, attempt, describeError } from '@/components/editing';
 import { api, type Product } from '@/lib/api';
 import { formatSize } from '@/lib/format';
 import { unitsLike } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 
-const incompatibleUnit = { incompatible_unit: '不同量纲的单位之间无法换算，请新建一个商品。' };
+const incompatibleUnit = { incompatible_unit: '单位量纲不同，无法换算' };
 
-type Panel = 'units' | 'merge';
+export type MaintenanceTask = 'units' | 'merge';
+
+const itemClass = cn(
+  'flex h-8 cursor-default items-center gap-2.5 rounded-md px-2.5 text-[13px] text-ink outline-none select-none',
+  'data-highlighted:bg-surface-hover data-disabled:opacity-50 [&_svg]:size-4 [&_svg]:text-ink-3',
+);
+
+export function ProductMenu({
+  product,
+  disabled,
+  onOpen,
+  onArchive,
+}: {
+  product: Product;
+  disabled?: boolean;
+  onOpen(task: MaintenanceTask): void;
+  onArchive(archived: boolean): void;
+}) {
+  return (
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger asChild>
+        <Button variant="outline" size="icon" aria-label="更多操作" disabled={disabled}>
+          <Ellipsis />
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={6}
+          className="z-50 min-w-52 rounded-md border border-line bg-surface p-1 shadow-overlay"
+        >
+          <DropdownMenu.Item className={itemClass} onSelect={() => onOpen('units')}>
+            <Ruler />
+            修改计价单位和基准规格
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className={itemClass} onSelect={() => onOpen('merge')}>
+            <Combine />
+            合并重复商品
+          </DropdownMenu.Item>
+          <DropdownMenu.Separator className="-mx-1 my-1 h-px bg-line" />
+          {product.archived ? (
+            <DropdownMenu.Item className={itemClass} onSelect={() => onArchive(false)}>
+              <ArchiveRestore />
+              取消归档
+            </DropdownMenu.Item>
+          ) : (
+            <DropdownMenu.Item
+              className={cn(itemClass, 'text-record-low [&_svg]:text-record-low')}
+              onSelect={() => onArchive(true)}
+            >
+              <Archive />
+              归档商品
+            </DropdownMenu.Item>
+          )}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
 
 export function ProductMaintenance({
   product,
+  task,
+  onClose,
   onChanged,
 }: {
   product: Product;
+  task: MaintenanceTask;
+  onClose(): void;
   onChanged(): Promise<void>;
 }) {
-  const [open, setOpen] = useState<Panel>();
-  const [error, setError] = useState<string>();
-  const [pending, setPending] = useState(false);
-
-  async function setArchived(archived: boolean) {
-    setPending(true);
-    setError(
-      (await attempt(async () => {
-        await api.updateProduct(product.id, { archived });
-        await onChanged();
-      })) ?? undefined,
-    );
-    setPending(false);
-  }
-
   const done = async () => {
-    setOpen(undefined);
+    onClose();
     await onChanged();
   };
+  return task === 'units' ? (
+    <UnitsForm product={product} onCancel={onClose} onSaved={done} />
+  ) : (
+    <MergeForm product={product} onCancel={onClose} onMerged={done} />
+  );
+}
 
+function TaskPanel({
+  title,
+  onSubmit,
+  error,
+  footer,
+  children,
+}: {
+  title: string;
+  onSubmit(event: FormEvent<HTMLFormElement>): void;
+  error?: string;
+  footer: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <section aria-label="商品维护" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {product.archived && <span className="bg-muted rounded px-1.5 py-0.5 text-xs">已归档</span>}
-        <Button variant="outline" size="xs" onClick={() => setOpen(open === 'units' ? undefined : 'units')}>
-          修改计价单位和基准规格
-        </Button>
-        <Button variant="outline" size="xs" onClick={() => setOpen(open === 'merge' ? undefined : 'merge')}>
-          合并重复商品
-        </Button>
-        <Button variant="outline" size="xs" disabled={pending} onClick={() => setArchived(!product.archived)}>
-          {product.archived ? '取消归档' : '归档商品'}
-        </Button>
-      </div>
-      {error && <Alert>{error}</Alert>}
-      {open === 'units' && <UnitsForm product={product} onCancel={() => setOpen(undefined)} onSaved={done} />}
-      {open === 'merge' && <MergeForm product={product} onCancel={() => setOpen(undefined)} onMerged={done} />}
-    </section>
+    <Panel asChild>
+      <form aria-label={title} onSubmit={onSubmit}>
+        <PanelHeader title={title} as="h3" />
+        <PanelBody className="flex flex-col gap-4">
+          {children}
+          {error && <Alert>{error}</Alert>}
+        </PanelBody>
+        <PanelFooter>{footer}</PanelFooter>
+      </form>
+    </Panel>
   );
 }
 
@@ -89,7 +152,7 @@ function UnitsForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = Number(baseSize);
-    if (!(amount > 0)) return setError('基准规格必须大于 0。');
+    if (!(amount > 0)) return setError('基准规格需大于 0');
     setPending(true);
     const message = await attempt(async () => {
       await api.updateProduct(product.id, {
@@ -103,13 +166,29 @@ function UnitsForm({
   }
 
   return (
-    <form aria-label="修改计价单位和基准规格" className="flex flex-col gap-3 rounded-lg border p-3" onSubmit={handleSubmit}>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`${id}-unit`}>计价单位</Label>
-          <select
+    <TaskPanel
+      title="修改计价单位和基准规格"
+      onSubmit={handleSubmit}
+      error={error}
+      footer={
+        <>
+          <Button type="submit" disabled={pending}>
+            保存
+          </Button>
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            取消
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 wide:max-w-lg wide:grid-cols-2">
+        <Field
+          label="计价单位"
+          htmlFor={`${id}-unit`}
+          hint={units.length === 1 ? '计数单位无法换算' : '已有记录的规格随单位换算，单价不变'}
+        >
+          <NativeSelect
             id={`${id}-unit`}
-            className={cn(fieldClass, 'h-9')}
             value={unitName}
             disabled={units.length === 1}
             onChange={(event) => changeUnit(event.target.value)}
@@ -119,41 +198,26 @@ function UnitsForm({
                 {u.name}
               </option>
             ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor={`${id}-base`}>基准规格</Label>
-          <div className="flex items-center gap-2">
-            <Input
+          </NativeSelect>
+        </Field>
+        <Field label="基准规格" htmlFor={`${id}-base`} hint="入手价随基准规格同比换算">
+          <InputGroup>
+            <InputGroupInput
               id={`${id}-base`}
               type="number"
               inputMode="decimal"
               min="0"
               step="any"
               required
+              className="numeric"
               value={baseSize}
               onChange={(event) => setBaseSize(event.target.value)}
             />
-            <span className="text-muted-foreground text-sm">{unit.name}</span>
-          </div>
-        </div>
+            <InputAddon boxed>{unit.name}</InputAddon>
+          </InputGroup>
+        </Field>
       </div>
-      <p className="text-muted-foreground text-xs">
-        {units.length === 1
-          ? `计数单位「${unit.name}」无法换算成别的单位；要换单位，请新建一个商品。`
-          : '换单位时，已有价格记录的规格会自动换算，单价不变；要换成其他量纲的单位，请新建一个商品。'}
-        改基准规格只改变单价的显示口径，入手价按同样比例换算。
-      </p>
-      {error && <Alert>{error}</Alert>}
-      <div className="flex gap-2">
-        <Button type="submit" disabled={pending}>
-          保存
-        </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          取消
-        </Button>
-      </div>
-    </form>
+    </TaskPanel>
   );
 }
 
@@ -191,19 +255,36 @@ function MergeForm({
     const message = await attempt(async () => {
       await api.mergeProduct(product.id, merged.id);
       await onMerged();
-    }, { ...incompatibleUnit, product_not_found: '要合并的商品已经不存在了。' });
+    }, { ...incompatibleUnit, product_not_found: '要合并的商品已不存在' });
     setError(message ?? undefined);
     setConfirming(false);
     setPending(false);
   }
 
   return (
-    <form aria-label="合并重复商品" className="flex flex-col gap-3 rounded-lg border p-3" onSubmit={handleSubmit}>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${id}-merged`}>要并入「{product.name}」的重复商品</Label>
-        <select
+    <TaskPanel
+      title="合并重复商品"
+      onSubmit={handleSubmit}
+      error={error}
+      footer={
+        <>
+          <Button type="submit" variant={confirming ? 'destructive' : 'default'} disabled={!merged || pending}>
+            {confirming && merged ? `确认合并并删除「${merged.name}」` : '合并'}
+          </Button>
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            取消
+          </Button>
+        </>
+      }
+    >
+      <Field
+        label={`要并入「${product.name}」的重复商品`}
+        htmlFor={`${id}-merged`}
+        hint={`价格记录并入本商品，规格换算为 ${product.pricingUnit.name}，原商品随后删除`}
+        className="wide:max-w-lg"
+      >
+        <NativeSelect
           id={`${id}-merged`}
-          className={cn(fieldClass, 'h-9')}
           value={mergedId}
           disabled={!candidates}
           onChange={(event) => {
@@ -219,21 +300,8 @@ function MergeForm({
               {p.name}（{formatSize(p.baseSize, p.pricingUnit)}）{p.archived ? '（已归档）' : ''}
             </option>
           ))}
-        </select>
-        <p className="text-muted-foreground text-xs">
-          被合并商品的全部价格记录会归到这个商品下，规格按{product.pricingUnit.name}换算，然后删除被合并的商品。
-          计价单位无法换算成{product.pricingUnit.name}的商品不能合并。
-        </p>
-      </div>
-      {error && <Alert>{error}</Alert>}
-      <div className="flex gap-2">
-        <Button type="submit" variant={confirming ? 'destructive' : 'default'} disabled={!merged || pending}>
-          {confirming && merged ? `确认合并并删除「${merged.name}」` : '合并'}
-        </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          取消
-        </Button>
-      </div>
-    </form>
+        </NativeSelect>
+      </Field>
+    </TaskPanel>
   );
 }
