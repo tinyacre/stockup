@@ -1,4 +1,5 @@
 import * as React from "react"
+import { ChevronRight } from "lucide-react"
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 
@@ -44,13 +45,21 @@ function PageBarProvider({ children }: { children: React.ReactNode }) {
 const titleClass =
   "min-w-0 truncate text-[15px] font-semibold wide:text-[13px] wide:font-medium price-tag:text-lg price-tag:font-semibold price-tag:tracking-[.04em] price-tag:wide:text-title-page"
 
-// The page's title and actions, shown in the shell's bar. Render it once per page.
+export interface Crumb {
+  label: React.ReactNode
+  onClick?(): void
+}
+
+// The page's title and actions, shown in the shell's bar. Render it once per page. `crumbs` lead to the title
+// and give way first when the bar runs out of room.
 function PageHeader({
   title,
+  crumbs,
   actions,
   className,
 }: {
   title: React.ReactNode
+  crumbs?: Crumb[]
   actions?: React.ReactNode
   className?: string
 }) {
@@ -58,7 +67,31 @@ function PageHeader({
   if (!slot) return null
   return createPortal(
     <div data-slot="page-header" className={cn("flex min-w-0 flex-1 items-center gap-3", className)}>
-      <h1 className={titleClass}>{title}</h1>
+      <div className="flex min-w-0 items-center gap-1.5">
+        {crumbs && crumbs.length > 0 && (
+          <nav aria-label="路径" className="min-w-0 shrink-[100] overflow-hidden">
+            <ol className="flex items-center gap-1.5 text-xs whitespace-nowrap text-ink-3 wide:text-[13px] price-tag:wide:text-sm">
+              {crumbs.map((crumb, i) => (
+                <li key={i} className="flex items-center gap-1.5">
+                  {crumb.onClick ? (
+                    <button
+                      type="button"
+                      className="rounded-sm hover:text-ink focus-visible:shadow-focus"
+                      onClick={crumb.onClick}
+                    >
+                      {crumb.label}
+                    </button>
+                  ) : (
+                    <span>{crumb.label}</span>
+                  )}
+                  <ChevronRight aria-hidden className="size-3.5 shrink-0 text-ink-4" />
+                </li>
+              ))}
+            </ol>
+          </nav>
+        )}
+        <h1 className={titleClass}>{title}</h1>
+      </div>
       {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
     </div>,
     slot

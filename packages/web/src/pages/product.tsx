@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useState, type ComponentProps, type FormEvent, type ReactNode } from 'react';
-import { ChevronRight, ImagePlus, Package, Pencil, Plus, ReceiptText, X } from 'lucide-react';
+import { ImagePlus, Package, Pencil, Plus, ReceiptText, X } from 'lucide-react';
 import { judge, type Verdict } from '@stockup/domain';
 import { Badge, PromotionTag, PurchaseBadge, VerdictBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Field } from '@/components/ui/field';
 import { Input, InputAddon, InputGroup, InputGroupInput, Textarea } from '@/components/ui/input';
 import { List } from '@/components/ui/list';
 import { NativeSelect } from '@/components/ui/native-select';
-import { PageContent } from '@/components/ui/page';
+import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelFooter, PanelHeader } from '@/components/ui/panel';
 import { PriceFigure } from '@/components/ui/price-figure';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -131,21 +131,21 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
   return (
     <PageContent>
       <div className="flex flex-col gap-4 wide:flex-row wide:items-start">
+        <PageHeader
+          title={product.name}
+          crumbs={[
+            { label: '商品', onClick: () => onBack() },
+            ...(group ? [{ label: group.name }] : []),
+            ...(category ? [{ label: category.name, onClick: () => onBack(category.id) }] : []),
+          ]}
+        />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <nav aria-label="路径">
-            <ol className="flex flex-wrap items-center gap-1 text-xs text-ink-3">
-              <Crumb onClick={() => onBack()}>商品</Crumb>
-              {group && <Crumb>{group.name}</Crumb>}
-              {category && <Crumb onClick={() => onBack(category.id)}>{category.name}</Crumb>}
-            </ol>
-          </nav>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-title-page font-semibold tracking-[.02em] break-all">{product.name}</h2>
+          <p className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
             {product.archived && <Badge tone="outline">已归档</Badge>}
-          </div>
-          <p className="text-xs text-ink-3">
-            计价单位 <span className="font-medium text-ink-2">{product.pricingUnit.name}</span> · 基准规格{' '}
-            <span className="font-medium text-ink-2">{formatSize(product.baseSize, product.pricingUnit)}</span>
+            <span>
+              计价单位 <span className="font-medium text-ink-2">{product.pricingUnit.name}</span> · 基准规格{' '}
+              <span className="font-medium text-ink-2">{formatSize(product.baseSize, product.pricingUnit)}</span>
+            </span>
           </p>
           {product.note && <p className="text-[13px] whitespace-pre-wrap text-ink-2">{product.note}</p>}
         </div>
@@ -265,21 +265,6 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(c
         </aside>
       </div>
     </PageContent>
-  );
-}
-
-function Crumb({ onClick, children }: { onClick?(): void; children: ReactNode }) {
-  return (
-    <li className="flex items-center gap-1">
-      <ChevronRight aria-hidden className="size-3 text-ink-4 [li:first-child>&]:hidden" />
-      {onClick ? (
-        <button type="button" className="rounded-sm hover:text-ink focus-visible:shadow-focus" onClick={onClick}>
-          {children}
-        </button>
-      ) : (
-        <span>{children}</span>
-      )}
-    </li>
   );
 }
 
