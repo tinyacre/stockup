@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { parseQuantity, type Discount, type Unit } from '@stockup/domain';
+import { ImageUp } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, attempt, DeleteButton, describeError, fieldClass, RetryAlert } from '@/components/editing';
+import { List } from '@/components/ui/list';
+import { NativeSelect } from '@/components/ui/native-select';
+import { PageContent, PageHeader } from '@/components/ui/page';
+import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, attempt, DeleteButton, describeError, RetryAlert } from '@/components/editing';
 import { NewProductForm } from '@/components/product-form';
 import {
   api,
@@ -16,19 +25,19 @@ import {
   type RecognitionDraft,
 } from '@/lib/api';
 import { formatSize, formatYuan } from '@/lib/format';
+import { Link, productPath } from '@/lib/navigation';
 import { parseYuan, today, unitsLike } from '@/lib/pricing';
 import { useProductSearch } from '@/lib/search';
-import { cn } from '@/lib/utils';
 
 const uploadErrors = {
-  unsupported_evidence_type: '截图只支持 PNG、JPEG、WebP 或 GIF 图片。',
-  evidence_too_large: '截图不能超过 10 MB。',
+  unsupported_evidence_type: '截图仅支持 PNG、JPEG、WebP、GIF',
+  evidence_too_large: '截图超过 10 MB',
 };
 
 const failures: Record<NonNullable<Recognition['error']>, string> = {
-  recognition_unavailable: '还没有配置识别服务。',
-  recognition_failed: '识别失败了。',
-  recognition_interrupted: '识别被服务器重启打断了。',
+  recognition_unavailable: '识别服务未配置',
+  recognition_failed: '识别失败',
+  recognition_interrupted: '识别已中断',
 };
 
 const pollInterval = 1500;
@@ -60,42 +69,54 @@ export function RecognitionUploadPage({ onStarted }: { onStarted(id: string): vo
   }
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-4 p-4">
-      <h2 className="text-xl font-semibold">截图识别</h2>
-      <p className="text-muted-foreground text-sm">上传一张订单页或商品页截图，识别出其中每件商品，生成识别草稿供你确认。</p>
-      <div>
-        <Button disabled={disabled} asChild>
-          <label htmlFor={inputId}>{uploading ? '上传中…' : '上传截图'}</label>
-        </Button>
-        <input
-          id={inputId}
-          type="file"
-          aria-label="上传截图"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          className="sr-only"
-          disabled={disabled}
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = '';
-            void upload(file);
-          }}
+    <PageContent width="narrow">
+      <PageHeader title="识别" />
+      <Panel
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (!disabled) void upload(event.dataTransfer.files[0]);
+        }}
+      >
+        <EmptyState
+          icon={<ImageUp />}
+          title="截图识别"
+          className="py-16"
+          action={
+            <>
+              <Button disabled={disabled} asChild>
+                <label htmlFor={inputId}>{uploading ? '上传中…' : '上传截图'}</label>
+              </Button>
+              <input
+                id={inputId}
+                type="file"
+                aria-label="上传截图"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="sr-only"
+                disabled={disabled}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = '';
+                  void upload(file);
+                }}
+              />
+            </>
+          }
         />
-      </div>
-      {!available && <Alert>还没有配置识别服务，暂时不能识别截图。</Alert>}
+      </Panel>
+      {!available && <Alert>识别服务未配置</Alert>}
       {error && <Alert>{error}</Alert>}
-    </div>
+    </PageContent>
   );
 }
 
 export function RecognitionPage({
   recognitionId,
   onManualEntry,
-  onOpenProduct,
   onUploadAnother,
 }: {
   recognitionId: string;
   onManualEntry(): void;
-  onOpenProduct(id: string): void;
   onUploadAnother(): void;
 }) {
   const [recognition, setRecognition] = useState<Recognition>();
@@ -108,7 +129,7 @@ export function RecognitionPage({
       setRecognition(await api.recognition(recognitionId));
       setLoadError(undefined);
     } catch (error) {
-      setLoadError(describeError(error, { not_found: '找不到这次识别。' }));
+      setLoadError(describeError(error, { not_found: '识别不存在' }));
     }
   }, [recognitionId]);
   useEffect(() => {
@@ -123,79 +144,87 @@ export function RecognitionPage({
     return () => clearTimeout(timer);
   }, [pending, loadError, recognition, load]);
 
+  const reviewing = recognition?.status === 'succeeded' && !confirmed && !recognition.confirmedAt;
+
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-4 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold">截图识别</h2>
-        <Button variant="outline" size="sm" onClick={onUploadAnother}>
-          识别另一张
-        </Button>
-      </div>
+    <PageContent className="wide:grid wide:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] wide:items-start">
+      <PageHeader
+        title="识别"
+        actions={
+          <Button variant="outline" size="sm" onClick={onUploadAnother}>
+            识别另一张
+          </Button>
+        }
+      />
       {loadError && <RetryAlert message={loadError} onRetry={load} />}
+      {!recognition && !loadError && <Skeleton className="h-64 w-full" />}
       {recognition && (
         <>
-          <a
-            href={api.recognitionScreenshotUrl(recognition.id)}
-            target="_blank"
-            rel="noreferrer"
-            className="self-start"
-          >
-            <img
-              src={api.recognitionScreenshotUrl(recognition.id)}
-              alt="上传的截图"
-              className="max-h-48 rounded border object-contain"
-            />
-          </a>
-          {recognition.status === 'pending' && (
-            <p role="status" className="text-muted-foreground text-sm">
-              正在识别…
-            </p>
-          )}
-          {recognition.status === 'failed' && (
-            <ManualEntry
-              message={`${failures[recognition.error!]}截图已保留，可以对照截图手动录入。`}
-              onManualEntry={onManualEntry}
-            />
-          )}
-          {confirmed ? (
-            <Confirmed {...confirmed} onOpenProduct={onOpenProduct} />
-          ) : recognition.confirmedAt ? (
-            <p role="status" className="text-sm">
-              这次识别已经确认入库。
-            </p>
-          ) : recognition.status === 'succeeded' &&
-            (recognition.drafts.length === 0 ? (
-              <ManualEntry message="截图中没有识别出商品，可以对照截图手动录入。" onManualEntry={onManualEntry} />
-            ) : (
-              <Review
-                recognition={recognition}
-                onChange={setRecognition}
-                onOpenProduct={onOpenProduct}
-                onConfirmed={(records) => {
-                  const names = new Map<string, string>(
-                    recognition.drafts.flatMap((d) =>
-                      d.suggestedProduct ? [[d.suggestedProduct.id, d.suggestedProduct.name] as const] : [],
-                    ),
-                  );
-                  setConfirmed({ records, names });
-                  load();
-                }}
-              />
-            ))}
+          <Panel className="wide:sticky wide:top-[calc(var(--page-bar-height)+1.5rem)]">
+            <PanelBody className="flex justify-center">
+              <a href={api.recognitionScreenshotUrl(recognition.id)} target="_blank" rel="noreferrer">
+                <img
+                  src={api.recognitionScreenshotUrl(recognition.id)}
+                  alt="上传的截图"
+                  className="max-h-[60vh] max-w-full rounded-md border border-line object-contain wide:max-h-[calc(100vh-12rem)]"
+                />
+              </a>
+            </PanelBody>
+          </Panel>
+          <div className="flex min-w-0 flex-col gap-4">
+            {recognition.status === 'pending' && (
+              <p role="status" className="text-ink-3 text-sm">
+                识别中…
+              </p>
+            )}
+            {recognition.status === 'failed' && (
+              <ManualEntry message={failures[recognition.error!]} onManualEntry={onManualEntry} />
+            )}
+            {confirmed ? (
+              <Confirmed {...confirmed} />
+            ) : recognition.confirmedAt ? (
+              <p role="status" className="text-sm">
+                已确认入库
+              </p>
+            ) : recognition.status === 'succeeded' &&
+              (recognition.drafts.length === 0 ? (
+                <ManualEntry message="未识别出商品" onManualEntry={onManualEntry} />
+              ) : (
+                reviewing && (
+                  <Review
+                    recognition={recognition}
+                    onChange={setRecognition}
+                    onConfirmed={(records) => {
+                      const names = new Map<string, string>(
+                        recognition.drafts.flatMap((d) =>
+                          d.suggestedProduct ? [[d.suggestedProduct.id, d.suggestedProduct.name] as const] : [],
+                        ),
+                      );
+                      setConfirmed({ records, names });
+                      load();
+                    }}
+                  />
+                )
+              ))}
+          </div>
         </>
       )}
-    </div>
+    </PageContent>
   );
 }
 
 function ManualEntry({ message, onManualEntry }: { message: string; onManualEntry(): void }) {
   return (
-    <div className="flex flex-col items-start gap-2">
-      <Alert>{message}</Alert>
-      <Button variant="outline" size="sm" onClick={onManualEntry}>
-        手动录入
-      </Button>
-    </div>
+    <Panel>
+      <EmptyState
+        title={message}
+        action={
+          <Button variant="outline" size="sm" onClick={onManualEntry}>
+            手动录入
+          </Button>
+        }
+      />
+    </Panel>
   );
 }
 
@@ -207,30 +236,21 @@ function sum(discounts: readonly Discount[]) {
   return discounts.reduce((total, d) => total + d.amount, 0);
 }
 
-function ProductLink({ id, name, onOpenProduct }: { id: string; name: string; onOpenProduct(id: string): void }) {
+function ProductLink({ id, name }: { id: string; name: string }) {
   return (
-    <a
-      href={`/products/${encodeURIComponent(id)}`}
-      className="underline underline-offset-2"
-      onClick={(event) => {
-        event.preventDefault();
-        onOpenProduct(id);
-      }}
-    >
+    <Link href={productPath(id)} className="underline underline-offset-2">
       {name}
-    </a>
+    </Link>
   );
 }
 
 function Review({
   recognition,
   onChange,
-  onOpenProduct,
   onConfirmed,
 }: {
   recognition: Recognition;
   onChange(recognition: Recognition): void;
-  onOpenProduct(id: string): void;
   onConfirmed(records: PriceRecord[]): void;
 }) {
   const [household, setHousehold] = useState<{ groups: CategoryGroup[]; channels: Channel[] }>();
@@ -259,72 +279,76 @@ function Review({
   ].filter(Boolean);
 
   return (
-    <section aria-label="识别草稿" className="flex flex-col gap-2">
-      <h3 className="font-medium">识别草稿（{recognition.drafts.length} 条）</h3>
-      {clues.length > 0 && <p className="text-muted-foreground text-sm">{clues.join(' · ')}</p>}
-      {loadError && <RetryAlert message={loadError} onRetry={load} />}
-      <ul className="flex flex-col gap-2">
-        {recognition.drafts.map((draft) => (
-          <DraftItem
-            key={draft.id}
-            recognition={recognition}
-            draft={draft}
-            groups={household?.groups}
-            onChange={onChange}
-            onOpenProduct={onOpenProduct}
-          />
-        ))}
-      </ul>
-      {orderTotal > 0 && (
-        <p className="text-muted-foreground text-sm">
-          {shared === null
-            ? '有草稿还没有原价，填上后整单优惠会按原价比例分摊。'
-            : shared === orderTotal
-              ? `整单优惠 ${formatYuan(orderTotal)} 已按原价比例分摊到各条，可以在编辑中调整。`
-              : `各条分摊合计 ${formatYuan(shared)}，与整单优惠 ${formatYuan(orderTotal)} 不一致。`}
-        </p>
-      )}
+    <>
+      <Panel asChild>
+        <section aria-label="识别草稿">
+          <PanelHeader title="识别草稿" count={recognition.drafts.length} />
+          {clues.length > 0 && <p className="text-ink-3 px-4 pt-3 text-sm price-tag:px-0">{clues.join(' · ')}</p>}
+          {loadError && (
+            <div className="px-4 pt-3 price-tag:px-0">
+              <RetryAlert message={loadError} onRetry={load} />
+            </div>
+          )}
+          <List variant="ruled">
+            {recognition.drafts.map((draft) => (
+              <DraftItem
+                key={draft.id}
+                recognition={recognition}
+                draft={draft}
+                groups={household?.groups}
+                onChange={onChange}
+              />
+            ))}
+          </List>
+          {orderTotal > 0 && (
+            <p className="text-ink-3 border-t border-line px-4 py-3 text-sm price-tag:px-0">
+              {shared === null
+                ? '部分草稿缺原价，整单优惠未分摊'
+                : shared === orderTotal
+                  ? `整单优惠 ${formatYuan(orderTotal)} 已按原价比例分摊`
+                  : `分摊合计 ${formatYuan(shared)}，与整单优惠 ${formatYuan(orderTotal)} 不一致`}
+            </p>
+          )}
+        </section>
+      </Panel>
       {household && (
-        <ConfirmForm
-          recognition={recognition}
-          channels={household.channels}
-          onConfirmed={onConfirmed}
-        />
+        <ConfirmForm recognition={recognition} channels={household.channels} onConfirmed={onConfirmed} />
       )}
-    </section>
+    </>
   );
 }
 
 function Confirmed({
   records,
   names,
-  onOpenProduct,
 }: {
   records: PriceRecord[];
   names: Map<string, string>;
-  onOpenProduct(id: string): void;
 }) {
   return (
-    <section aria-label="入库结果" className="flex flex-col gap-2">
-      <p role="status" className="font-medium">
-        已入库 {records.length} 条价格记录。
-      </p>
-      <ul className="flex flex-col gap-1 text-sm">
-        {records.map((r) => (
-          <li key={r.id}>
-            <ProductLink id={r.productId} name={names.get(r.productId) ?? '商品'} onOpenProduct={onOpenProduct} />
-            ：到手价 {formatYuan(r.netPrice)}
-          </li>
-        ))}
-      </ul>
-    </section>
+    <Panel asChild>
+      <section aria-label="入库结果">
+        <PanelHeader title="入库结果" count={records.length} />
+        <p role="status" className="px-4 pt-3 font-medium price-tag:px-0">
+          已入库 {records.length} 条
+        </p>
+        <List variant="ruled">
+          {records.map((r) => (
+            <li key={r.id} className="flex items-baseline gap-3 px-4 py-3 text-sm price-tag:px-0">
+              <ProductLink id={r.productId} name={names.get(r.productId) ?? '商品'} />
+              <span className="text-ink-3 ml-auto">到手价 {formatYuan(r.netPrice)}</span>
+            </li>
+          ))}
+        </List>
+      </section>
+    </Panel>
   );
 }
 
 const editErrors = {
-  product_not_found: '这个商品已经不在了。',
-  already_confirmed: '这次识别已经确认入库了。',
-  not_found: '这条草稿已经不在了。',
+  product_not_found: '商品不存在',
+  already_confirmed: '已确认入库',
+  not_found: '草稿不存在',
 };
 
 function DraftItem({
@@ -332,13 +356,11 @@ function DraftItem({
   draft,
   groups,
   onChange,
-  onOpenProduct,
 }: {
   recognition: Recognition;
   draft: RecognitionDraft;
   groups: CategoryGroup[] | undefined;
   onChange(recognition: Recognition): void;
-  onOpenProduct(id: string): void;
 }) {
   const [mode, setMode] = useState<'view' | 'edit' | 'pick'>('view');
   const [error, setError] = useState<string>();
@@ -349,25 +371,25 @@ function DraftItem({
     if (!message) setMode('view');
   }
 
-  const size = draft.size
-    ? formatSize(draft.size.amount, draft.size.unit)
-    : draft.sizeText
-      ? `规格未能解析（${draft.sizeText}）`
-      : '规格未识别';
+  const hasOrderDiscounts = recognition.orderDiscounts.length > 0;
   const facts = [
-    size,
-    draft.quantity === null ? '件数未识别' : `${draft.quantity} 件`,
-    draft.listPrice === null ? '原价未识别' : `原价 ${formatYuan(draft.listPrice)}`,
+    draft.size && formatSize(draft.size.amount, draft.size.unit),
+    draft.quantity !== null && `${draft.quantity} 件`,
+    draft.listPrice !== null && `原价 ${formatYuan(draft.listPrice)}`,
     ...draft.discounts.map((d) => `${d.name ? `${d.name} ` : '优惠 '}-${formatYuan(d.amount)}`),
-    ...(recognition.orderDiscounts.length === 0
-      ? []
-      : [draft.orderDiscount === null ? '整单优惠未分摊' : `整单优惠分摊 -${formatYuan(draft.orderDiscount)}`]),
-  ];
+    hasOrderDiscounts && draft.orderDiscount !== null && `整单优惠分摊 -${formatYuan(draft.orderDiscount)}`,
+  ].filter(Boolean);
+  const missing = [
+    !draft.size && (draft.sizeText ? `规格无法解析（${draft.sizeText}）` : '规格未识别'),
+    draft.quantity === null && '件数未识别',
+    draft.listPrice === null && '原价未识别',
+    hasOrderDiscounts && draft.orderDiscount === null && '整单优惠未分摊',
+  ].filter(Boolean);
 
   return (
-    <li aria-label={draft.name} className="flex flex-col gap-2 rounded-md border p-3">
+    <li aria-label={draft.name} className="flex flex-col gap-2 px-4 py-3 price-tag:px-0">
       {mode === 'edit' ? (
-        <DraftForm draft={draft} hasOrderDiscounts={recognition.orderDiscounts.length > 0} onSave={save} onCancel={() => setMode('view')} />
+        <DraftForm draft={draft} hasOrderDiscounts={hasOrderDiscounts} onSave={save} onCancel={() => setMode('view')} />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-1">
@@ -382,15 +404,21 @@ function DraftItem({
               }
             />
           </div>
-          <span className="text-muted-foreground text-sm">{facts.join(' · ')}</span>
+          {facts.length > 0 && <span className="text-ink-3 text-sm">{facts.join(' · ')}</span>}
+          {missing.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {missing.map((text) => (
+                <Badge key={String(text)} tone="gold">
+                  {text}
+                </Badge>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 text-sm">
             {draft.suggestedProduct ? (
-              <span>
-                商品：
-                <ProductLink id={draft.suggestedProduct.id} name={draft.suggestedProduct.name} onOpenProduct={onOpenProduct} />
-              </span>
+              <ProductLink id={draft.suggestedProduct.id} name={draft.suggestedProduct.name} />
             ) : (
-              <span className="text-muted-foreground">没有匹配的已有商品</span>
+              <Badge tone="outline">未匹配商品</Badge>
             )}
             <Button variant="outline" size="xs" onClick={() => setMode(mode === 'pick' ? 'view' : 'pick')}>
               {draft.suggestedProduct ? '更换商品' : '选择商品'}
@@ -440,12 +468,16 @@ function ProductPicker({
     <div className="flex flex-col gap-2">
       <Input aria-label="搜索商品" value={query} onChange={(event) => setQuery(event.target.value)} />
       {error && <Alert>{error}</Alert>}
-      {found && found.products.length === 0 && <p className="text-muted-foreground text-sm">没有找到相关的商品。</p>}
+      {found && found.products.length === 0 && <p className="text-ink-3 text-sm">暂无结果</p>}
       {found && found.products.length > 0 && (
         <ul aria-label="搜索结果" className="flex flex-col">
           {found.products.map((p) => (
             <li key={p.id}>
-              <button type="button" className="hover:bg-muted w-full rounded px-2 py-1.5 text-left text-sm" onClick={() => onPick(p.id)}>
+              <button
+                type="button"
+                className="hover:bg-surface-hover w-full rounded-md px-2 py-1.5 text-left text-sm"
+                onClick={() => onPick(p.id)}
+              >
                 {p.name}
               </button>
             </li>
@@ -488,29 +520,29 @@ function DraftForm({
   function read(data: FormData): DraftChanges | string {
     const changes: DraftChanges = {};
     const name = String(data.get('name')).trim();
-    if (!name) return '请填写名称。';
+    if (!name) return '名称不能为空';
     if (name !== draft.name) changes.name = name;
 
     const quantityText = String(data.get('quantity')).trim();
     const quantity = quantityText ? parseQuantity(quantityText) : null;
-    if (quantityText && quantity === null) return '件数要写成正整数，如 18 或 3×6。';
+    if (quantityText && quantity === null) return '件数应为正整数';
     if (quantity !== draft.quantity) changes.quantity = quantity;
 
     const amountText = String(data.get('sizeAmount') ?? '').trim();
     const unit = units.find((u) => u.name === data.get('sizeUnit'));
-    if (amountText && !(Number(amountText) > 0)) return '规格必须大于 0。';
+    if (amountText && !(Number(amountText) > 0)) return '规格应大于 0';
     const size = amountText && unit ? { amount: Number(amountText), unit } : null;
     if (size?.amount !== draft.size?.amount || size?.unit.name !== draft.size?.unit.name) changes.size = size;
 
     const listPriceText = String(data.get('listPrice')).trim();
     const listPrice = listPriceText ? parseYuan(listPriceText) : null;
-    if ((listPriceText && listPrice === null) || listPrice === 0) return '原价要写成大于 0 的金额，如 99.90。';
+    if ((listPriceText && listPrice === null) || listPrice === 0) return '原价应大于 0';
     if (listPrice !== draft.listPrice) changes.listPrice = listPrice;
 
     const lines: Discount[] = [];
     for (const d of discounts) {
       const amount = parseYuan(d.amount);
-      if (!amount) return '优惠金额要大于 0，如 10.00。';
+      if (!amount) return '优惠金额应大于 0';
       lines.push(d.name.trim() ? { amount, name: d.name.trim() } : { amount });
     }
     if (JSON.stringify(lines) !== JSON.stringify(draft.discounts)) changes.discounts = lines;
@@ -518,7 +550,7 @@ function DraftForm({
     if (hasOrderDiscounts) {
       const shareText = String(data.get('orderDiscount')).trim();
       const share = parseYuan(shareText || '0');
-      if (share === null) return '整单优惠分摊要写成金额，如 5.53。';
+      if (share === null) return '分摊金额无效';
       if (share !== (draft.orderDiscount ?? 0)) changes.orderDiscount = share;
     }
     return changes;
@@ -536,24 +568,20 @@ function DraftForm({
 
   return (
     <form aria-label={`编辑 ${draft.name}`} className="flex flex-col gap-3" onSubmit={handleSubmit}>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`${id}-name`}>名称</Label>
+      <Field label="名称" htmlFor={`${id}-name`}>
         <Input id={`${id}-name`} name="name" required maxLength={100} defaultValue={draft.name} />
-      </div>
+      </Field>
       <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${id}-quantity`}>件数</Label>
+        <Field label="件数" htmlFor={`${id}-quantity`}>
           <Input id={`${id}-quantity`} name="quantity" autoComplete="off" defaultValue={draft.quantity ?? ''} />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${id}-list-price`}>原价（元）</Label>
+        </Field>
+        <Field label="原价（元）" htmlFor={`${id}-list-price`}>
           <Input id={`${id}-list-price`} name="listPrice" inputMode="decimal" autoComplete="off" defaultValue={yuanText(draft.listPrice)} />
-        </div>
+        </Field>
       </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`${id}-size`}>规格</Label>
+      <Field label="规格" htmlFor={`${id}-size`} hint={draft.sizeText ? `截图原文：${draft.sizeText}` : undefined}>
         {units.length === 0 ? (
-          <p className="text-muted-foreground text-sm">先选择商品，再按它的计价单位填写规格。</p>
+          <p className="text-ink-3 text-sm">未选择商品</p>
         ) : (
           <div className="flex items-center gap-2">
             <Input
@@ -564,22 +592,16 @@ function DraftForm({
               className="max-w-32"
               defaultValue={draft.size?.amount ?? ''}
             />
-            <select
-              aria-label="规格单位"
-              name="sizeUnit"
-              className={cn(fieldClass, 'h-9 w-auto')}
-              defaultValue={draft.size?.unit.name ?? units[0]!.name}
-            >
+            <NativeSelect aria-label="规格单位" name="sizeUnit" defaultValue={draft.size?.unit.name ?? units[0]!.name}>
               {units.map((u) => (
                 <option key={u.name} value={u.name}>
                   {u.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         )}
-        {draft.sizeText && <p className="text-muted-foreground text-xs">截图上写的是「{draft.sizeText}」。</p>}
-      </div>
+      </Field>
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium">本行优惠</legend>
         {discounts.map((d, i) => (
@@ -615,8 +637,7 @@ function DraftForm({
         </Button>
       </fieldset>
       {hasOrderDiscounts && (
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${id}-share`}>整单优惠分摊（元）</Label>
+        <Field label="整单优惠分摊（元）" htmlFor={`${id}-share`} hint="修改原价后重新分摊">
           <Input
             id={`${id}-share`}
             name="orderDiscount"
@@ -625,8 +646,7 @@ function DraftForm({
             className="max-w-32"
             defaultValue={yuanText(draft.orderDiscount)}
           />
-          <p className="text-muted-foreground text-xs">改了原价会重新按比例分摊。</p>
-        </div>
+        </Field>
       )}
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
@@ -661,18 +681,18 @@ function ConfirmForm({
     const draftId = error instanceof ApiError ? (error.payload as { draftId?: string } | null)?.draftId : undefined;
     const name = recognition.drafts.find((d) => d.id === draftId)?.name;
     return describeError(error, {
-      draft_incomplete: `「${name}」还缺商品、规格、件数、原价或整单优惠分摊。`,
-      incompatible_unit: `「${name}」的规格单位和商品的计价单位换算不了。`,
-      invalid_price: `「${name}」的优惠不能超过原价。`,
-      channel_not_found: '这个渠道已经不在了，请重新选择。',
-      no_drafts: '没有可以入库的草稿。',
-      already_confirmed: '这次识别已经确认入库了。',
+      draft_incomplete: `「${name}」信息不完整`,
+      incompatible_unit: `「${name}」规格单位与计价单位不匹配`,
+      invalid_price: `「${name}」优惠超过原价`,
+      channel_not_found: '渠道不存在',
+      no_drafts: '暂无可入库的草稿',
+      already_confirmed: '已确认入库',
     });
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!channelId) return setError('请选择渠道。');
+    if (!channelId) return setError('未选择渠道');
     setPending(true);
     try {
       const { priceRecords } = await api.confirmRecognition(recognition.id, { date, channelId, purchased });
@@ -684,39 +704,47 @@ function ConfirmForm({
   }
 
   return (
-    <form aria-label="确认入库" className="flex flex-col gap-3 rounded-md border p-3" onSubmit={handleSubmit}>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${id}-date`}>日期</Label>
-          <Input id={`${id}-date`} type="date" required value={date} onChange={(event) => setDate(event.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${id}-channel`}>渠道</Label>
-          <select
-            id={`${id}-channel`}
-            className={cn(fieldClass, 'h-9')}
-            value={channelId}
-            onChange={(event) => setChannelId(event.target.value)}
-          >
-            <option value="" disabled>
-              选择渠道
-            </option>
-            {channels.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={purchased} onChange={(event) => setPurchased(event.target.checked)} />
-        已购（不勾选则仅记录）
-      </label>
-      {error && <Alert>{error}</Alert>}
-      <Button type="submit" disabled={pending} className="self-start">
-        确认入库 {recognition.drafts.length} 条
-      </Button>
-    </form>
+    <Panel asChild>
+      <form aria-label="确认入库" onSubmit={handleSubmit}>
+        <PanelBody className="flex flex-col gap-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="日期" htmlFor={`${id}-date`}>
+              <Input id={`${id}-date`} type="date" required value={date} onChange={(event) => setDate(event.target.value)} />
+            </Field>
+            <Field label="渠道" htmlFor={`${id}-channel`}>
+              <NativeSelect
+                id={`${id}-channel`}
+                className="w-full"
+                value={channelId}
+                onChange={(event) => setChannelId(event.target.value)}
+              >
+                <option value="" disabled>
+                  选择渠道
+                </option>
+                {channels.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+          </div>
+          <SegmentedControl<boolean>
+            aria-label="已购还是仅记录"
+            className="self-start"
+            options={[
+              { value: true, label: '已购' },
+              { value: false, label: '仅记录' },
+            ]}
+            value={purchased}
+            onValueChange={setPurchased}
+          />
+          {error && <Alert>{error}</Alert>}
+          <Button type="submit" size="lg" disabled={pending} className="self-start">
+            确认入库 {recognition.drafts.length} 条
+          </Button>
+        </PanelBody>
+      </form>
+    </Panel>
   );
 }

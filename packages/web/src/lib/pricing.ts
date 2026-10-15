@@ -65,10 +65,10 @@ export function matchDate(date: string, promotions: Promotion[]) {
 }
 
 export const recordErrors = {
-  channel_not_found: '这个渠道已不存在，请重新选择。',
-  promotion_not_found: '这个大促已不存在，请重新选择。',
-  incompatible_unit: '规格的单位和商品的计价单位不是同一量纲。',
-  invalid_price: '优惠之和必须小于原价。',
+  channel_not_found: '渠道已不存在',
+  promotion_not_found: '大促已不存在',
+  incompatible_unit: '规格单位与计价单位量纲不同',
+  invalid_price: '优惠合计需小于原价',
 };
 
 export interface DiscountDraft {
@@ -96,18 +96,18 @@ export type PricedInput = Pick<PriceRecordInput, 'listPrice' | 'discounts' | 'qu
 // Reads the drafts into an input, or explains the first field that does not parse.
 export function readPriceDraft(product: Product, draft: PriceDraft): { input: PricedInput } | { error: string } {
   const listPrice = parseYuan(draft.listPrice);
-  if (listPrice === null || listPrice === 0) return { error: '请填写原价，最多两位小数。' };
+  if (listPrice === null || listPrice === 0) return { error: '原价需大于 0，最多两位小数' };
   const discounts = [];
   for (const d of draft.discounts) {
     if (!d.amount.trim() && !d.name.trim()) continue;
     const amount = parseYuan(d.amount);
-    if (amount === null || amount === 0) return { error: '请填写每项优惠的金额，最多两位小数。' };
+    if (amount === null || amount === 0) return { error: '优惠金额需大于 0，最多两位小数' };
     discounts.push(d.name.trim() ? { amount, name: d.name.trim() } : { amount });
   }
   const quantity = parseQuantity(draft.quantity);
-  if (quantity === null) return { error: '件数应为正整数，可以写成 3 × 6。' };
+  if (quantity === null) return { error: '件数需为正整数' };
   const sizeAmount = Number(draft.sizeAmount);
-  if (!draft.sizeAmount.trim() || !(sizeAmount > 0)) return { error: '请填写规格，必须大于 0。' };
+  if (!draft.sizeAmount.trim() || !(sizeAmount > 0)) return { error: '规格需大于 0' };
   const unit = unitsLike(product.pricingUnit).find((u) => u.name === draft.sizeUnitName) ?? product.pricingUnit;
   return { input: { listPrice, discounts, quantity, size: { amount: sizeAmount, unit } } };
 }

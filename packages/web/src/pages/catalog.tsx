@@ -1,33 +1,36 @@
-import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
-import { ChevronLeft, Plus, Search } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { ChevronLeft, ChevronRight, Folder, Package, Pencil, Plus, Search, Tags, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Alert,
-  attempt,
-  DeleteButton,
-  describeError,
-  EditableTitle,
-  fieldClass,
-  NameForm,
-  nameTaken,
-  RetryAlert,
-  type Action,
-} from '@/components/editing';
+import { VerdictBadge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Field } from '@/components/ui/field';
+import { Input, InputGroup, InputGroupInput } from '@/components/ui/input';
+import { Kbd } from '@/components/ui/kbd';
+import { List, ListCell, ListHeader, ListRow } from '@/components/ui/list';
+import { PriceFigure } from '@/components/ui/price-figure';
+import { NativeSelect } from '@/components/ui/native-select';
+import { PageContent, PageHeader } from '@/components/ui/page';
+import { Panel } from '@/components/ui/panel';
+import { SectionHeader } from '@/components/ui/section-header';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, attempt, describeError, NameForm, nameTaken, RetryAlert, type Action } from '@/components/editing';
 import { NewProductForm, NoteField } from '@/components/product-form';
 import { api, type CategoryGroup, type Product, type ProductSummary } from '@/lib/api';
 import { formatSize } from '@/lib/format';
-import { formatUnitPrice } from '@/lib/pricing';
+import { Link, productPath } from '@/lib/navigation';
 import { useHistoryState } from '@/lib/history';
 import { useProductSearch } from '@/lib/search';
 import { cn } from '@/lib/utils';
 
-export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void }) {
+type PlacedCategory = CategoryGroup['categories'][number] & { group: CategoryGroup };
+
+export function CatalogPage() {
   const [groups, setGroups] = useState<CategoryGroup[]>();
   const [loadError, setLoadError] = useState<string>();
   const [selectedId, setSelectedId] = useHistoryState<string | undefined>('categoryId', undefined);
   const [query, setQuery] = useHistoryState('query', '');
+  const [creating, setCreating] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // A failed refresh keeps the last catalog on screen: the write that triggered it has already succeeded.
   const reload = useCallback(async () => {
@@ -42,55 +45,135 @@ export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void
     reload();
   }, [reload]);
 
-  const loadAlert = loadError && <RetryAlert message={`大类与品类加载失败：${loadError}`} onRetry={reload} />;
-  if (!groups) return loadAlert ? <div className="p-4">{loadAlert}</div> : null;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      // A slash typed into a field is text.
+      if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+      event.preventDefault();
+      searchRef.current?.select();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
-  const categories = groups.flatMap((g) => g.categories.map((c) => ({ ...c, group: g })));
+  const categories: PlacedCategory[] = (groups ?? []).flatMap((g) => g.categories.map((c) => ({ ...c, group: g })));
   const selected = categories.find((c) => c.id === selectedId);
+  const trimmed = query.trim();
+  // New products go into the selected category; an empty one offers 新建商品 in its own empty state instead.
+  const canCreate = selected && !creating && (selected.productCount > 0 || trimmed);
 
-  return (
-    <div className="mx-auto grid max-w-6xl gap-6 p-4 min-[900px]:grid-cols-[20rem_1fr]">
-      <label className="relative min-[900px]:col-span-2">
-        <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-        <Input
-          type="search"
-          aria-label="搜索商品"
-          placeholder="搜索商品：名称或拼音首字母，如 dbcz"
-          className="pl-9"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </label>
-      {loadAlert && <div className="min-[900px]:col-span-2">{loadAlert}</div>}
-      {query.trim() ? (
-        <section aria-label="搜索结果" className="min-[900px]:col-span-2">
-          <SearchResults query={query.trim()} categories={categories} onOpenProduct={onOpenProduct} />
-        </section>
-      ) : (
+  const header = (
+    <PageHeader
+      title="商品"
+      actions={
         <>
-          <section aria-label="大类与品类" className={cn(selected && 'hidden min-[900px]:block')}>
-            <CategoryTree groups={groups} selectedId={selected?.id} onSelect={setSelectedId} onChange={reload} />
-          </section>
-          <section aria-label="品类详情" className={cn(!selected && 'hidden min-[900px]:block')}>
-            {selected ? (
-              <CategoryPanel
-                key={selected.id}
-                category={selected}
-                groups={groups}
-                onOpenProduct={onOpenProduct}
-                onBack={() => setSelectedId(undefined)}
-                onChange={reload}
-                onDeleted={() => {
-                  setSelectedId(undefined);
-                  return reload();
-                }}
-              />
-            ) : (
-              <p className="text-muted-foreground py-12 text-center text-sm">选择一个品类查看其中的商品。</p>
-            )}
-          </section>
+          <InputGroup className="w-40 wide:w-72">
+            <Search />
+            <InputGroupInput
+              ref={searchRef}
+              type="search"
+              aria-label="搜索商品"
+              placeholder="搜索商品"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <Kbd className="max-wide:hidden">/</Kbd>
+          </InputGroup>
+          {canCreate && (
+            <Button
+              onClick={() => {
+                setQuery('');
+                setCreating(true);
+              }}
+            >
+              <Plus />
+              新建商品
+            </Button>
+          )}
         </>
-      )}
+      }
+    />
+  );
+  const loadAlert = loadError && <RetryAlert message={`大类与品类加载失败：${loadError}`} onRetry={reload} />;
+
+  if (!groups) {
+    return (
+      <>
+        {header}
+        <PageContent>{loadAlert || <CatalogSkeleton />}</PageContent>
+      </>
+    );
+  }
+
+  if (trimmed) {
+    return (
+      <>
+        {header}
+        <PageContent>
+          {loadAlert}
+          <section aria-label="搜索结果">
+            <SearchResults query={trimmed} categories={categories} />
+          </section>
+        </PageContent>
+      </>
+    );
+  }
+
+  const showsDetail = Boolean(selected);
+  return (
+    <>
+      {header}
+      {loadAlert && <div className="px-4 pt-4 wide:px-(--gutter)">{loadAlert}</div>}
+      <div className="wide:grid wide:min-h-[calc(100dvh-var(--page-bar-height))] wide:grid-cols-[16.5rem_minmax(0,1fr)]">
+        <section
+          aria-label="大类与品类"
+          className={cn('flex flex-col bg-surface wide:border-r wide:border-line', showsDetail && 'max-wide:hidden')}
+        >
+          <CategoryTree
+            groups={groups}
+            selectedId={selected?.id}
+            onSelect={(id) => {
+              setCreating(false);
+              setSelectedId(id);
+            }}
+            onChange={reload}
+          />
+        </section>
+        <section aria-label="品类详情" className={cn('flex min-w-0 flex-col', !showsDetail && 'max-wide:hidden')}>
+          {selected ? (
+            <CategoryPanel
+              key={selected.id}
+              category={selected}
+              groups={groups}
+              creating={creating}
+              onCreatingChange={setCreating}
+              onBack={() => {
+                setCreating(false);
+                setSelectedId(undefined);
+              }}
+              onChange={reload}
+              onDeleted={() => {
+                setSelectedId(undefined);
+                return reload();
+              }}
+            />
+          ) : (
+            <EmptyState title="未选择品类" icon={<Tags />} />
+          )}
+        </section>
+      </div>
+    </>
+  );
+}
+
+function CatalogSkeleton() {
+  return (
+    <div className="flex flex-col gap-3">
+      <Skeleton className="h-5 w-40" />
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-full" />
     </div>
   );
 }
@@ -98,11 +181,9 @@ export function CatalogPage({ onOpenProduct }: { onOpenProduct(id: string): void
 function SearchResults({
   query,
   categories,
-  onOpenProduct,
 }: {
   query: string;
-  categories: { id: string; name: string; group: CategoryGroup }[];
-  onOpenProduct(id: string): void;
+  categories: PlacedCategory[];
 }) {
   const { found, error } = useProductSearch(query);
 
@@ -112,35 +193,76 @@ function SearchResults({
   const stale = found.query !== query;
   if (found.products.length === 0) {
     return (
-      <p aria-busy={stale} className={cn('text-muted-foreground py-12 text-center text-sm', stale && 'opacity-50')}>
-        没有找到「{found.query}」相关的商品。
-      </p>
+      <div aria-busy={stale} className={cn(stale && 'opacity-50')}>
+        <EmptyState title={`未找到「${found.query}」相关的商品`} icon={<Search />} />
+      </div>
     );
   }
   return (
-    <ul aria-busy={stale} inert={stale} className={cn('flex flex-col gap-2', stale && 'opacity-50')}>
-      {found.products.map((product) => {
-        const category = categories.find((c) => c.id === product.categoryId);
-        return (
-          <li key={product.id} aria-label={product.name} className="rounded-lg border p-3">
-            <a
-              href={`/products/${encodeURIComponent(product.id)}`}
-              className="font-medium underline-offset-4 hover:underline"
-              onClick={(event) => {
-                event.preventDefault();
-                onOpenProduct(product.id);
-              }}
-            >
-              {product.name}
-            </a>
-            <p className="text-muted-foreground text-sm">
-              {category && `${category.group.name} / ${category.name} · `}基准规格{' '}
-              {formatSize(product.baseSize, product.pricingUnit)}
-            </p>
-          </li>
-        );
-      })}
-    </ul>
+    <Panel>
+      <List variant="ruled" aria-busy={stale} inert={stale} className={cn(stale && 'opacity-50')}>
+        {found.products.map((product) => {
+          const category = categories.find((c) => c.id === product.categoryId);
+          return (
+            <li key={product.id} aria-label={product.name}>
+              <ListRow className="py-2.5">
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <ProductLink product={product} />
+                  <span className="text-xs text-ink-3">
+                    {category && `${category.group.name} / ${category.name} · `}基准规格{' '}
+                    {formatSize(product.baseSize, product.pricingUnit)}
+                  </span>
+                </div>
+              </ListRow>
+            </li>
+          );
+        })}
+      </List>
+    </Panel>
+  );
+}
+
+function ProductLink({ product }: { product: Product }) {
+  return (
+    <Link
+      href={productPath(product.id)}
+      className="min-w-0 truncate text-[13px] font-medium text-ink underline-offset-4 hover:underline"
+    >
+      {product.name}
+    </Link>
+  );
+}
+
+// Destructive actions take a second click on the same control instead of a browser dialog.
+function ConfirmDelete({ label, children, onDelete }: { label: string; children?: ReactNode; onDelete(): Promise<void> }) {
+  const [confirming, setConfirming] = useState(false);
+  if (confirming) {
+    return (
+      <Button
+        variant="destructive"
+        size="xs"
+        autoFocus
+        aria-label={`确认${label}`}
+        onBlur={() => setConfirming(false)}
+        onClick={async () => {
+          setConfirming(false);
+          await onDelete();
+        }}
+      >
+        确认删除
+      </Button>
+    );
+  }
+  return (
+    <Button
+      variant="ghost"
+      size={children ? 'sm' : 'icon-xs'}
+      aria-label={label}
+      onClick={() => setConfirming(true)}
+    >
+      <Trash2 />
+      {children}
+    </Button>
   );
 }
 
@@ -155,23 +277,30 @@ function CategoryTree({
   onSelect(id: string): void;
   onChange(): Promise<void>;
 }) {
+  const newGroup = (
+    <NameForm
+      label="新大类名称"
+      submitLabel="新建大类"
+      onSubmit={(name) =>
+        attempt(async () => {
+          await api.createCategoryGroup({ name });
+          await onChange();
+        }, nameTaken)
+      }
+    />
+  );
+
+  if (groups.length === 0) return <EmptyState title="暂无大类" icon={<Folder />} action={newGroup} />;
   return (
-    <div className="flex flex-col gap-6">
-      <NameForm
-        label="新大类名称"
-        submitLabel="新建大类"
-        onSubmit={(name) =>
-          attempt(async () => {
-            await api.createCategoryGroup({ name });
-            await onChange();
-          }, nameTaken)
-        }
-      />
-      {groups.length === 0 && <p className="text-muted-foreground text-sm">还没有大类，比如「宠物」「生活用品」。</p>}
-      {groups.map((group) => (
-        <GroupItem key={group.id} group={group} selectedId={selectedId} onSelect={onSelect} onChange={onChange} />
-      ))}
-    </div>
+    <>
+      <SectionHeader title="分类" className="px-4 pt-3" />
+      <div className="flex flex-1 flex-col gap-1 pb-3">
+        {groups.map((group) => (
+          <GroupItem key={group.id} group={group} selectedId={selectedId} onSelect={onSelect} onChange={onChange} />
+        ))}
+      </div>
+      <div className="border-t border-line px-3 py-3 wide:sticky wide:bottom-0 wide:bg-surface">{newGroup}</div>
+    </>
   );
 }
 
@@ -187,94 +316,135 @@ function GroupItem({
   onChange(): Promise<void>;
 }) {
   const [adding, setAdding] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [error, setError] = useState<string>();
+  const total = group.categories.reduce((sum, c) => sum + c.productCount, 0);
 
   return (
-    <div role="group" aria-label={`大类 ${group.name}`} className="flex flex-col gap-2">
-      <EditableTitle
-        as="h2"
-        className="text-sm font-semibold"
-        name={group.name}
-        label="大类名称"
-        onRename={(name) =>
-          attempt(async () => {
-            await api.updateCategoryGroup(group.id, { name });
-            await onChange();
-          }, nameTaken)
-        }
-        actions={
-          <>
-            <Button variant="ghost" size="icon-xs" aria-label={`在 ${group.name} 下新建品类`} onClick={() => setAdding(true)}>
-              <Plus />
-            </Button>
-            <DeleteButton
-              label={`删除大类 ${group.name}`}
-              onDelete={() =>
-                attempt(
-                  async () => {
-                    await api.deleteCategoryGroup(group.id);
+    <div role="group" aria-label={`大类 ${group.name}`}>
+      <List>
+        <li>
+          {renaming ? (
+            <ListRow className="py-1 hover:bg-transparent">
+              <NameForm
+                label="大类名称"
+                submitLabel="保存"
+                defaultValue={group.name}
+                autoFocus
+                onCancel={() => setRenaming(false)}
+                onSubmit={async (name) => {
+                  const message = await attempt(async () => {
+                    await api.updateCategoryGroup(group.id, { name });
                     await onChange();
-                  },
-                  { not_empty: '大类下还有品类，请先删除或移走这些品类。' },
-                )
-              }
-            />
-          </>
-        }
-      />
-      {adding && (
-        <NameForm
-          label="新品类名称"
-          submitLabel="新建品类"
-          autoFocus
-          onCancel={() => setAdding(false)}
-          onSubmit={(name) =>
-            attempt(async () => {
-              const created = await api.createCategory({ categoryGroupId: group.id, name });
-              setAdding(false);
-              await onChange();
-              onSelect(created.id);
-            }, nameTaken)
-          }
-        />
-      )}
-      <ul className="flex flex-col">
+                  }, nameTaken);
+                  if (!message) setRenaming(false);
+                  return message;
+                }}
+              />
+            </ListRow>
+          ) : (
+            <ListRow className="group/row h-9 gap-1.5 py-0 text-ink-3">
+              <Folder className="size-4 shrink-0" />
+              <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{group.name}</h2>
+              <span className="flex items-center wide:opacity-0 wide:group-focus-within/row:opacity-100 wide:group-hover/row:opacity-100">
+                <Button variant="ghost" size="icon-xs" aria-label={`在 ${group.name} 下新建品类`} onClick={() => setAdding(true)}>
+                  <Plus />
+                </Button>
+                <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${group.name}`} onClick={() => setRenaming(true)}>
+                  <Pencil />
+                </Button>
+                <ConfirmDelete
+                  label={`删除大类 ${group.name}`}
+                  onDelete={async () =>
+                    setError(
+                      (await attempt(
+                        async () => {
+                          await api.deleteCategoryGroup(group.id);
+                          await onChange();
+                        },
+                        { not_empty: '大类下还有品类' },
+                      )) ?? undefined,
+                    )
+                  }
+                />
+              </span>
+              <span className="numeric w-6 text-right text-xs">{total}</span>
+            </ListRow>
+          )}
+        </li>
+        {error && (
+          <li>
+            <Alert className="px-2 pb-1">{error}</Alert>
+          </li>
+        )}
+        {adding && (
+          <li>
+            <ListRow inset className="py-1 hover:bg-transparent">
+              <NameForm
+                label="新品类名称"
+                submitLabel="新建品类"
+                autoFocus
+                onCancel={() => setAdding(false)}
+                onSubmit={(name) =>
+                  attempt(async () => {
+                    const created = await api.createCategory({ categoryGroupId: group.id, name });
+                    setAdding(false);
+                    await onChange();
+                    onSelect(created.id);
+                  }, nameTaken)
+                }
+              />
+            </ListRow>
+          </li>
+        )}
         {group.categories.map((category) => (
           <li key={category.id}>
-            <button
-              type="button"
-              aria-current={category.id === selectedId ? 'true' : undefined}
-              className="hover:bg-accent aria-[current]:bg-accent flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm"
-              onClick={() => onSelect(category.id)}
-            >
-              <span>{category.name}</span>
-              <span className="text-muted-foreground text-xs">{category.productCount}</span>
-            </button>
+            <ListRow inset asChild aria-current={category.id === selectedId ? 'true' : undefined}>
+              <button
+                type="button"
+                className={cn(
+                  'h-8 w-full py-0 text-[13px] text-ink-2 aria-[current]:font-medium aria-[current]:text-ink',
+                  category.productCount === 0 && 'text-ink-3',
+                )}
+                onClick={() => onSelect(category.id)}
+              >
+                <span className="min-w-0 flex-1 truncate">{category.name}</span>
+                <span className="numeric text-xs text-ink-3">{category.productCount}</span>
+              </button>
+            </ListRow>
           </li>
         ))}
-      </ul>
+      </List>
     </div>
   );
 }
 
+const priceColumns = 'grid grid-cols-3 gap-3';
+
+const rowGrid =
+  'wide:grid-cols-[minmax(0,1fr)_6rem_minmax(0,26rem)_4.5rem] wide:items-center wide:gap-x-4';
+
 function CategoryPanel({
   category,
   groups,
-  onOpenProduct,
+  creating,
+  onCreatingChange,
   onBack,
   onChange,
   onDeleted,
 }: {
-  category: { id: string; name: string; group: CategoryGroup };
+  category: PlacedCategory;
   groups: CategoryGroup[];
-  onOpenProduct(id: string): void;
+  creating: boolean;
+  onCreatingChange(creating: boolean): void;
   onBack(): void;
   onChange(): Promise<void>;
   onDeleted(): Promise<void>;
 }) {
   const [products, setProducts] = useState<ProductSummary[]>();
-  const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string>();
-  const [moveError, setMoveError] = useState<string>();
+  const [renaming, setRenaming] = useState(false);
+  const [error, setError] = useState<string>();
   const [loadError, setLoadError] = useState<string>();
 
   const reload = useCallback(async () => {
@@ -293,133 +463,246 @@ function CategoryPanel({
   const refresh = async () => {
     await Promise.all([reload(), onChange()]);
   };
+  const run = async (action: Action) => setError((await action()) ?? undefined);
 
   return (
-    <div className="flex flex-col gap-4">
-      <Button variant="ghost" size="sm" className="self-start min-[900px]:hidden" onClick={onBack}>
+    <PageContent className="gap-4">
+      <Button variant="ghost" size="sm" className="-ml-2 self-start wide:hidden" onClick={onBack}>
         <ChevronLeft />
         {category.group.name}
       </Button>
-      <EditableTitle
-        as="h2"
-        className="text-xl font-semibold"
-        name={category.name}
-        label="品类名称"
-        onRename={(name) =>
-          attempt(async () => {
-            await api.updateCategory(category.id, { name });
-            await onChange();
-          }, nameTaken)
-        }
-        actions={
-          <DeleteButton
-            label={`删除品类 ${category.name}`}
-            onDelete={() =>
-              attempt(
-                async () => {
-                  await api.deleteCategory(category.id);
-                  await onDeleted();
-                },
-                { not_empty: '品类下还有商品，请先删除或移走这些商品。' },
-              )
-            }
-          />
-        }
-      />
-      <label className="flex items-center gap-2 text-sm">
-        <span className="text-muted-foreground shrink-0">所属大类</span>
-        <select
-          className={cn(fieldClass, 'h-8 max-w-60')}
-          value={category.group.id}
-          onChange={async (event) => {
-            const categoryGroupId = event.target.value;
-            setMoveError(
-              (await attempt(async () => {
-                await api.updateCategory(category.id, { categoryGroupId });
-                await onChange();
-              })) ?? undefined,
-            );
+      {renaming ? (
+        <NameForm
+          label="品类名称"
+          submitLabel="保存"
+          defaultValue={category.name}
+          autoFocus
+          onCancel={() => setRenaming(false)}
+          onSubmit={async (name) => {
+            const message = await attempt(async () => {
+              await api.updateCategory(category.id, { name });
+              await onChange();
+            }, nameTaken);
+            if (!message) setRenaming(false);
+            return message;
           }}
-        >
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {moveError && <Alert>{moveError}</Alert>}
+        />
+      ) : (
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-1 text-xs text-ink-3 max-wide:hidden">
+              {category.group.name}
+              <ChevronRight className="size-3.5 text-ink-4" />
+            </p>
+            <h2 className="flex items-baseline gap-2.5 text-xl font-semibold text-ink">
+              {category.name}
+              <small className="text-[13px] font-normal tracking-normal text-ink-3">
+                {category.productCount} 个商品
+              </small>
+            </h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 wide:ml-auto">
+            <label className="flex items-center gap-2 text-xs text-ink-3">
+              所属大类
+              <NativeSelect
+                className="w-36"
+                value={category.group.id}
+                onChange={(event) => {
+                  const categoryGroupId = event.target.value;
+                  run(() =>
+                    attempt(async () => {
+                      await api.updateCategory(category.id, { categoryGroupId });
+                      await onChange();
+                    }),
+                  );
+                }}
+              >
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+            <Button variant="outline" aria-label={`重命名 ${category.name}`} onClick={() => setRenaming(true)}>
+              <Pencil />
+              重命名
+            </Button>
+            <ConfirmDelete
+              label={`删除品类 ${category.name}`}
+              onDelete={() =>
+                run(() =>
+                  attempt(
+                    async () => {
+                      await api.deleteCategory(category.id);
+                      await onDeleted();
+                    },
+                    { not_empty: '品类下还有商品' },
+                  ),
+                )
+              }
+            >
+              删除
+            </ConfirmDelete>
+          </div>
+        </div>
+      )}
+      {error && <Alert>{error}</Alert>}
 
-      <div className="flex items-center justify-between">
-        <h3 className="font-medium">商品</h3>
-        {!creating && (
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus />
-            新建商品
-          </Button>
-        )}
-      </div>
       {creating && (
         <NewProductForm
           categoryId={category.id}
-          onCancel={() => setCreating(false)}
+          className="max-w-160"
+          onCancel={() => onCreatingChange(false)}
           onCreated={async () => {
-            setCreating(false);
+            onCreatingChange(false);
             await refresh();
           }}
         />
       )}
       {loadError && <RetryAlert message={`商品加载失败：${loadError}`} onRetry={reload} />}
-      {products?.length === 0 && !creating && (
-        <p className="text-muted-foreground text-sm">这个品类下还没有商品。</p>
-      )}
-      <ul className="flex flex-col gap-2">
-        {products?.map((product) => (
-          <li key={product.id} aria-label={product.name} className="rounded-lg border p-3">
-            {editingId === product.id ? (
-              <ProductEditor
-                product={product}
-                groups={groups}
-                onCancel={() => setEditingId(undefined)}
-                onSaved={async () => {
-                  setEditingId(undefined);
-                  await refresh();
-                }}
-              />
-            ) : (
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <a
-                    href={`/products/${encodeURIComponent(product.id)}`}
-                    className="font-medium underline-offset-4 hover:underline"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      onOpenProduct(product.id);
-                    }}
-                  >
-                    {product.name}
-                  </a>
-                  <p className="text-muted-foreground text-sm">
-                    基准规格 {formatSize(product.baseSize, product.pricingUnit)}
-                  </p>
-                  {product.note && <p className="text-muted-foreground mt-1 text-sm whitespace-pre-wrap">{product.note}</p>}
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setEditingId(product.id)}>
-                  编辑
+      {!products ? (
+        !loadError && <CatalogSkeleton />
+      ) : products.length === 0 ? (
+        !creating && (
+          <Panel className="flex-1">
+            <EmptyState
+              title="暂无商品"
+              icon={<Package />}
+              action={
+                <Button onClick={() => onCreatingChange(true)}>
+                  <Plus />
+                  新建商品
                 </Button>
-                <PriceSummary product={product} />
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-      <ArchivedProducts categoryId={category.id} onOpenProduct={onOpenProduct} />
-    </div>
+              }
+            />
+          </Panel>
+        )
+      ) : (
+        <Panel className="overflow-hidden">
+          <List variant="ruled" aria-label="商品">
+            <ListHeader className={cn('grid max-wide:hidden', rowGrid)}>
+              <span>商品</span>
+              <span>基准规格</span>
+              <span className={priceColumns}>
+                <ListCell figure>入手价</ListCell>
+                <ListCell figure>历史最低单价</ListCell>
+                <ListCell figure>最近单价</ListCell>
+              </span>
+            </ListHeader>
+            {products.map((product) => (
+              <li key={product.id} aria-label={product.name}>
+                {editingId === product.id ? (
+                  <div className="px-4 py-4">
+                    <ProductEditor
+                      product={product}
+                      groups={groups}
+                      onCancel={() => setEditingId(undefined)}
+                      onSaved={async () => {
+                        setEditingId(undefined);
+                        await refresh();
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <ProductRow
+                    product={product}
+                    onEdit={() => setEditingId(product.id)}
+                    onDelete={() =>
+                      attempt(
+                        async () => {
+                          await api.deleteProduct(product.id);
+                          await refresh();
+                        },
+                        { not_empty: '商品还有价格记录' },
+                      )
+                    }
+                  />
+                )}
+              </li>
+            ))}
+          </List>
+        </Panel>
+      )}
+      <ArchivedProducts categoryId={category.id} />
+    </PageContent>
   );
 }
 
-// Archived products are restored from their own page.
-function ArchivedProducts({ categoryId, onOpenProduct }: { categoryId: string; onOpenProduct(id: string): void }) {
+function ProductRow({
+  product,
+  onEdit,
+  onDelete,
+}: {
+  product: ProductSummary;
+  onEdit(): void;
+  onDelete: Action;
+}) {
+  const [error, setError] = useState<string>();
+  return (
+    <ListRow className={cn('group/row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 py-3', rowGrid)}>
+      <div className="flex min-w-0 flex-col">
+        <ProductLink product={product} />
+        {product.note && <p className="truncate text-xs text-ink-3">{product.note}</p>}
+      </div>
+      <div className="col-span-2 text-xs text-ink-3 wide:col-span-1 wide:text-[13px] wide:text-ink-2">
+        <span className="wide:sr-only">基准规格 </span>
+        <span className="numeric text-num-sm text-ink wide:font-medium">{product.baseSize}</span>{' '}
+        {product.pricingUnit.name}
+      </div>
+      <PriceSummary product={product} />
+      <div className="col-start-2 row-start-1 flex items-center justify-end gap-0.5 wide:col-start-auto wide:row-start-auto wide:opacity-0 wide:group-focus-within/row:opacity-100 wide:group-hover/row:opacity-100">
+        <Button variant="ghost" size="icon-xs" aria-label="编辑" onClick={onEdit}>
+          <Pencil />
+        </Button>
+        <ConfirmDelete label={`删除 ${product.name}`} onDelete={async () => setError((await onDelete()) ?? undefined)} />
+      </div>
+      {error && <Alert className="col-span-full">{error}</Alert>}
+    </ListRow>
+  );
+}
+
+// Unit prices sit side by side for browsing only: products in a category are never priced against each other.
+function PriceSummary({ product }: { product: ProductSummary }) {
+  const { stockLine, lowestUnitPrice, latestPrice } = product;
+  const none = <span className="text-sm text-ink-4">暂无</span>;
+  return (
+    <dl aria-label="价格概览" className={cn('col-span-2 wide:col-span-1', priceColumns)}>
+      <ListCell figure>
+        <dt className="text-xs text-ink-3 wide:sr-only">入手价</dt>
+        <dd>
+          {stockLine === null ? (
+            <span className="text-sm text-ink-4">未设置</span>
+          ) : (
+            <PriceFigure cents={stockLine} tone="target" />
+          )}
+        </dd>
+      </ListCell>
+      <ListCell figure>
+        <dt className="text-xs text-ink-3 wide:sr-only">历史最低单价</dt>
+        <dd>{lowestUnitPrice === null ? none : <PriceFigure cents={lowestUnitPrice} tone="low" />}</dd>
+      </ListCell>
+      <ListCell figure>
+        <dt className="text-xs text-ink-3 wide:sr-only">最近单价</dt>
+        <dd>
+          {latestPrice === null ? (
+            none
+          ) : (
+            <>
+              <span className="inline-flex flex-wrap items-center gap-x-1.5">
+                <PriceFigure cents={latestPrice.unitPrice} />{' '}
+                {latestPrice.verdict && <VerdictBadge verdict={latestPrice.verdict} />}
+              </span>{' '}
+              <span className="numeric block text-xs text-ink-3">{latestPrice.date}</span>
+            </>
+          )}
+        </dd>
+      </ListCell>
+    </dl>
+  );
+}
+
+function ArchivedProducts({ categoryId }: { categoryId: string }) {
   const [archived, setArchived] = useState<Product[]>([]);
   useEffect(() => {
     api.products(categoryId, { includeArchived: true }).then(
@@ -430,55 +713,27 @@ function ArchivedProducts({ categoryId, onOpenProduct }: { categoryId: string; o
 
   if (archived.length === 0) return null;
   return (
-    <details className="text-sm">
-      <summary className="text-muted-foreground cursor-pointer">已归档的商品（{archived.length}）</summary>
-      <ul aria-label="已归档的商品列表" className="mt-2 flex flex-col gap-1">
-        {archived.map((product) => (
-          <li key={product.id} aria-label={product.name}>
-            <a
-              href={`/products/${encodeURIComponent(product.id)}`}
-              className="text-muted-foreground underline-offset-4 hover:underline"
-              onClick={(event) => {
-                event.preventDefault();
-                onOpenProduct(product.id);
-              }}
-            >
-              {product.name}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
-
-// Unit prices sit side by side for browsing only: products in a category are never priced against each other.
-function PriceSummary({ product }: { product: ProductSummary }) {
-  const { stockLine, lowestUnitPrice, latestPrice } = product;
-  return (
-    <dl aria-label="价格概览" className="grid w-full grid-cols-3 gap-2 text-sm">
-      <div>
-        <dt className="text-muted-foreground text-xs">入手价</dt>
-        <dd className="tabular-nums">{stockLine === null ? '未设置' : formatUnitPrice(stockLine, product)}</dd>
-      </div>
-      <div>
-        <dt className="text-muted-foreground text-xs">历史最低单价</dt>
-        <dd className="tabular-nums">{lowestUnitPrice === null ? '暂无' : formatUnitPrice(lowestUnitPrice, product)}</dd>
-      </div>
-      <div>
-        <dt className="text-muted-foreground text-xs">最近单价</dt>
-        <dd className="tabular-nums">
-          {latestPrice === null ? (
-            '暂无'
-          ) : (
-            <>
-              {formatUnitPrice(latestPrice.unitPrice, product)}{' '}
-              <span className="text-muted-foreground text-xs">{latestPrice.date}</span>
-            </>
-          )}
-        </dd>
-      </div>
-    </dl>
+    <Panel asChild>
+      <details className="group/archived">
+        <summary className="flex h-10 cursor-pointer list-none items-center gap-2 px-4 text-xs font-medium text-ink-2 hover:bg-surface-subtle [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="size-3.5 text-ink-3 transition-transform group-open/archived:rotate-90" />
+          已归档的商品（{archived.length}）
+        </summary>
+        {/* Archived products are restored from their own page. */}
+        <List variant="ruled" aria-label="已归档的商品列表" className="border-t border-line">
+          {archived.map((product) => (
+            <li key={product.id} aria-label={product.name}>
+              <ListRow className="min-h-10 opacity-70 group-data-[variant=ruled]/list:min-h-10">
+                <ProductLink product={product} />
+                <span className="ml-auto text-xs text-ink-3">
+                  基准规格 {formatSize(product.baseSize, product.pricingUnit)}
+                </span>
+              </ListRow>
+            </li>
+          ))}
+        </List>
+      </details>
+    </Panel>
   );
 }
 
@@ -496,78 +751,55 @@ function ProductEditor({
   const id = useId();
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  async function run(action: Action) {
-    setPending(true);
-    setError((await action()) ?? undefined);
-    setPending(false);
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    run(() =>
-      attempt(async () => {
+    setPending(true);
+    setError(
+      (await attempt(async () => {
         await api.updateProduct(product.id, {
           name: String(data.get('name')),
           categoryId: String(data.get('categoryId')),
           note: String(data.get('note')),
         });
         await onSaved();
-      }),
+      })) ?? undefined,
     );
+    setPending(false);
   }
 
   return (
-    <form aria-label={`编辑 ${product.name}`} className="flex flex-col gap-3" onSubmit={handleSubmit}>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${id}-name`}>商品名称</Label>
-        <Input id={`${id}-name`} name="name" required maxLength={100} defaultValue={product.name} />
+    <form aria-label={`编辑 ${product.name}`} className="flex max-w-160 flex-col gap-4" onSubmit={handleSubmit}>
+      <div className="grid gap-3 wide:grid-cols-2">
+        <Field label="商品名称" htmlFor={`${id}-name`}>
+          <Input id={`${id}-name`} name="name" required maxLength={100} defaultValue={product.name} />
+        </Field>
+        <Field label="所属品类" htmlFor={`${id}-category`}>
+          <NativeSelect id={`${id}-category`} name="categoryId" className="w-full" defaultValue={product.categoryId}>
+            {groups.map((g) => (
+              <optgroup key={g.id} label={g.name}>
+                {g.categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </NativeSelect>
+        </Field>
       </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={`${id}-category`}>所属品类</Label>
-        <select id={`${id}-category`} name="categoryId" className={cn(fieldClass, 'h-9')} defaultValue={product.categoryId}>
-          {groups.map((g) => (
-            <optgroup key={g.id} label={g.name}>
-              {g.categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </div>
-      <p className="text-muted-foreground text-sm">
+      <p className="text-xs text-ink-3">
         计价单位 {product.pricingUnit.name} · 基准规格 {formatSize(product.baseSize, product.pricingUnit)}
       </p>
       <NoteField id={`${id}-note`} defaultValue={product.note} />
       {error && <Alert>{error}</Alert>}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-2">
         <Button type="submit" disabled={pending}>
           保存
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel}>
           取消
-        </Button>
-        <Button
-          type="button"
-          variant={confirmingDelete ? 'destructive' : 'ghost'}
-          className="ml-auto"
-          disabled={pending}
-          onBlur={() => setConfirmingDelete(false)}
-          onClick={() => {
-            if (!confirmingDelete) return setConfirmingDelete(true);
-            run(() =>
-              attempt(async () => {
-                await api.deleteProduct(product.id);
-                await onSaved();
-              }, { not_empty: '商品还有价格记录，请先删除这些记录。' }),
-            );
-          }}
-        >
-          {confirmingDelete ? '确认删除商品' : '删除商品'}
         </Button>
       </div>
     </form>

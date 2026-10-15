@@ -84,9 +84,19 @@ const productDetailSchema = productSchema
 const productSummarySchema = productDetailSchema
   .extend({
     latestPrice: z
-      .object({ date: z.string(), unitPrice: z.number() })
+      .object({
+        date: z.string(),
+        unitPrice: z.number(),
+        verdict: z
+          .enum(['recordLow', 'stockUp', 'skip', 'noReference'])
+          .nullable()
+          .openapi({
+            description:
+              "The newest record's verdict against the current stock line and the lowest unit price among its other records",
+          }),
+      })
       .nullable()
-      .openapi({ description: 'Date and unit price of its newest price record, null without any' }),
+      .openapi({ description: 'Date, unit price and verdict of its newest price record, null without any' }),
   })
   .openapi('ProductSummary');
 
@@ -438,7 +448,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
     })
     .openapi(listProductsRoute, async (c) => {
       const products = await listProducts(db, c.var.member, c.req.valid('query'));
-      const summaries = await summarizePrices(db, c.var.member, products.map((p) => p.id));
+      const summaries = await summarizePrices(db, c.var.member, products);
       return c.json(products.map((p) => ({ ...p, ...summaries.get(p.id)! })), 200);
     })
     .openapi(searchProductsRoute, async (c) => {

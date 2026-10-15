@@ -1,5 +1,14 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
-import { calculatePrice, convert, matchPromotion, type Discount, type Size, type Unit } from '@stockup/domain';
+import {
+  calculatePrice,
+  convert,
+  judge,
+  matchPromotion,
+  type Discount,
+  type Size,
+  type Unit,
+  type Verdict,
+} from '@stockup/domain';
 import type { Database } from './db';
 import { ParentNotFoundError, translate } from './db/errors';
 import { channel, discount, evidence, priceRecord, priceRecordSources, product, promotion, user } from './db/schema';
@@ -181,24 +190,40 @@ export async function findPriceRecord(db: Executor, scope: CurrentMember, id: st
 }
 
 export async function lowestUnitPrice(db: Database, scope: CurrentMember, productId: string) {
-  return (await summarizePrices(db, scope, [productId])).get(productId)!.lowestUnitPrice;
+  const records = await listPriceRecords(db, scope, { productIds: [productId] });
+  return records.length ? Math.min(...records.map((r) => r.unitPrice)) : null;
 }
 
 export interface PriceSummary {
   lowestUnitPrice: number | null;
-  latestPrice: { date: string; unitPrice: number } | null;
+  latestPrice: { date: string; unitPrice: number; verdict: Verdict | null } | null;
 }
 
-export async function summarizePrices(db: Database, scope: CurrentMember, productIds: string[]) {
-  const summaries = new Map<string, PriceSummary>(
-    productIds.map((id) => [id, { lowestUnitPrice: null, latestPrice: null }]),
-  );
-  for (const r of await listPriceRecords(db, scope, { productIds })) {
-    const summary = summaries.get(r.productId)!;
-    summary.latestPrice ??= { date: r.date, unitPrice: r.unitPrice };
-    if (summary.lowestUnitPrice === null || r.unitPrice < summary.lowestUnitPrice) summary.lowestUnitPrice = r.unitPrice;
+// The newest record is judged against the product's other records, so a record low still reads as one.
+export async function summarizePrices(
+  db: Database,
+  scope: CurrentMember,
+  products: { id: string; stockLine: number | null }[],
+) {
+  const byProduct = new Map<string, { date: string; unitPrice: number }[]>(products.map((p) => [p.id, []]));
+  for (const r of await listPriceRecords(db, scope, { productIds: products.map((p) => p.id) })) {
+    byProduct.get(r.productId)!.push(r);
   }
-  return summaries;
+  return new Map<string, PriceSummary>(
+    products.map(({ id, stockLine }) => {
+      const [latest, ...older] = byProduct.get(id)!;
+      if (!latest) return [id, { lowestUnitPrice: null, latestPrice: null }];
+      const olderLowest = older.length ? Math.min(...older.map((r) => r.unitPrice)) : null;
+      const { verdict } = judge({ unitPrice: latest.unitPrice, stockLine, lowestUnitPrice: olderLowest });
+      return [
+        id,
+        {
+          lowestUnitPrice: Math.min(latest.unitPrice, olderLowest ?? Infinity),
+          latestPrice: { date: latest.date, unitPrice: latest.unitPrice, verdict },
+        },
+      ];
+    }),
+  );
 }
 
 interface Pricing {

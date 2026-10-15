@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { AppShell, canSee, sections, type SectionPath } from '@/components/app-shell';
+import { AuthLayout } from '@/components/auth-form';
+import { BrandLogo } from '@/components/brand';
 import { Button } from '@/components/ui/button';
+import { Panel } from '@/components/ui/panel';
 import { api, ApiError, type Me } from '@/lib/api';
+import { NavigationProvider } from '@/lib/navigation';
+import { applyTheme } from '@/lib/theme';
 import { CatalogPage } from '@/pages/catalog';
 import { ChannelsPage } from '@/pages/channels';
 import { ConsentPage } from '@/pages/consent';
@@ -31,7 +37,7 @@ async function loadSession(): Promise<Session> {
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return { state: 'signed-out' };
     if (error instanceof ApiError && error.code === 'no_household') return { state: 'no-household' };
-    return { state: 'blocked', message: '暂时无法连接 StockUp，请稍后再试。' };
+    return { state: 'blocked', message: '无法连接 StockUp' };
   }
 }
 
@@ -68,7 +74,11 @@ export function App() {
 
   switch (session.state) {
     case 'loading':
-      return null;
+      return (
+        <div className="grid min-h-svh place-items-center">
+          <BrandLogo className="animate-pulse" />
+        </div>
+      );
     case 'setup':
       return <SetupPage onDone={refresh} />;
     case 'signed-out':
@@ -79,75 +89,58 @@ export function App() {
     case 'signed-in':
       if (invitationId) {
         return (
-          <main className="mx-auto flex min-h-svh max-w-sm flex-col items-center justify-center gap-4 p-4 text-center">
-            <p role="alert">
-              你已经是「{session.me.household.name}」的成员，一个成员只能属于一个家庭。要用这个邀请注册新账号，请先登出。
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={leaveInvitation}>
-                返回首页
-              </Button>
-              <Button variant="outline" onClick={signOut}>
-                登出
-              </Button>
-            </div>
-          </main>
+          <SessionNotice message={`当前账号已属于「${session.me.household.name}」`} hint="登出后可用此邀请注册新账号">
+            <Button variant="outline" onClick={leaveInvitation}>
+              返回首页
+            </Button>
+            <Button variant="outline" onClick={signOut}>
+              登出
+            </Button>
+          </SessionNotice>
         );
       }
       return <Home me={session.me} onSignOut={signOut} onSessionChange={refresh} />;
     case 'no-household':
       if (invitationId) return <JoinPage invitationId={invitationId} signedIn onDone={leaveInvitation} />;
       return (
-        <main className="mx-auto flex min-h-svh max-w-sm flex-col items-center justify-center gap-4 p-4 text-center">
-          <p role="alert">你已不属于任何家庭。向家庭管理员要一个邀请链接，打开后可以用当前账号重新加入。</p>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={refresh}>
-              重试
-            </Button>
-            <Button variant="outline" onClick={signOut}>
-              登出
-            </Button>
-          </div>
-        </main>
+        <SessionNotice message="当前账号不属于任何家庭" hint="打开邀请链接即可重新加入">
+          <Button variant="outline" onClick={refresh}>
+            重试
+          </Button>
+          <Button variant="outline" onClick={signOut}>
+            登出
+          </Button>
+        </SessionNotice>
       );
     case 'blocked':
       return (
-        <main className="mx-auto flex min-h-svh max-w-sm flex-col items-center justify-center gap-4 p-4 text-center">
-          <p role="alert">{session.message}</p>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={refresh}>
-              重试
-            </Button>
-            <Button variant="outline" onClick={signOut}>
-              登出
-            </Button>
-          </div>
-        </main>
+        <SessionNotice message={session.message}>
+          <Button variant="outline" onClick={refresh}>
+            重试
+          </Button>
+          <Button variant="outline" onClick={signOut}>
+            登出
+          </Button>
+        </SessionNotice>
       );
   }
 }
 
-const sections = [
-  { path: '/', label: '算价' },
-  { path: '/products', label: '商品' },
-  { path: '/recognitions', label: '识别' },
-  { path: '/channels', label: '渠道' },
-  { path: '/promotions', label: '大促' },
-  { path: '/members', label: '成员', householdAdmin: true },
-  { path: '/invitations', label: '邀请', householdAdmin: true },
-  { path: '/households', label: '家庭', instanceAdmin: true },
-  { path: '/settings', label: '设置' },
-] as const;
-
-type Section = (typeof sections)[number];
-
-function canSee(me: Me, section: Section) {
-  if ('householdAdmin' in section) return me.household.role === 'admin';
-  if ('instanceAdmin' in section) return me.user.isInstanceAdmin;
-  return true;
+function SessionNotice({ message, hint, children }: { message: string; hint?: string; children: ReactNode }) {
+  return (
+    <AuthLayout>
+      <Panel className="items-center gap-4 p-6 text-center price-tag:bg-surface">
+        <div className="flex flex-col gap-1">
+          <p role="alert" className="font-medium text-ink">
+            {message}
+          </p>
+          {hint && <p className="text-xs text-ink-3">{hint}</p>}
+        </div>
+        <div className="flex gap-2">{children}</div>
+      </Panel>
+    </AuthLayout>
+  );
 }
-
-type SectionPath = Section['path'];
 
 // A product page belongs to the catalog section, and a recognition to the recognition section.
 interface Route {
@@ -172,7 +165,6 @@ function useRoute() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
-  // The state travels with the history entry, so pages can restore what they showed there.
   const navigate = (path: string, state: unknown = null) => {
     if (path !== window.location.pathname) window.history.pushState(state, '', path);
     setRoute(currentRoute());
@@ -183,41 +175,12 @@ function useRoute() {
 function Home({ me, onSignOut, onSessionChange }: { me: Me; onSignOut(): void; onSessionChange(): void }) {
   const [route, navigate] = useRoute();
   const { productId, recognitionId } = route;
-  const visibleSections = sections.filter((s) => canSee(me, s));
   // A section the member may no longer see, as after handing over the admin role, shows quick price.
-  const section = visibleSections.some((s) => s.path === route.section) ? route.section : '/';
-  const openProduct = (id: string) => navigate(`/products/${encodeURIComponent(id)}`);
+  const section = sections.some((s) => s.path === route.section && canSee(me, s)) ? route.section : '/';
+  useEffect(() => applyTheme(me.user.theme), [me.user.theme]);
   return (
-    <div className="min-h-svh">
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">StockUp</h1>
-          <p className="text-muted-foreground text-sm">{me.household.name}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm">{me.user.name}</span>
-          <Button variant="outline" size="sm" onClick={onSignOut}>
-            登出
-          </Button>
-        </div>
-      </header>
-      <nav aria-label="主导航" className="flex gap-1 overflow-x-auto border-b px-4 whitespace-nowrap">
-        {visibleSections.map((s) => (
-          <a
-            key={s.path}
-            href={s.path}
-            aria-current={s.path === section ? 'page' : undefined}
-            className="text-muted-foreground aria-[current]:border-foreground aria-[current]:text-foreground -mb-px border-b-2 border-transparent px-3 py-2 text-sm"
-            onClick={(event) => {
-              event.preventDefault();
-              navigate(s.path);
-            }}
-          >
-            {s.label}
-          </a>
-        ))}
-      </nav>
-      <main>
+    <NavigationProvider value={navigate}>
+      <AppShell me={me} current={section} onSignOut={onSignOut}>
         {productId ? (
           <ProductPage
             key={productId}
@@ -229,7 +192,6 @@ function Home({ me, onSignOut, onSessionChange }: { me: Me; onSignOut(): void; o
             key={recognitionId}
             recognitionId={recognitionId}
             onManualEntry={() => navigate('/')}
-            onOpenProduct={openProduct}
             onUploadAnother={() => navigate('/recognitions')}
           />
         ) : section === '/recognitions' ? (
@@ -247,11 +209,11 @@ function Home({ me, onSignOut, onSessionChange }: { me: Me; onSignOut(): void; o
         ) : section === '/settings' ? (
           <SettingsPage me={me} onRenamed={onSessionChange} />
         ) : section === '/products' ? (
-          <CatalogPage onOpenProduct={openProduct} />
+          <CatalogPage />
         ) : (
-          <QuickPricePage onOpenProduct={openProduct} />
+          <QuickPricePage />
         )}
-      </main>
-    </div>
+      </AppShell>
+    </NavigationProvider>
   );
 }

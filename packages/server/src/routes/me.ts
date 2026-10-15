@@ -2,8 +2,11 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { APIError } from 'better-auth/api';
 import type { Auth } from '../auth';
 import type { Database } from '../db';
-import { requireMember, type CurrentMember } from '../members';
+import { requireMember, updateTheme, type CurrentMember } from '../members';
 import { accountSchema } from './setup';
+
+export const themes = ['tool', 'price-tag'] as const;
+type Theme = (typeof themes)[number];
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 
@@ -12,6 +15,7 @@ const meSchema = z.object({
     id: z.string(),
     username: z.string(),
     name: z.string(),
+    theme: z.enum(themes),
     isInstanceAdmin: z.boolean(),
   }),
   household: z.object({ id: z.string(), name: z.string(), role: z.string() }),
@@ -19,7 +23,13 @@ const meSchema = z.object({
 
 function toMe(m: CurrentMember) {
   return {
-    user: { id: m.userId, username: m.username, name: m.name, isInstanceAdmin: m.isInstanceAdmin },
+    user: {
+      id: m.userId,
+      username: m.username,
+      name: m.name,
+      theme: m.theme as Theme,
+      isInstanceAdmin: m.isInstanceAdmin,
+    },
     household: { id: m.householdId, name: m.householdName, role: m.householdRole },
   };
 }
@@ -44,16 +54,19 @@ export function meRoutes(db: Database, auth: Auth) {
     },
   });
 
-  const renameRoute = createRoute({
+  const updateRoute = createRoute({
     method: 'patch',
     path: '/me',
     tags: ['members'],
-    summary: "Change the signed-in member's display name",
-    description: 'Price records show the new name of the member who entered them.',
+    summary: "Change the signed-in member's display name or theme",
+    description:
+      'Price records show the new name of the member who entered them. The theme follows the account to every device.',
     middleware,
-    request: { body: json(accountSchema.pick({ name: true })) },
+    request: {
+      body: json(accountSchema.pick({ name: true }).partial().extend({ theme: z.enum(themes).optional() })),
+    },
     responses: {
-      200: { description: 'The renamed member', content: { 'application/json': { schema: meSchema } } },
+      200: { description: 'The updated member', content: { 'application/json': { schema: meSchema } } },
       ...unauthenticated,
     },
   });
@@ -85,10 +98,12 @@ export function meRoutes(db: Database, auth: Auth) {
 
   return new OpenAPIHono()
     .openapi(route, (c) => c.json(toMe(c.var.member), 200))
-    .openapi(renameRoute, async (c) => {
-      const { name } = c.req.valid('json');
-      await auth.api.updateUser({ body: { name }, headers: c.req.raw.headers });
-      return c.json(toMe({ ...c.var.member, name }), 200);
+    .openapi(updateRoute, async (c) => {
+      const { name, theme } = c.req.valid('json');
+      if (name !== undefined) await auth.api.updateUser({ body: { name }, headers: c.req.raw.headers });
+      if (theme !== undefined) await updateTheme(db, c.var.member.userId, theme);
+      const { member } = c.var;
+      return c.json(toMe({ ...member, name: name ?? member.name, theme: theme ?? member.theme }), 200);
     })
     .openapi(passwordRoute, async (c) => {
       try {

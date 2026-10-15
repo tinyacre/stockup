@@ -1,15 +1,13 @@
-import { expect, test } from '@playwright/test';
-import { founder } from './founder';
+import { expect, test } from './test';
 
-test('a member adds, renames, archives and restores channels', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member adds, renames, archives and restores channels', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const name = `天猫 ${suffix}`;
   const renamed = `天猫超市 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '渠道' }).click();
@@ -23,7 +21,7 @@ test('a member adds, renames, archives and restores channels', async ({ page }) 
 
   await page.getByLabel('新渠道名称').fill(name);
   await page.getByRole('button', { name: '新建渠道' }).click();
-  await expect(page.getByRole('alert')).toContainText('这个名称已经被使用');
+  await expect(page.getByRole('alert')).toContainText('名称已被使用');
 
   await channel.getByRole('button', { name: `重命名 ${name}` }).click();
   await channel.getByLabel('渠道名称').fill(renamed);

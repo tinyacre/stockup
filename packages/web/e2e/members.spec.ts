@@ -1,4 +1,5 @@
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import { expect, test } from './test';
 import { founder } from './founder';
 
 function suffix() {
@@ -22,7 +23,6 @@ function openSection(page: Page, label: string) {
   return page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: label }).click();
 }
 
-// Each run gets its own household from the instance admin, so desktop and phone runs cannot disturb each other.
 async function newHousehold(page: Page) {
   const id = suffix();
   const admin = { name: `管理员${id}`, username: `admin_${id}`, password: `password-${id}` };
@@ -77,8 +77,8 @@ test('the instance admin creates a household that starts with the preset promoti
   await expect(page.getByText('双 11').first()).toBeVisible();
 });
 
-test('a removed member is signed out at once and rejoins later with the same account', async ({ page, browser }) => {
-  const { admin } = await newHousehold(page);
+test('a removed member is signed out at once and rejoins later with the same account', async ({ page, browser, household }) => {
+  const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const member = await invite(page, browser);
 
@@ -94,7 +94,7 @@ test('a removed member is signed out at once and rejoins later with the same acc
   await member.page.getByLabel('用户名').fill(member.username);
   await member.page.getByLabel('密码').fill(member.password);
   await member.page.getByRole('button', { name: '登录' }).click();
-  await expect(member.page.getByRole('alert')).toContainText('你已不属于任何家庭');
+  await expect(member.page.getByRole('alert')).toContainText('当前账号不属于任何家庭');
 
   const link = await generateLink(page);
   await member.page.goto(link);
@@ -104,8 +104,8 @@ test('a removed member is signed out at once and rejoins later with the same acc
   await expect(list).toContainText(member.name);
 });
 
-test('a signed-out invitee with an account signs in and joins with it', async ({ page, browser }) => {
-  const { admin } = await newHousehold(page);
+test('a signed-out invitee with an account signs in and joins with it', async ({ page, browser, household }) => {
+  const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const member = await invite(page, browser);
   await openSection(page, '成员');
@@ -124,8 +124,8 @@ test('a signed-out invitee with an account signs in and joins with it', async ({
   await expect(member.page).toHaveURL(/\/$/);
 });
 
-test('a household admin hands the admin role to another member', async ({ page, browser }) => {
-  const { admin } = await newHousehold(page);
+test('a household admin hands the admin role to another member', async ({ page, browser, household }) => {
+  const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const member = await invite(page, browser);
 
@@ -141,8 +141,8 @@ test('a household admin hands the admin role to another member', async ({ page, 
   );
 });
 
-test('a member renames themselves, changes the password and signs out other devices', async ({ page, browser }) => {
-  const { admin } = await newHousehold(page);
+test('a member renames themselves, changes the password and signs out other devices', async ({ page, browser, household }) => {
+  const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const other = await (await browser.newContext()).newPage();
   await signIn(other, admin.username, admin.password);
@@ -158,13 +158,13 @@ test('a member renames themselves, changes the password and signs out other devi
   await password.getByLabel('当前密码').fill('wrong-password');
   await password.getByLabel('新密码').fill('a-brand-new-password');
   await password.getByRole('button', { name: '修改密码' }).click();
-  await expect(password.getByRole('alert')).toHaveText('当前密码不正确。');
+  await expect(password.getByRole('alert')).toHaveText('当前密码错误');
   await password.getByLabel('当前密码').fill(admin.password);
   await password.getByRole('button', { name: '修改密码' }).click();
   await expect(password.getByRole('status')).toContainText('密码已修改');
 
   await page.getByRole('button', { name: '登出其他设备' }).click();
-  await expect(page.getByRole('status').last()).toHaveText('其他设备已登出。');
+  await expect(page.getByRole('status').last()).toHaveText('其他设备已登出');
   await other.reload();
   await expect(other.getByRole('button', { name: '登录' })).toBeVisible();
 

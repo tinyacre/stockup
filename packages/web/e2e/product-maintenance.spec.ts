@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { founder } from './founder';
+import type { Page } from '@playwright/test';
+import { expect, test } from './test';
 
 async function createProduct(page: Page, name: string, unit: string, baseSize: string) {
   await page.getByRole('button', { name: '新建商品' }).click();
@@ -21,8 +21,7 @@ async function recordPrice(page: Page, channelName: string, listPrice: string, s
   await expect(form).toBeHidden();
 }
 
-test('a member re-bases, merges and archives products', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member re-bases, merges and archives products', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const channelName = `山姆 ${suffix}`;
   const groupName = `宠物 ${suffix}`;
@@ -31,8 +30,8 @@ test('a member re-bases, merges and archives products', async ({ page }) => {
   const duplicate = `渴望 六种鱼 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });
@@ -51,17 +50,23 @@ test('a member re-bases, merges and archives products', async ({ page }) => {
   await createProduct(page, kept, 'g', '500');
   await createProduct(page, duplicate, 'kg', '1');
 
+  const backToCategory = () =>
+    page.getByRole('navigation', { name: '路径' }).getByRole('button', { name: categoryName }).click();
+  const maintain = async (action: string) => {
+    await page.getByRole('button', { name: '更多操作' }).click();
+    await page.getByRole('menuitem', { name: action }).click();
+  };
+
   await page.getByRole('link', { name: duplicate }).click();
   await recordPrice(page, channelName, '300', '5.4');
-  await page.getByRole('button', { name: '商品列表' }).click();
+  await backToCategory();
   await page.getByRole('link', { name: kept }).click();
   await recordPrice(page, channelName, '100', '2000');
   const records = page.getByRole('list', { name: '价格记录列表' });
   await expect(records).toContainText('单价 ¥25.00 / 500 g');
 
-  const maintenance = page.getByRole('region', { name: '商品维护' });
-  await maintenance.getByRole('button', { name: '修改计价单位和基准规格' }).click();
-  const units = maintenance.getByRole('form', { name: '修改计价单位和基准规格' });
+  await maintain('修改计价单位和基准规格');
+  const units = page.getByRole('form', { name: '修改计价单位和基准规格' });
   await units.getByLabel('计价单位').selectOption('kg');
   await expect(units.getByLabel('基准规格')).toHaveValue('0.5');
   await units.getByLabel('基准规格').fill('1');
@@ -70,8 +75,8 @@ test('a member re-bases, merges and archives products', async ({ page }) => {
   await expect(records).toContainText('1 件 × 2 kg（录入为 2000 g）');
   await expect(records).toContainText('单价 ¥50.00 / 1 kg');
 
-  await maintenance.getByRole('button', { name: '合并重复商品' }).click();
-  const merge = maintenance.getByRole('form', { name: '合并重复商品' });
+  await maintain('合并重复商品');
+  const merge = page.getByRole('form', { name: '合并重复商品' });
   await merge.getByLabel(`要并入「${kept}」的重复商品`).selectOption({ label: `${duplicate}（1 kg）` });
   await merge.getByRole('button', { name: '合并' }).click();
   await merge.getByRole('button', { name: `确认合并并删除「${duplicate}」` }).click();
@@ -79,14 +84,15 @@ test('a member re-bases, merges and archives products', async ({ page }) => {
   await expect(records.getByRole('listitem')).toHaveCount(2);
   await expect(records).toContainText('单价 ¥55.56 / 1 kg');
 
-  await maintenance.getByRole('button', { name: '归档商品' }).click();
-  await expect(maintenance).toContainText('已归档');
-  await page.getByRole('button', { name: '商品列表' }).click();
+  await maintain('归档商品');
+  await expect(page.getByText('已归档', { exact: true })).toBeVisible();
+  await backToCategory();
   await expect(page.getByRole('link', { name: duplicate })).toHaveCount(0);
   await expect(page.getByRole('link', { name: kept })).toHaveCount(0);
   await page.getByText('已归档的商品（1）').click();
   await page.getByRole('list', { name: '已归档的商品列表' }).getByRole('link', { name: kept }).click();
-  await page.getByRole('region', { name: '商品维护' }).getByRole('button', { name: '取消归档' }).click();
-  await page.getByRole('button', { name: '商品列表' }).click();
+  await maintain('取消归档');
+  await expect(page.getByText('已归档', { exact: true })).toBeHidden();
+  await backToCategory();
   await expect(page.getByRole('link', { name: kept })).toBeVisible();
 });

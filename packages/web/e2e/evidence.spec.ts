@@ -1,5 +1,4 @@
-import { expect, test } from '@playwright/test';
-import { founder } from './founder';
+import { expect, test } from './test';
 
 // A 1 × 1 PNG.
 const pixel = Buffer.from(
@@ -7,8 +6,7 @@ const pixel = Buffer.from(
   'base64',
 );
 
-test('a member attaches screenshots to a price record, views and deletes them', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member attaches screenshots to a price record, views and deletes them', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const channelName = `京东 ${suffix}`;
   const groupName = `生活用品 ${suffix}`;
@@ -16,8 +14,8 @@ test('a member attaches screenshots to a price record, views and deletes them', 
   const productName = `得宝抽纸 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });
@@ -66,7 +64,7 @@ test('a member attaches screenshots to a price record, views and deletes them', 
     mimeType: 'text/plain',
     buffer: Buffer.from('not an image'),
   });
-  await expect(record.getByRole('alert')).toHaveText('凭证只支持 PNG、JPEG、WebP 或 GIF 图片。');
+  await expect(record.getByRole('alert')).toHaveText('凭证仅支持 PNG、JPEG、WebP、GIF');
 
   await page.reload();
   await record.getByRole('button', { name: `删除 ${label} 的凭证 2` }).click();

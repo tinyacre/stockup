@@ -1,8 +1,6 @@
-import { expect, test } from '@playwright/test';
-import { founder } from './founder';
+import { expect, test } from './test';
 
-test('a member sets a stock line and sees the judgment while recording a price', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member sets a stock line and sees the judgment while recording a price', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const channelName = `京东 ${suffix}`;
   const groupName = `米面粮油 ${suffix}`;
@@ -10,8 +8,8 @@ test('a member sets a stock line and sees the judgment while recording a price',
   const productName = `五常大米 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });
@@ -36,7 +34,7 @@ test('a member sets a stock line and sees the judgment while recording a price',
   await productForm.getByRole('button', { name: '创建商品' }).click();
   await page.getByRole('link', { name: productName }).click();
 
-  const stockLine = page.getByRole('region', { name: '入手价' });
+  const stockLine = page.getByRole('region', { name: '价格概览' });
   await expect(stockLine).toContainText('入手价 未设置');
   await expect(stockLine).toContainText('历史最低单价 暂无');
 
@@ -51,7 +49,6 @@ test('a member sets a stock line and sees the judgment while recording a price',
 
   await stockLine.getByRole('button', { name: '设置入手价' }).click();
   const stockLineForm = stockLine.getByRole('form', { name: '设置入手价' });
-  await expect(stockLineForm).toContainText('历史最低单价 ¥100.00 / 1 kg');
   await expect(stockLineForm).toContainText(`${channelName} ¥100.00 / 1 kg`);
   await stockLineForm.getByLabel('入手价（元 / 1 kg）').fill('110');
   await stockLineForm.getByRole('button', { name: '保存入手价' }).click();

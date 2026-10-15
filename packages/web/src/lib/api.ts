@@ -1,7 +1,8 @@
-import type { Discount, PromotionLowest, Size, Unit } from '@stockup/domain';
+import type { Discount, PromotionLowest, Size, Unit, Verdict } from '@stockup/domain';
+import type { Theme } from '@/lib/theme';
 
 export interface Me {
-  user: { id: string; username: string; name: string; isInstanceAdmin: boolean };
+  user: { id: string; username: string; name: string; theme: Theme; isInstanceAdmin: boolean };
   household: { id: string; name: string; role: string };
 }
 
@@ -80,7 +81,8 @@ export interface ProductDetail extends Product {
 }
 
 export interface ProductSummary extends ProductDetail {
-  latestPrice: { date: string; unitPrice: number } | null;
+  // Judged against the current stock line and the lowest unit price among the product's other records.
+  latestPrice: { date: string; unitPrice: number; verdict: Verdict | null } | null;
 }
 
 export interface ProductChanges {
@@ -290,6 +292,7 @@ export const api = {
     }),
 
   rename: (body: { name: string }) => request<Me>('/api/me', { method: 'PATCH', body }),
+  setTheme: (theme: Theme) => request<Me>('/api/me', { method: 'PATCH', body: { theme } }),
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request('/api/me/password', { method: 'POST', body }),
   signOutOthers: () => request('/api/me/sign-out-others', { method: 'POST' }),

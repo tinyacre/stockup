@@ -1,8 +1,6 @@
-import { expect, test } from '@playwright/test';
-import { founder } from './founder';
+import { expect, test } from './test';
 
-test('a member records, edits and deletes prices on a product page', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member records, edits and deletes prices on a product page', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const channelName = `山姆 ${suffix}`;
   const groupName = `宠物 ${suffix}`;
@@ -10,8 +8,8 @@ test('a member records, edits and deletes prices on a product page', async ({ pa
   const productName = `渴望猫粮 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });
@@ -41,7 +39,7 @@ test('a member records, edits and deletes prices on a product page', async ({ pa
   const form = page.getByRole('form', { name: '新建价格记录' });
   await form.getByLabel('日期').fill('2026-06-18');
   await form.getByLabel('渠道').selectOption({ label: channelName });
-  await form.getByLabel('仅记录').check();
+  await form.getByRole('radio', { name: '仅记录' }).click();
   await form.getByLabel('原价（元）').fill('509');
   await form.getByLabel('优惠 1 金额（元）').fill('40');
   await form.getByLabel('优惠 1 名称').fill('会员券');
@@ -64,7 +62,7 @@ test('a member records, edits and deletes prices on a product page', async ({ pa
   await expect(record).toContainText('2 件 × 5.398 kg（录入为 11.9 磅）');
   await expect(record).toContainText('会员券 ¥40.00');
   await expect(record).toContainText('618 囤货');
-  await expect(record).toContainText(`录入人 ${founder.name}`);
+  await expect(record).toContainText(`录入人 ${household.admin.name}`);
 
   await page.getByRole('button', { name: '记录价格' }).click();
   const second = page.getByRole('form', { name: '新建价格记录' });

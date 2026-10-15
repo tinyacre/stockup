@@ -1,10 +1,8 @@
-import { expect, test } from '@playwright/test';
-import { founder } from './founder';
+import { expect, test } from './test';
 
-test('a member adjusts promotions and sees them tag price records', async ({ page }, testInfo) => {
-  // Desktop and phone runs share one household, so names carry a run-specific suffix and ranges differ per project.
+test('a member adjusts promotions and sees them tag price records', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
-  const month = testInfo.project.name === 'phone' ? '08' : '07';
+  const month = '07';
   const promotionName = `周年庆 ${suffix}`;
   const channelName = `山姆 ${suffix}`;
   const groupName = `生活用品 ${suffix}`;
@@ -12,8 +10,8 @@ test('a member adjusts promotions and sees them tag price records', async ({ pag
   const productName = `得宝抽纸 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });

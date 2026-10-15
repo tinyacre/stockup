@@ -1,5 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test';
-import { founder } from './founder';
+import type { APIRequestContext } from '@playwright/test';
+import { expect, test } from './test';
 
 async function post<T>(request: APIRequestContext, path: string, data: object, method = 'POST'): Promise<T> {
   const res = await request.fetch(path, { method, data });
@@ -9,13 +9,17 @@ async function post<T>(request: APIRequestContext, path: string, data: object, m
 
 const tissue = { dimension: 'count', name: '抽' };
 
-test('offline, a member prices a cached product as online and saves once back online', async ({ page, context }) => {
+// Offline support is the service worker, so this runs with it even in projects that block it,
+// and then shows the theme the account chose.
+test.use({ serviceWorkers: 'allow' });
+
+test('offline, a member prices a cached product as online and saves once back online', async ({ page, context, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `得宝抽纸 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   await expect(page.getByRole('searchbox', { name: '搜索商品' })).toBeVisible();
 
@@ -68,14 +72,14 @@ test('offline, a member prices a cached product as online and saves once back on
   }
 
   await priceIt();
-  await expect(references).toHaveText(['历史最低2.30', '入手价4.00', '去年6182.30']);
+  await expect(references).toHaveText(['历史最低 · 去年6182.30', '入手价4.00']);
   const online = await judgment.textContent();
-  expect(online).toContain('囤3.81元 / 90 抽');
+  expect(online).toContain('囤¥3.81 / 90 抽');
 
   await context.setOffline(true);
   await page.reload();
   await priceIt();
-  await expect(references).toHaveText(['历史最低2.30', '入手价4.00', '去年6182.30']);
+  await expect(references).toHaveText(['历史最低 · 去年6182.30', '入手价4.00']);
   await expect(judgment).toHaveText(online!);
 
   const save = page.getByRole('button', { name: '联网后保存' });
