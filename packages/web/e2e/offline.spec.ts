@@ -1,6 +1,5 @@
 import type { APIRequestContext } from '@playwright/test';
 import { expect, test } from './test';
-import { founder } from './founder';
 
 async function post<T>(request: APIRequestContext, path: string, data: object, method = 'POST'): Promise<T> {
   const res = await request.fetch(path, { method, data });
@@ -14,13 +13,13 @@ const tissue = { dimension: 'count', name: '抽' };
 // and then shows the theme the account chose.
 test.use({ serviceWorkers: 'allow' });
 
-test('offline, a member prices a cached product as online and saves once back online', async ({ page, context }) => {
+test('offline, a member prices a cached product as online and saves once back online', async ({ page, context, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `得宝抽纸 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   await expect(page.getByRole('searchbox', { name: '搜索商品' })).toBeVisible();
 

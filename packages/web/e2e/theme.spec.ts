@@ -1,21 +1,8 @@
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { expect, test } from './test';
-import { founder } from './founder';
 
 // The account's own choice decides the theme here, so the project's override stays off.
 test.use({ theme: null });
-
-async function newAccount(request: APIRequestContext) {
-  const id = crypto.randomUUID().slice(0, 6);
-  const admin = { name: `管理员${id}`, username: `theme_${id}`, password: `password-${id}` };
-  const signedIn = await request.post('/api/auth/sign-in/username', {
-    data: { username: founder.username, password: founder.password },
-  });
-  expect(signedIn.ok()).toBe(true);
-  const created = await request.post('/api/households', { data: { householdName: `主题之家${id}`, admin } });
-  expect(created.status()).toBe(201);
-  return admin;
-}
 
 async function signIn(page: Page, account: { username: string; password: string }) {
   await page.goto('/');
@@ -28,9 +15,9 @@ async function signIn(page: Page, account: { username: string; password: string 
 test('a member picks a theme in settings and it follows the account to other devices', async ({
   page,
   browser,
-  request,
+  household,
 }) => {
-  const account = await newAccount(request);
+  const account = household.admin;
   await signIn(page, account);
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-theme', 'tool');

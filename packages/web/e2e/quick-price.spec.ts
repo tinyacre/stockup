@@ -1,7 +1,6 @@
 import type { APIRequestContext } from '@playwright/test';
 import { expect, test } from './test';
 import { formatStockLineGap, formatYuan } from '../src/lib/format';
-import { founder } from './founder';
 
 async function post<T>(request: APIRequestContext, path: string, data: object, method = 'POST'): Promise<T> {
   const res = await request.fetch(path, { method, data });
@@ -9,15 +8,14 @@ async function post<T>(request: APIRequestContext, path: string, data: object, m
   return (await res.json()) as T;
 }
 
-test('a member prices a product from the home page and keeps it as seen only', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member prices a product from the home page and keeps it as seen only', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const channelName = `楼下超市 ${suffix}`;
   const productName = `得宝抽纸 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   const search = page.getByRole('searchbox', { name: '搜索商品' });
   await expect(search).toBeVisible();
@@ -92,13 +90,13 @@ test('a member prices a product from the home page and keeps it as seen only', a
   await expect(record).toContainText('原价 ¥99.00 − 优惠 ¥10.00 · 18 件 × 130 抽');
 });
 
-test('pricing without saving leaves no record', async ({ page }) => {
+test('pricing without saving leaves no record', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `维达卷纸 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   const search = page.getByRole('searchbox', { name: '搜索商品' });
   await expect(search).toBeVisible();
@@ -143,13 +141,13 @@ const badges = { recordLow: '史低', stockUp: '囤', skip: '不囤', noReferenc
 
 // The page judges in the browser for instant feedback; this keeps it in step with POST /judgments,
 // which MCP and other clients use.
-test('quick price shows the same judgment as the judgment API', async ({ page }) => {
+test('quick price shows the same judgment as the judgment API', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const tissue = { dimension: 'count', name: '抽' };
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   const search = page.getByRole('searchbox', { name: '搜索商品' });
   await expect(search).toBeVisible();
@@ -265,14 +263,14 @@ test('quick price shows the same judgment as the judgment API', async ({ page })
   }
 });
 
-test('a wide screen shows the product list, the form and the result side by side', async ({ page }, info) => {
+test('a wide screen shows the product list, the form and the result side by side', async ({ page, household }, info) => {
   test.skip(!info.project.name.startsWith('desktop'), 'the three columns need a wide screen');
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `洁柔面巾纸 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   await expect(page.getByRole('searchbox', { name: '搜索商品' })).toBeVisible();
 
@@ -305,14 +303,14 @@ test('a wide screen shows the product list, the form and the result side by side
   expect(middle!.x + middle!.width).toBeLessThanOrEqual(right!.x);
 });
 
-test('a member prices and saves with the keyboard alone', async ({ page }, info) => {
+test('a member prices and saves with the keyboard alone', async ({ page, household }, info) => {
   test.skip(!info.project.name.startsWith('desktop'), 'keyboard pricing is for computers');
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `得宝抽纸 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   const search = page.getByRole('searchbox', { name: '搜索商品' });
   await expect(search).toBeVisible();
@@ -359,14 +357,14 @@ test('a member prices and saves with the keyboard alone', async ({ page }, info)
   expect(records[0]).toMatchObject({ listPrice: 9900, quantity: 18, purchased: false });
 });
 
-test('a member creates a product that search misses and goes on pricing it', async ({ page }) => {
+test('a member creates a product that search misses and goes on pricing it', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `心相印湿巾 ${suffix}`;
   const categoryName = `湿巾 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   const search = page.getByRole('searchbox', { name: '搜索商品' });
   await expect(search).toBeVisible();

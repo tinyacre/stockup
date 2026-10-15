@@ -1,8 +1,6 @@
 import { expect, test } from './test';
-import { founder } from './founder';
 
-test('a member records, edits and deletes prices on a product page', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member records, edits and deletes prices on a product page', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const channelName = `山姆 ${suffix}`;
   const groupName = `宠物 ${suffix}`;
@@ -10,8 +8,8 @@ test('a member records, edits and deletes prices on a product page', async ({ pa
   const productName = `渴望猫粮 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });
@@ -64,7 +62,7 @@ test('a member records, edits and deletes prices on a product page', async ({ pa
   await expect(record).toContainText('2 件 × 5.398 kg（录入为 11.9 磅）');
   await expect(record).toContainText('会员券 ¥40.00');
   await expect(record).toContainText('618 囤货');
-  await expect(record).toContainText(`录入人 ${founder.name}`);
+  await expect(record).toContainText(`录入人 ${household.admin.name}`);
 
   await page.getByRole('button', { name: '记录价格' }).click();
   const second = page.getByRole('form', { name: '新建价格记录' });

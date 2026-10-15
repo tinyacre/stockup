@@ -1,6 +1,5 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './test';
-import { founder } from './founder';
 
 async function createProduct(page: Page, name: string, unit: string, baseSize: string) {
   await page.getByRole('button', { name: '新建商品' }).click();
@@ -22,8 +21,7 @@ async function recordPrice(page: Page, channelName: string, listPrice: string, s
   await expect(form).toBeHidden();
 }
 
-test('a member re-bases, merges and archives products', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member re-bases, merges and archives products', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const channelName = `山姆 ${suffix}`;
   const groupName = `宠物 ${suffix}`;
@@ -32,8 +30,8 @@ test('a member re-bases, merges and archives products', async ({ page }) => {
   const duplicate = `渴望 六种鱼 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });

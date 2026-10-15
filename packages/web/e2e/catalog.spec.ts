@@ -1,16 +1,14 @@
 import { expect, test } from './test';
-import { founder } from './founder';
 
-test('a member builds and browses the catalog', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member builds and browses the catalog', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const groupName = `宠物 ${suffix}`;
   const categoryName = `猫砂 ${suffix}`;
   const productName = `豆腐猫砂 ${suffix}`;
 
   await page.goto('/products');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   await page.getByLabel('新大类名称').fill(groupName);

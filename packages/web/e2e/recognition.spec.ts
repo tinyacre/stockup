@@ -1,5 +1,4 @@
 import { expect, test } from './test';
-import { founder } from './founder';
 
 // A 1 × 1 PNG.
 const pixel = Buffer.from(
@@ -8,10 +7,10 @@ const pixel = Buffer.from(
 );
 
 // The e2e server's fake recognizer reads every screenshot as the same two lines of goods.
-test('a member uploads a screenshot and sees its recognition drafts', async ({ page }) => {
+test('a member uploads a screenshot and sees its recognition drafts', async ({ page, household }) => {
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '识别' }).click();
@@ -32,10 +31,10 @@ test('a member uploads a screenshot and sees its recognition drafts', async ({ p
   await expect(drafts.getByRole('listitem')).toHaveCount(2);
 });
 
-test('a screenshot that is not an image is refused', async ({ page }) => {
+test('a screenshot that is not an image is refused', async ({ page, household }) => {
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '识别' }).click();
@@ -43,8 +42,7 @@ test('a screenshot that is not an image is refused', async ({ page }) => {
   await expect(page.getByRole('alert')).toHaveText('截图仅支持 PNG、JPEG、WebP、GIF');
 });
 
-test('a member matches, edits and confirms drafts into price records', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member matches, edits and confirms drafts into price records', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const channelName = `京东 ${suffix}`;
   const groupName = `生活用品 ${suffix}`;
@@ -53,8 +51,8 @@ test('a member matches, edits and confirms drafts into price records', async ({ 
   const catFoodName = `皇家猫粮 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });
@@ -124,10 +122,10 @@ test('a member matches, edits and confirms drafts into price records', async ({ 
   await expect(page.getByRole('listitem', { name: `2026-06-18 ${channelName}` })).toBeVisible();
 });
 
-test('deleting a draft shares the order discount over the rest', async ({ page }) => {
+test('deleting a draft shares the order discount over the rest', async ({ page, household }) => {
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '识别' }).click();
@@ -147,11 +145,11 @@ test.describe('without a recognizer', () => {
   // the service worker would otherwise serve the request out of reach of page.route.
   test.use({ serviceWorkers: 'block' });
 
-  test('recognition shows as unavailable', async ({ page }) => {
+  test('recognition shows as unavailable', async ({ page, household }) => {
     await page.route('**/api/recognizer', (route) => route.fulfill({ json: { available: false } }));
     await page.goto('/');
-    await page.getByLabel('用户名').fill(founder.username);
-    await page.getByLabel('密码').fill(founder.password);
+    await page.getByLabel('用户名').fill(household.admin.username);
+    await page.getByLabel('密码').fill(household.admin.password);
     await page.getByRole('button', { name: '登录' }).click();
 
     await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '识别' }).click();

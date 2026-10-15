@@ -1,8 +1,6 @@
 import { expect, test } from './test';
-import { founder } from './founder';
 
-test('a member sets a stock line and sees the judgment while recording a price', async ({ page }) => {
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
+test('a member sets a stock line and sees the judgment while recording a price', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const channelName = `京东 ${suffix}`;
   const groupName = `米面粮油 ${suffix}`;
@@ -10,8 +8,8 @@ test('a member sets a stock line and sees the judgment while recording a price',
   const productName = `五常大米 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });

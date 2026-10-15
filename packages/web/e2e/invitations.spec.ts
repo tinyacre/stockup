@@ -1,17 +1,16 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './test';
-import { founder } from './founder';
+import { expect, test, type Household } from './test';
 
-async function signInAsFounder(page: Page) {
+async function signInAsAdmin(page: Page, household: Household) {
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '邀请' }).click();
   await expect(page).toHaveURL(/\/invitations$/);
 }
 
-// Desktop and phone runs share one household, so the link is read from this run's own response.
+// The link is read from this run's own response.
 async function generateLink(page: Page) {
   await page.getByLabel('有效期').selectOption('1');
   const [response] = await Promise.all([
@@ -31,21 +30,21 @@ function linkItem(page: Page, link: string) {
     .filter({ has: page.locator(`input[value="${link}"]`) });
 }
 
-test('an invited family member registers and joins the household', async ({ page }) => {
+test('an invited family member registers and joins the household', async ({ page, household }) => {
   const username = `invitee_${crypto.randomUUID().slice(0, 6)}`;
-  await signInAsFounder(page);
+  await signInAsAdmin(page, household);
   const link = await generateLink(page);
   await page.getByRole('button', { name: '登出' }).click();
   await expect(page.getByRole('button', { name: '登录' })).toBeVisible();
 
   await page.goto(link);
-  await expect(page.getByText(`加入「${founder.householdName}」`)).toBeVisible();
+  await expect(page.getByText(`加入「${household.name}」`)).toBeVisible();
   await page.getByLabel('显示名称').fill('小红');
   await page.getByLabel('用户名').fill(username);
   await page.getByLabel('密码').fill('invitee-password');
   await page.getByRole('button', { name: '注册并加入' }).click();
 
-  await expect(page.getByText(founder.householdName)).toBeVisible();
+  await expect(page.getByText(household.name)).toBeVisible();
   await expect(page.getByText('小红')).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
   const nav = page.getByRole('navigation', { name: '主导航' });
@@ -53,13 +52,13 @@ test('an invited family member registers and joins the household', async ({ page
   await expect(nav.getByRole('link', { name: '邀请' })).toHaveCount(0);
 
   await page.goto(link);
-  await expect(page.getByRole('alert')).toContainText(`当前账号已属于「${founder.householdName}」`);
+  await expect(page.getByRole('alert')).toContainText(`当前账号已属于「${household.name}」`);
   await page.getByRole('button', { name: '登出' }).click();
   await expect(page.getByRole('alert')).toContainText('邀请链接已被使用');
 });
 
-test('a revoked link can no longer be used', async ({ page }) => {
-  await signInAsFounder(page);
+test('a revoked link can no longer be used', async ({ page, household }) => {
+  await signInAsAdmin(page, household);
   const link = await generateLink(page);
   await linkItem(page, link).getByRole('button', { name: '作废' }).click();
   await expect(linkItem(page, link)).toHaveCount(0);

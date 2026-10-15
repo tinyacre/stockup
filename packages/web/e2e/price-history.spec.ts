@@ -1,6 +1,5 @@
 import type { APIRequestContext } from '@playwright/test';
 import { expect, test } from './test';
-import { founder } from './founder';
 
 async function post<T>(request: APIRequestContext, path: string, data: object, method = 'POST'): Promise<T> {
   const res = await request.fetch(path, { method, data });
@@ -8,9 +7,8 @@ async function post<T>(request: APIRequestContext, path: string, data: object, m
   return (await res.json()) as T;
 }
 
-test('a member browses a category, then filters and charts a product’s price records', async ({ page }) => {
+test('a member browses a category, then filters and charts a product’s price records', async ({ page, household }) => {
   await page.clock.setFixedTime(new Date('2026-10-15T12:00:00+08:00'));
-  // Desktop and phone runs share one household, so every name carries a run-specific suffix.
   const suffix = crypto.randomUUID().slice(0, 6);
   const groupName = `生活用品 ${suffix}`;
   const categoryName = `抽纸 ${suffix}`;
@@ -20,8 +18,8 @@ test('a member browses a category, then filters and charts a product’s price r
   const sams = `山姆 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
   await expect(page.getByRole('searchbox', { name: '搜索商品' })).toBeVisible();
 

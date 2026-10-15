@@ -1,17 +1,8 @@
 import { expect, test } from './test';
-import { founder } from './founder';
 
-const projectMonths: Record<string, string> = {
-  desktop: '07',
-  phone: '08',
-  'desktop-price-tag': '09',
-  'phone-price-tag': '04',
-};
-
-test('a member adjusts promotions and sees them tag price records', async ({ page }, testInfo) => {
-  // Every project shares one household, so names carry a run-specific suffix and ranges differ per project.
+test('a member adjusts promotions and sees them tag price records', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
-  const month = projectMonths[testInfo.project.name] ?? '07';
+  const month = '07';
   const promotionName = `周年庆 ${suffix}`;
   const channelName = `山姆 ${suffix}`;
   const groupName = `生活用品 ${suffix}`;
@@ -19,8 +10,8 @@ test('a member adjusts promotions and sees them tag price records', async ({ pag
   const productName = `得宝抽纸 ${suffix}`;
 
   await page.goto('/');
-  await page.getByLabel('用户名').fill(founder.username);
-  await page.getByLabel('密码').fill(founder.password);
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
   const nav = page.getByRole('navigation', { name: '主导航' });

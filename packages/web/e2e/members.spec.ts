@@ -23,7 +23,6 @@ function openSection(page: Page, label: string) {
   return page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: label }).click();
 }
 
-// Each run gets its own household from the instance admin, so desktop and phone runs cannot disturb each other.
 async function newHousehold(page: Page) {
   const id = suffix();
   const admin = { name: `管理员${id}`, username: `admin_${id}`, password: `password-${id}` };
@@ -78,8 +77,8 @@ test('the instance admin creates a household that starts with the preset promoti
   await expect(page.getByText('双 11').first()).toBeVisible();
 });
 
-test('a removed member is signed out at once and rejoins later with the same account', async ({ page, browser }) => {
-  const { admin } = await newHousehold(page);
+test('a removed member is signed out at once and rejoins later with the same account', async ({ page, browser, household }) => {
+  const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const member = await invite(page, browser);
 
@@ -105,8 +104,8 @@ test('a removed member is signed out at once and rejoins later with the same acc
   await expect(list).toContainText(member.name);
 });
 
-test('a signed-out invitee with an account signs in and joins with it', async ({ page, browser }) => {
-  const { admin } = await newHousehold(page);
+test('a signed-out invitee with an account signs in and joins with it', async ({ page, browser, household }) => {
+  const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const member = await invite(page, browser);
   await openSection(page, '成员');
@@ -125,8 +124,8 @@ test('a signed-out invitee with an account signs in and joins with it', async ({
   await expect(member.page).toHaveURL(/\/$/);
 });
 
-test('a household admin hands the admin role to another member', async ({ page, browser }) => {
-  const { admin } = await newHousehold(page);
+test('a household admin hands the admin role to another member', async ({ page, browser, household }) => {
+  const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const member = await invite(page, browser);
 
@@ -142,8 +141,8 @@ test('a household admin hands the admin role to another member', async ({ page, 
   );
 });
 
-test('a member renames themselves, changes the password and signs out other devices', async ({ page, browser }) => {
-  const { admin } = await newHousehold(page);
+test('a member renames themselves, changes the password and signs out other devices', async ({ page, browser, household }) => {
+  const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const other = await (await browser.newContext()).newPage();
   await signIn(other, admin.username, admin.password);
