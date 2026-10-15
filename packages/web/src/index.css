@@ -18,6 +18,9 @@
 /* Styles that only one theme applies, for use inside components/ui primitives. Pages never use it. */
 @custom-variant price-tag (&:where([data-theme="price-tag"], [data-theme="price-tag"] *));
 
+/* A row marked as the current item of a list or of the navigation. */
+@custom-variant selected (&:is([aria-current="page"], [aria-current="true"]));
+
 /* Tool theme, the default. */
 :root {
   color-scheme: light;

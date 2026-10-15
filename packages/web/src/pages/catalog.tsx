@@ -326,77 +326,85 @@ function GroupItem({
   const total = group.categories.reduce((sum, c) => sum + c.productCount, 0);
 
   return (
-    <div role="group" aria-label={`大类 ${group.name}`} className="flex flex-col">
-      {renaming ? (
-        <div className="px-3 py-1">
-          <NameForm
-            label="大类名称"
-            submitLabel="保存"
-            defaultValue={group.name}
-            autoFocus
-            onCancel={() => setRenaming(false)}
-            onSubmit={async (name) => {
-              const message = await attempt(async () => {
-                await api.updateCategoryGroup(group.id, { name });
-                await onChange();
-              }, nameTaken);
-              if (!message) setRenaming(false);
-              return message;
-            }}
-          />
-        </div>
-      ) : (
-        <div className="group/row flex h-9 items-center gap-1.5 px-4 text-ink-3">
-          <Folder className="size-4 shrink-0" />
-          <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{group.name}</h2>
-          <span className="flex items-center wide:opacity-0 wide:group-focus-within/row:opacity-100 wide:group-hover/row:opacity-100">
-            <Button variant="ghost" size="icon-xs" aria-label={`在 ${group.name} 下新建品类`} onClick={() => setAdding(true)}>
-              <Plus />
-            </Button>
-            <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${group.name}`} onClick={() => setRenaming(true)}>
-              <Pencil />
-            </Button>
-            <ConfirmDelete
-              label={`删除大类 ${group.name}`}
-              onDelete={async () =>
-                setError(
-                  (await attempt(
-                    async () => {
-                      await api.deleteCategoryGroup(group.id);
-                      await onChange();
-                    },
-                    { not_empty: '大类下还有品类' },
-                  )) ?? undefined,
-                )
-              }
-            />
-          </span>
-          <span className="numeric w-6 text-right text-xs">{total}</span>
-        </div>
-      )}
-      {error && <Alert className="px-4 pb-1">{error}</Alert>}
-      {adding && (
-        <div className="py-1 pr-3 pl-9">
-          <NameForm
-            label="新品类名称"
-            submitLabel="新建品类"
-            autoFocus
-            onCancel={() => setAdding(false)}
-            onSubmit={(name) =>
-              attempt(async () => {
-                const created = await api.createCategory({ categoryGroupId: group.id, name });
-                setAdding(false);
-                await onChange();
-                onSelect(created.id);
-              }, nameTaken)
-            }
-          />
-        </div>
-      )}
+    <div role="group" aria-label={`大类 ${group.name}`}>
       <List>
+        <li>
+          {renaming ? (
+            <ListRow className="py-1 hover:bg-transparent">
+              <NameForm
+                label="大类名称"
+                submitLabel="保存"
+                defaultValue={group.name}
+                autoFocus
+                onCancel={() => setRenaming(false)}
+                onSubmit={async (name) => {
+                  const message = await attempt(async () => {
+                    await api.updateCategoryGroup(group.id, { name });
+                    await onChange();
+                  }, nameTaken);
+                  if (!message) setRenaming(false);
+                  return message;
+                }}
+              />
+            </ListRow>
+          ) : (
+            <ListRow className="group/row h-9 gap-1.5 py-0 text-ink-3">
+              <Folder className="size-4 shrink-0" />
+              <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{group.name}</h2>
+              <span className="flex items-center wide:opacity-0 wide:group-focus-within/row:opacity-100 wide:group-hover/row:opacity-100">
+                <Button variant="ghost" size="icon-xs" aria-label={`在 ${group.name} 下新建品类`} onClick={() => setAdding(true)}>
+                  <Plus />
+                </Button>
+                <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${group.name}`} onClick={() => setRenaming(true)}>
+                  <Pencil />
+                </Button>
+                <ConfirmDelete
+                  label={`删除大类 ${group.name}`}
+                  onDelete={async () =>
+                    setError(
+                      (await attempt(
+                        async () => {
+                          await api.deleteCategoryGroup(group.id);
+                          await onChange();
+                        },
+                        { not_empty: '大类下还有品类' },
+                      )) ?? undefined,
+                    )
+                  }
+                />
+              </span>
+              <span className="numeric w-6 text-right text-xs">{total}</span>
+            </ListRow>
+          )}
+        </li>
+        {error && (
+          <li>
+            <Alert className="px-2 pb-1">{error}</Alert>
+          </li>
+        )}
+        {adding && (
+          <li>
+            <ListRow inset className="py-1 hover:bg-transparent">
+              <NameForm
+                label="新品类名称"
+                submitLabel="新建品类"
+                autoFocus
+                onCancel={() => setAdding(false)}
+                onSubmit={(name) =>
+                  attempt(async () => {
+                    const created = await api.createCategory({ categoryGroupId: group.id, name });
+                    setAdding(false);
+                    await onChange();
+                    onSelect(created.id);
+                  }, nameTaken)
+                }
+              />
+            </ListRow>
+          </li>
+        )}
         {group.categories.map((category) => (
           <li key={category.id}>
-            <ListRow asChild aria-current={category.id === selectedId ? 'true' : undefined}>
+            <ListRow inset asChild aria-current={category.id === selectedId ? 'true' : undefined}>
               <button
                 type="button"
                 className={cn(
@@ -405,7 +413,7 @@ function GroupItem({
                 )}
                 onClick={() => onSelect(category.id)}
               >
-                <span className="ml-6 min-w-0 flex-1 truncate">{category.name}</span>
+                <span className="min-w-0 flex-1 truncate">{category.name}</span>
                 <span className="numeric text-xs text-ink-3">{category.productCount}</span>
               </button>
             </ListRow>
@@ -580,16 +588,14 @@ function CategoryPanel({
           <List variant="ruled" aria-label="商品">
             {/* The column heads share the rows' list, so they take the same theme padding. */}
             <li aria-hidden className="max-wide:hidden">
-              <ListRow className="min-h-9! bg-surface-subtle py-0! text-[11px] font-medium tracking-[.02em] text-ink-3 hover:bg-surface-subtle!">
-                <div className={cn('grid flex-1', rowGrid)}>
-                  <span>商品</span>
-                  <span>基准规格</span>
-                  <span className="grid grid-cols-3 gap-3">
-                    <span>入手价</span>
-                    <span>历史最低单价</span>
-                    <span>最近单价</span>
-                  </span>
-                </div>
+              <ListRow className={cn('grid min-h-9! bg-surface-subtle py-0! text-[11px] font-medium tracking-[.02em] text-ink-3 hover:bg-surface-subtle!', rowGrid)}>
+                <span>商品</span>
+                <span>基准规格</span>
+                <span className="grid grid-cols-3 gap-3">
+                  <span>入手价</span>
+                  <span>历史最低单价</span>
+                  <span>最近单价</span>
+                </span>
               </ListRow>
             </li>
             {products.map((product) => (
@@ -645,8 +651,7 @@ function ProductRow({
 }) {
   const [error, setError] = useState<string>();
   return (
-    <ListRow className="group/row items-start py-3">
-      <div className={cn('grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2', rowGrid)}>
+    <ListRow className={cn('group/row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 py-3', rowGrid)}>
       <div className="flex min-w-0 flex-col">
         <ProductLink product={product} onOpenProduct={onOpenProduct} />
         {product.note && <p className="truncate text-xs text-ink-3">{product.note}</p>}
@@ -663,8 +668,7 @@ function ProductRow({
         </Button>
         <ConfirmDelete label={`删除 ${product.name}`} onDelete={async () => setError((await onDelete()) ?? undefined)} />
       </div>
-        {error && <Alert className="col-span-full">{error}</Alert>}
-      </div>
+      {error && <Alert className="col-span-full">{error}</Alert>}
     </ListRow>
   );
 }

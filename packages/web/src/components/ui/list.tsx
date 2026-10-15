@@ -25,7 +25,13 @@ function List({
 }
 
 // One row; render the interactive element through `asChild`. Marks itself selected from `aria-current`.
-function ListRow({ className, asChild, ...props }: React.ComponentProps<"div"> & { asChild?: boolean }) {
+// `inset` rows are a tree's children: their content lines up with the parent row's label after its 16px icon.
+function ListRow({
+  className,
+  asChild,
+  inset,
+  ...props
+}: React.ComponentProps<"div"> & { asChild?: boolean; inset?: boolean }) {
   const Comp = asChild ? Slot.Root : "div"
   return (
     <Comp
@@ -34,10 +40,11 @@ function ListRow({ className, asChild, ...props }: React.ComponentProps<"div"> &
         "relative flex min-w-0 items-center gap-2.5 text-left transition-colors",
         "rounded-md px-2 py-2 hover:bg-surface-hover",
         "group-data-[variant=ruled]/list:min-h-12 group-data-[variant=ruled]/list:rounded-none group-data-[variant=ruled]/list:px-4 group-data-[variant=ruled]/list:hover:bg-surface-subtle",
-        "aria-[current=page]:bg-surface-selected aria-[current=true]:bg-surface-selected",
-        "aria-[current=page]:before:absolute aria-[current=true]:before:absolute before:top-2.5 before:bottom-2.5 before:-left-2 before:w-0.5 before:rounded-full before:bg-gold aria-[current=page]:before:content-[''] aria-[current=true]:before:content-['']",
+        "selected:bg-surface-selected",
+        "selected:before:absolute selected:before:top-2.5 selected:before:bottom-2.5 selected:before:-left-2 selected:before:w-0.5 selected:before:rounded-full selected:before:bg-gold selected:before:content-['']",
         "price-tag:rounded-none price-tag:px-5 price-tag:py-2.5 price-tag:group-data-[variant=ruled]/list:min-h-14 price-tag:group-data-[variant=ruled]/list:px-1 price-tag:group-data-[variant=ruled]/list:hover:bg-surface-hover",
-        "price-tag:aria-[current=page]:shadow-[inset_3px_0_0_var(--ink)] price-tag:aria-[current=true]:shadow-[inset_3px_0_0_var(--ink)] price-tag:before:hidden",
+        "price-tag:selected:shadow-[inset_3px_0_0_var(--ink)] price-tag:selected:before:hidden",
+        inset && "pl-[30px] price-tag:pl-[42px]",
         className
       )}
       {...props}
