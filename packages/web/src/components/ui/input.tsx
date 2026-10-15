@@ -16,11 +16,19 @@ const figureText = {
 
 type FigureSize = keyof typeof figureText
 
+// 1Password offers to fill every text field; only account fields hold something it should fill.
+const credentialFields = /\b(username|current-password|new-password|one-time-code)$/
+
+function passwordManagerProps(autoComplete: string | undefined) {
+  return autoComplete && credentialFields.test(autoComplete) ? {} : { "data-1p-ignore": true }
+}
+
 function Input({ className, type, figure, ...props }: React.ComponentProps<"input"> & { figure?: FigureSize }) {
   return (
     <input
       type={type}
       data-slot="input"
+      {...passwordManagerProps(props.autoComplete)}
       className={cn(
         controlClass,
         "h-(--control-height) px-2.5",
@@ -37,6 +45,7 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return (
     <textarea
       data-slot="textarea"
+      data-1p-ignore
       className={cn(controlClass, "min-h-16 px-2.5 py-1.5", bodyText, className)}
       {...props}
     />
@@ -62,6 +71,7 @@ function InputGroupInput({ className, figure, ...props }: React.ComponentProps<"
   return (
     <input
       data-slot="input-group-input"
+      {...passwordManagerProps(props.autoComplete)}
       className={cn(
         "h-full w-full min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-4",
         figure ? figureText[figure] : bodyText,
