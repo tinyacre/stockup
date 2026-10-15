@@ -37,7 +37,7 @@ test('a member builds and browses the catalog', async ({ page }) => {
 
   await page.getByRole('button', { name: `删除品类 ${categoryName}` }).click();
   await page.getByRole('button', { name: `确认删除品类 ${categoryName}` }).click();
-  await expect(page.getByRole('alert')).toHaveText('品类下还有商品，请先删除或移走这些商品。');
+  await expect(page.getByRole('alert')).toHaveText('品类下还有商品');
 
   await product.getByRole('button', { name: '编辑' }).click();
   await product.getByLabel('商品名称').fill(`${productName} 加大`);

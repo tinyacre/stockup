@@ -64,7 +64,7 @@ test('a member browses a category, then filters and charts a product’s price r
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '商品' }).click();
   await page.getByRole('group', { name: `大类 ${groupName}` }).getByRole('button', { name: categoryName }).click();
   const summary = page.getByRole('listitem', { name: productName }).getByRole('definition');
-  await expect(summary).toHaveText(['¥50.00 / 90 抽', '¥45.00 / 90 抽', '¥60.00 / 90 抽 2026-10-01']);
+  await expect(summary).toHaveText(['¥50.00', '¥45.00', '¥60.00 不囤 2026-10-01']);
   await expect(page.getByRole('listitem', { name: otherName }).getByRole('definition')).toHaveText([
     '未设置',
     '暂无',
