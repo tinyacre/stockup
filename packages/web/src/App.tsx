@@ -36,7 +36,7 @@ async function loadSession(): Promise<Session> {
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return { state: 'signed-out' };
     if (error instanceof ApiError && error.code === 'no_household') return { state: 'no-household' };
-    return { state: 'blocked', message: '暂时无法连接 StockUp，请稍后再试。' };
+    return { state: 'blocked', message: '无法连接 StockUp' };
   }
 }
 
@@ -88,9 +88,7 @@ export function App() {
     case 'signed-in':
       if (invitationId) {
         return (
-          <SessionNotice
-            message={`你已经是「${session.me.household.name}」的成员，一个成员只能属于一个家庭。要用这个邀请注册新账号，请先登出。`}
-          >
+          <SessionNotice message={`当前账号已属于「${session.me.household.name}」`} hint="登出后可用此邀请注册新账号">
             <Button variant="outline" onClick={leaveInvitation}>
               返回首页
             </Button>
@@ -104,7 +102,7 @@ export function App() {
     case 'no-household':
       if (invitationId) return <JoinPage invitationId={invitationId} signedIn onDone={leaveInvitation} />;
       return (
-        <SessionNotice message="你已不属于任何家庭。向家庭管理员要一个邀请链接，打开后可以用当前账号重新加入。">
+        <SessionNotice message="当前账号不属于任何家庭" hint="打开邀请链接即可重新加入">
           <Button variant="outline" onClick={refresh}>
             重试
           </Button>
@@ -127,11 +125,16 @@ export function App() {
   }
 }
 
-function SessionNotice({ message, children }: { message: string; children: ReactNode }) {
+function SessionNotice({ message, hint, children }: { message: string; hint?: string; children: ReactNode }) {
   return (
     <AuthLayout>
       <Panel className="items-center gap-4 p-6 text-center price-tag:bg-surface">
-        <p role="alert">{message}</p>
+        <div className="flex flex-col gap-1">
+          <p role="alert" className="font-medium text-ink">
+            {message}
+          </p>
+          {hint && <p className="text-xs text-ink-3">{hint}</p>}
+        </div>
         <div className="flex gap-2">{children}</div>
       </Panel>
     </AuthLayout>

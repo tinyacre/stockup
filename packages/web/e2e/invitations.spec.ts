@@ -53,7 +53,7 @@ test('an invited family member registers and joins the household', async ({ page
   await expect(nav.getByRole('link', { name: '邀请' })).toHaveCount(0);
 
   await page.goto(link);
-  await expect(page.getByRole('alert')).toContainText('一个成员只能属于一个家庭');
+  await expect(page.getByRole('alert')).toContainText(`当前账号已属于「${founder.householdName}」`);
   await page.getByRole('button', { name: '登出' }).click();
   await expect(page.getByRole('alert')).toContainText('邀请链接已被使用');
 });

@@ -130,7 +130,7 @@ export function RecognitionPage({
       setRecognition(await api.recognition(recognitionId));
       setLoadError(undefined);
     } catch (error) {
-      setLoadError(describeError(error, { not_found: '找不到这次识别。' }));
+      setLoadError(describeError(error, { not_found: '识别不存在' }));
     }
   }, [recognitionId]);
   useEffect(() => {

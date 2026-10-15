@@ -22,7 +22,7 @@ export function SetupPage({ onDone }: { onDone(): void }) {
               password: values.password!,
             });
           } catch (error) {
-            if (error instanceof ApiError && error.status === 409) return '已完成初始设置，请登录';
+            if (error instanceof ApiError && error.status === 409) return '已完成初始设置';
             if (error instanceof ApiError && error.status === 400) return '填写有误';
             throw error;
           }

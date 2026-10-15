@@ -127,7 +127,7 @@ function ChannelItem({ channel, onChange }: { channel: Channel; onChange(): Prom
                   await api.deleteChannel(channel.id);
                   await onChange();
                 },
-                { in_use: '已有价格记录使用该渠道，可改为归档' },
+                { in_use: '渠道已有价格记录，只能归档' },
               )
             }
           />

@@ -95,7 +95,7 @@ test('a removed member is signed out at once and rejoins later with the same acc
   await member.page.getByLabel('用户名').fill(member.username);
   await member.page.getByLabel('密码').fill(member.password);
   await member.page.getByRole('button', { name: '登录' }).click();
-  await expect(member.page.getByRole('alert')).toContainText('你已不属于任何家庭');
+  await expect(member.page.getByRole('alert')).toContainText('当前账号不属于任何家庭');
 
   const link = await generateLink(page);
   await member.page.goto(link);

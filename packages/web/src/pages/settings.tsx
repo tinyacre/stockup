@@ -174,7 +174,7 @@ function AuthorizedClientItem({ client, onRevoked }: { client: AuthorizedClient;
         onClick={async () => {
           setPending(true);
           const message = await attempt(() => api.revokeClient(client.clientId), {
-            not_found: '授权已撤销，请刷新页面',
+            not_found: '授权已撤销',
           });
           setError(message ?? undefined);
           if (!message) await onRevoked();
