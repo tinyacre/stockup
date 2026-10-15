@@ -35,7 +35,7 @@ const nothingToChange = { message: 'Provide at least one field to change' };
 
 const categoryGroupSchema = z.object({ id: z.string(), name: z.string() }).openapi('CategoryGroup');
 
-const catalogSchema = z
+export const catalogSchema = z
   .array(
     categoryGroupSchema.extend({
       categories: z.array(z.object({ id: z.string(), name: z.string(), productCount: z.number().int() })),
@@ -92,7 +92,7 @@ const productSummarySchema = productDetailSchema
 
 const note = z.string().trim().max(500);
 
-const newProductSchema = z.object({
+export const newProductSchema = z.object({
   categoryId: z.string(),
   name: z.string().trim().min(1).max(100),
   pricingUnit: pricingUnitSchema,

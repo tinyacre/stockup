@@ -63,6 +63,18 @@ export function requireMember(
   });
 }
 
+export type SessionEnv = { Variables: { userId: string } };
+
+// For what belongs to the account rather than the household, which stays reachable after leaving it.
+export function requireSession(auth: Auth) {
+  return createMiddleware<SessionEnv>(async (c, next) => {
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (!session) return c.json({ error: 'unauthenticated' }, 401);
+    c.set('userId', session.user.id);
+    await next();
+  });
+}
+
 // Administering the instance is independent of belonging to a household, so a household admin
 // who removes the instance admin leaves the instance still administrable.
 export function requireInstanceAdmin(auth: Auth) {

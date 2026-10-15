@@ -7,7 +7,7 @@ import { priceRecordInputSchema, respondToError, sizeSchema } from './price-reco
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 
-const judgmentInputSchema = priceRecordInputSchema
+export const judgmentInputSchema = priceRecordInputSchema
   .pick({ listPrice: true, discounts: true, quantity: true, size: true })
   .extend({
     productId: z.string(),
@@ -19,7 +19,7 @@ const judgmentInputSchema = priceRecordInputSchema
 
 const unitPriceGap = z.number().nullable();
 
-const judgmentSchema = z
+export const judgmentSchema = z
   .object({
     netPrice: z.number().int().openapi({ description: 'List price minus discounts, in cents' }),
     unitPrice: z.number().openapi({ description: 'Net price per base size of the product, in cents' }),

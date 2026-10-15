@@ -1,9 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, attempt } from '@/components/editing';
-import { api, type Me } from '@/lib/api';
+import { Alert, attempt, describeError, RetryAlert } from '@/components/editing';
+import { api, type AuthorizedClient, type Me } from '@/lib/api';
+import { clientHost, scopeDescriptions } from '@/lib/oauth';
 
 // The header shows the display name, so `onRenamed` reloads the session.
 export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
@@ -57,6 +58,85 @@ export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
           return message ? { error: message } : { done: '其他设备已登出。' };
         }}
       />
+      <AuthorizedClients />
+    </div>
+  );
+}
+
+function AuthorizedClients() {
+  const [clients, setClients] = useState<AuthorizedClient[]>();
+  const [loadError, setLoadError] = useState<string>();
+
+  const reload = useCallback(async () => {
+    try {
+      setClients(await api.authorizedClients());
+      setLoadError(undefined);
+    } catch (error) {
+      setLoadError(describeError(error));
+    }
+  }, []);
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  return (
+    <section aria-label="已授权的应用" className="flex flex-col gap-3">
+      <div>
+        <h3 className="font-medium">已授权的应用</h3>
+        <p className="text-muted-foreground text-sm">
+          你允许通过 MCP 访问 StockUp 的应用，如 Claude。撤销后它立即无法再访问，需要你重新授权。
+        </p>
+      </div>
+      {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
+      {clients?.length === 0 && <p className="text-muted-foreground text-sm">还没有授权任何应用。</p>}
+      {clients && clients.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {clients.map((client) => (
+            <li key={client.clientId} className="rounded-lg border px-3 py-2">
+              <AuthorizedClientItem client={client} onRevoked={reload} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function AuthorizedClientItem({ client, onRevoked }: { client: AuthorizedClient; onRevoked(): Promise<void> }) {
+  const [error, setError] = useState<string>();
+  const [pending, setPending] = useState(false);
+  const host = clientHost(client.clientId);
+  const scopes = client.scopes.filter((scope) => scope.startsWith('stockup:'));
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <div className="mr-auto flex flex-col">
+        <span className="text-sm font-medium">
+          {client.name ? `${client.name}（${host}）` : host}
+        </span>
+        <span className="text-muted-foreground text-xs">
+          {new Date(client.authorizedAt).toLocaleDateString('zh-CN')} 授权
+          {scopes.length > 0 && `：${scopes.map((scope) => scopeDescriptions[scope] ?? scope).join('、')}`}
+        </span>
+      </div>
+      <Button
+        variant="outline"
+        size="xs"
+        disabled={pending}
+        aria-label={`撤销 ${client.name ?? host}`}
+        onClick={async () => {
+          setPending(true);
+          const message = await attempt(() => api.revokeClient(client.clientId), {
+            not_found: '这个应用的授权已经撤销了，请刷新页面。',
+          });
+          setError(message ?? undefined);
+          if (!message) await onRevoked();
+          setPending(false);
+        }}
+      >
+        撤销
+      </Button>
+      {error && <Alert className="basis-full">{error}</Alert>}
     </div>
   );
 }

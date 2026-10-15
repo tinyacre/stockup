@@ -11,3 +11,5 @@
 
 - MCP 客户端只通过 CIMD（Client ID Metadata Document）接入，不开启 OAuth 动态客户端注册（DCR）。Claude 和 Claude Code 都发布了 CIMD 文档，已实测能完成授权并调用工具（APP-93）。开启 DCR 意味着任何人都能匿名注册任意回调地址的客户端，所以只有遇到只支持 DCR 的客户端时才重新评估。
 - MCP access token 只携带用户（`sub`），不携带家庭。每次请求都由用户查 member 表得到所属家庭，成员离开家庭立即生效，不必等 token 过期。Better Auth 的 organization 插件允许一个用户属于多个 organization，单家庭约束由本项目自己保证并用测试覆盖。
+- MCP access token 是 Better Auth 签发的 JWT，本地验签不查库，所以每次请求还会检查该用户对该客户端的授权（consent）是否还在。成员在 Web 端撤销授权时同时删除 consent 和已签发的 refresh token，旧的 access token 立即失效，不必等过期。
+- MCP 权限分 `stockup:read` 和 `stockup:write` 两个 scope：只读工具需要前者，新建商品和价格记录的工具只对带后者的 token 开放。删除、合并、修改入手价和成员管理不通过 MCP 提供。

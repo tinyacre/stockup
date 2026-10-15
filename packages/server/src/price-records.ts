@@ -301,11 +301,16 @@ export async function insertPriceRecord(
   return created!.id;
 }
 
-export function createPriceRecord(db: Database, scope: CurrentMember, input: NewPriceRecord) {
+export function createPriceRecord(
+  db: Database,
+  scope: CurrentMember,
+  input: NewPriceRecord,
+  source: (typeof priceRecordSources)[number] = 'manual',
+) {
   return translate(
     () =>
       db.transaction(async (tx) => {
-        const id = await insertPriceRecord(tx, scope, input, 'manual');
+        const id = await insertPriceRecord(tx, scope, input, source);
         return (await findPriceRecord(tx, scope, id))!;
       }),
     ParentNotFoundError,

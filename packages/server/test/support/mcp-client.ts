@@ -96,11 +96,12 @@ export async function authorizeAsClaude(baseUrl: string, member: SignedInMember,
   const callback = await signInAndConsent(baseUrl, member, provider.authorizationUrl);
   const transport = new StreamableHTTPClientTransport(mcpUrl, { authProvider: provider });
   await transport.finishAuth(callback);
-  return { transport, accessToken: provider.tokens()!.access_token };
+  const tokens = provider.tokens()!;
+  return { transport, accessToken: tokens.access_token, refreshToken: tokens.refresh_token };
 }
 
-export async function connectAsClaude(baseUrl: string, member: SignedInMember) {
-  const { transport, accessToken } = await authorizeAsClaude(baseUrl, member);
+export async function connectAsClaude(baseUrl: string, member: SignedInMember, options: { scope?: string } = {}) {
+  const { transport, accessToken } = await authorizeAsClaude(baseUrl, member, options);
   const client = new Client({ name: 'claude-ai', version: '0' });
   await client.connect(transport);
   return { client, accessToken };

@@ -71,6 +71,24 @@ export async function listPriceReferences(db: Database, scope: CurrentMember) {
   return [...byProduct].map(([productId, own]) => referencesOf(productId, own, promotions));
 }
 
+// Returns the product's records newest first, with the lowest unit prices a quote for it is judged against.
+export async function describePriceHistory(db: Database, scope: CurrentMember, productId: string) {
+  const [records, promotions] = await Promise.all([
+    listPriceRecords(db, scope, { productIds: [productId] }),
+    listPromotions(db, scope),
+  ]);
+  if (records.length === 0) return { records, lowestUnitPrice: null, promotionLowests: [] };
+  const references = referencesOf(productId, records, promotions);
+  return {
+    records,
+    lowestUnitPrice: references.lowestUnitPrice,
+    promotionLowests: references.promotionLowests.map(({ promotionId, ...lowest }) => {
+      const { id, name } = promotions.find((p) => p.id === promotionId)!;
+      return { promotion: { id, name }, ...lowest };
+    }),
+  };
+}
+
 export async function judgePrice(db: Database, scope: CurrentMember, input: JudgmentInput) {
   const date = input.date ?? today();
   const [pricing, records, promotions] = await Promise.all([

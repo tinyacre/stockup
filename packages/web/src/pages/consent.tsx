@@ -3,24 +3,12 @@ import { AuthLayout } from '@/components/auth-form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, ApiError, type Me, type OAuthClient } from '@/lib/api';
-
-const scopeDescriptions: Record<string, string> = {
-  'stockup:read': '查看家庭的商品和价格',
-  openid: '确认你的身份',
-  profile: '读取你的显示名称和用户名',
-  offline_access: '保持连接，不必每次重新授权',
-};
+import { clientHost, scopeDescriptions } from '@/lib/oauth';
 
 type Authorization =
   | { state: 'loading' }
   | { state: 'ready'; client: OAuthClient; me: Me | null }
   | { state: 'error'; message: string };
-
-// The client ID of an MCP client is the URL of its metadata document, so its host is what the member can
-// trust. The name comes from that document, so any client can claim to be Claude.
-function clientHost(clientId: string) {
-  return URL.canParse(clientId) ? new URL(clientId).host : clientId;
-}
 
 function failureMessage(failure: unknown) {
   if (!(failure instanceof ApiError) || failure.status >= 500) return '暂时无法连接 StockUp，请稍后再试。';

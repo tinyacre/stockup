@@ -36,6 +36,15 @@ export interface OAuthClient {
   client_uri?: string;
 }
 
+export interface AuthorizedClient {
+  // The URL of the client's metadata document.
+  clientId: string;
+  name: string | null;
+  uri: string | null;
+  scopes: string[];
+  authorizedAt: string;
+}
+
 export interface NewAccount {
   username: string;
   password: string;
@@ -284,6 +293,9 @@ export const api = {
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request('/api/me/password', { method: 'POST', body }),
   signOutOthers: () => request('/api/me/sign-out-others', { method: 'POST' }),
+  authorizedClients: () => request<AuthorizedClient[]>('/api/mcp-clients'),
+  revokeClient: (clientId: string) =>
+    request(`/api/mcp-clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
 
   members: () => request<Member[]>('/api/members'),
   removeMember: (id: string) => request(`/api/members/${encodeURIComponent(id)}`, { method: 'DELETE' }),

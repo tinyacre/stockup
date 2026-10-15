@@ -10,7 +10,7 @@ const errorContent = { 'application/json': { schema: z.object({ error: z.string(
 const name = z.string().trim().min(1).max(50);
 const idParams = z.object({ id: z.string() });
 
-const channelSchema = z
+export const channelSchema = z
   .object({
     id: z.string(),
     name: z.string(),

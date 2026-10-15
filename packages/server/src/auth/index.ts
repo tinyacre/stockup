@@ -8,8 +8,9 @@ import { jwt, organization, username } from 'better-auth/plugins';
 import type { Database } from '../db';
 import * as schema from '../db/schema';
 
-export const MCP_TOOL_SCOPE = 'stockup:read';
-export const MCP_SCOPES = ['openid', 'profile', 'offline_access', MCP_TOOL_SCOPE];
+export const MCP_READ_SCOPE = 'stockup:read';
+export const MCP_WRITE_SCOPE = 'stockup:write';
+export const MCP_SCOPES = ['openid', 'profile', 'offline_access', MCP_READ_SCOPE, MCP_WRITE_SCOPE];
 
 export const mcpResource = (baseURL: string) => new URL('/mcp', baseURL).toString();
 

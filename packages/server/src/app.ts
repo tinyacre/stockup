@@ -14,6 +14,7 @@ import { healthRoutes } from './routes/health';
 import { householdRoutes } from './routes/households';
 import { invitationRoutes } from './routes/invitations';
 import { judgmentRoutes } from './routes/judgments';
+import { mcpClientRoutes } from './routes/mcp-clients';
 import { meRoutes } from './routes/me';
 import { memberRoutes } from './routes/members';
 import { priceRecordRoutes } from './routes/price-records';
@@ -44,7 +45,8 @@ export function createApp({ db, auth, evidence, recognizer, webDir }: AppOptions
     .route('/api', priceRecordRoutes(db, auth, evidence))
     .route('/api', evidenceRoutes(db, auth, evidence))
     .route('/api', recognitionRoutes(db, auth, evidence, recognizer))
-    .route('/api', judgmentRoutes(db, auth));
+    .route('/api', judgmentRoutes(db, auth))
+    .route('/api', mcpClientRoutes(db, auth));
 
   // Households are created and joined only through StockUp's own endpoints, which keep
   // each member in exactly one household; the organization plugin serves as storage.
