@@ -12,6 +12,7 @@ import { Input, InputAddon, InputGroup, InputGroupInput } from '@/components/ui/
 import { Kbd } from '@/components/ui/kbd';
 import { Label } from '@/components/ui/label';
 import { List, ListRow } from '@/components/ui/list';
+import { PriceFigure } from '@/components/ui/price-figure';
 import { NativeSelect } from '@/components/ui/native-select';
 import { PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
@@ -467,7 +468,7 @@ function ProductRow({ product, selected, onPick }: { product: ProductSummary; se
           <span className="shrink-0 text-xs text-ink-3">未设入手价</span>
         ) : (
           <span className="flex shrink-0 flex-col items-end">
-            <span className="numeric text-num-md font-semibold text-ink">{formatYuan(product.stockLine)}</span>
+            <PriceFigure cents={product.stockLine} />
             <span className="text-[11px] leading-3 text-ink-3">/ {perBase(product)}</span>
           </span>
         )}
@@ -585,8 +586,6 @@ function QuickPrice({
     setPending(false);
   }
 
-  // Overrides the input's body text size, which every theme sets per breakpoint.
-  const numberInput = 'numeric text-lg! font-semibold';
   const header = (
     <section aria-label="商品" className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
       <div className="flex min-w-0 flex-col gap-1">
@@ -603,14 +602,18 @@ function QuickPrice({
       </div>
       <dl className="hidden divide-x divide-line rounded-md border border-line bg-surface wide:flex">
         {[
-          { label: '入手价', value: product.stockLine, className: 'text-ink' },
-          { label: '历史最低', value: references.lowest, className: 'text-record-low' },
-          { label: '最近', value: product.latestPrice?.unitPrice ?? null, className: 'text-ink' },
+          { label: '入手价', value: product.stockLine, tone: 'target' as const },
+          { label: '历史最低', value: references.lowest, tone: 'low' as const },
+          { label: '最近', value: product.latestPrice?.unitPrice ?? null, tone: 'default' as const },
         ].map((m) => (
           <div key={m.label} className="flex min-w-20 flex-col gap-0.5 px-3 py-1.5">
             <dt className="text-[11px] text-ink-3">{m.label}</dt>
-            <dd className={cn('numeric text-num-sm font-semibold', m.value === null ? 'text-ink-4' : m.className)}>
-              {m.value === null ? '—' : formatYuan(m.value)}
+            <dd>
+              {m.value === null ? (
+                <span className="numeric text-num-sm text-ink-4">—</span>
+              ) : (
+                <PriceFigure cents={m.value} tone={m.tone} size="sm" />
+              )}
             </dd>
           </div>
         ))}
@@ -647,7 +650,7 @@ function QuickPrice({
                   autoComplete="off"
                   autoFocus={layout === 'wide'}
                   placeholder="0.00"
-                  className={numberInput}
+                  figure="lg"
                   value={listPrice}
                   onChange={(e) => {
                     setListPrice(e.target.value);
@@ -663,7 +666,7 @@ function QuickPrice({
                   id={`${id}-quantity`}
                   autoComplete="off"
                   placeholder="3×6"
-                  className={numberInput}
+                  figure="lg"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                 />
@@ -685,7 +688,7 @@ function QuickPrice({
                     id={`${id}-size`}
                     inputMode="decimal"
                     autoComplete="off"
-                    className={numberInput}
+                    figure="lg"
                     value={sizeAmount}
                     onChange={(e) => setSizeAmount(e.target.value)}
                   />
@@ -744,7 +747,7 @@ function QuickPrice({
                       autoComplete="off"
                       autoFocus
                       placeholder="0.00"
-                      className="numeric text-base! font-semibold"
+                      figure="md"
                       value={d.amount}
                       onChange={(e) => updateDiscount(d.key, { amount: e.target.value })}
                     />
@@ -828,7 +831,7 @@ function QuickPrice({
                   id={`${id}-date`}
                   type="date"
                   required
-                  className="numeric text-[15px]!"
+                  figure="sm"
                   value={date}
                   onChange={(e) => changeDate(e.target.value)}
                 />

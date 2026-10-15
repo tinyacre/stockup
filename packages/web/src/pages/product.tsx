@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useState, type ComponentProps, type FormEvent, type ReactNode } from 'react';
 import { ChevronRight, ImagePlus, Package, Pencil, Plus, ReceiptText, X } from 'lucide-react';
 import { judge, type Verdict } from '@stockup/domain';
 import { Badge, PromotionTag, PurchaseBadge, VerdictBadge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { List } from '@/components/ui/list';
 import { NativeSelect } from '@/components/ui/native-select';
 import { PageContent } from '@/components/ui/page';
 import { Panel, PanelFooter, PanelHeader } from '@/components/ui/panel';
+import { PriceFigure } from '@/components/ui/price-figure';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, attempt, DeleteButton, describeError, RetryAlert } from '@/components/editing';
@@ -391,13 +392,8 @@ function RecordFilters({
   );
 }
 
-function UnitPrice({ cents, product, className }: { cents: number; product: Product; className?: string }) {
-  return (
-    <>
-      <span className={cn('numeric font-semibold', className)}>{formatYuan(cents)}</span>
-      <span className="text-xs text-ink-3"> / {formatSize(product.baseSize, product.pricingUnit)}</span>
-    </>
-  );
+function UnitPrice({ product, ...props }: Omit<ComponentProps<typeof PriceFigure>, 'per'> & { product: Product }) {
+  return <PriceFigure per={formatSize(product.baseSize, product.pricingUnit)} {...props} />;
 }
 
 function RecordSource({ record }: { record: PriceRecord }) {
@@ -463,7 +459,7 @@ function PriceOverview({
               ) : product.stockLine === null ? (
                 <span className="text-sm text-ink-3">未设置</span>
               ) : (
-                <UnitPrice cents={product.stockLine} product={product} className="text-num-xl" />
+                <UnitPrice cents={product.stockLine} product={product} tone="target" size="xl" />
               )}
             </dd>
             {!editing && (
@@ -479,7 +475,7 @@ function PriceOverview({
               {product.lowestUnitPrice === null ? (
                 <span className="text-sm text-ink-3">暂无</span>
               ) : (
-                <UnitPrice cents={product.lowestUnitPrice} product={product} className="text-num-xl text-record-low" />
+                <UnitPrice cents={product.lowestUnitPrice} product={product} tone="low" size="xl" />
               )}
             </dd>
             {lowest && <RecordSource record={lowest} />}
@@ -490,7 +486,7 @@ function PriceOverview({
               {latest ? (
                 <>
                   <span>
-                    <UnitPrice cents={latest.unitPrice} product={product} className="text-num-xl" />
+                    <UnitPrice cents={latest.unitPrice} product={product} size="xl" />
                   </span>
                   {verdict && <VerdictBadge verdict={verdict} className="ml-auto self-center" />}
                 </>
@@ -535,9 +531,7 @@ function ChannelLowest({ product, records }: { product: Product; records: PriceR
                 />
               </span>
               <span className="flex items-baseline justify-end gap-1.5 whitespace-nowrap">
-                <span className={cn('numeric text-num-sm font-semibold', i === 0 && 'text-record-low')}>
-                  {formatYuan(lowest)}
-                </span>
+                <PriceFigure cents={lowest} size="sm" tone={i === 0 ? 'low' : 'default'} />
                 <span className="text-[11px] text-ink-3">{count} 条</span>
               </span>
             </li>
@@ -694,7 +688,7 @@ function PriceRecordItem({
         <div className="flex flex-col wide:items-end">
           <p className="whitespace-nowrap">
             <span className="sr-only">单价 </span>
-            <UnitPrice cents={record.unitPrice} product={product} className="text-num-lg" />
+            <UnitPrice cents={record.unitPrice} product={product} size="lg" />
           </p>
           <p className="text-xs whitespace-nowrap text-ink-3">
             到手价 <span className="numeric text-[13px] text-ink-2">{formatYuan(record.netPrice)}</span>
@@ -1055,7 +1049,7 @@ function PriceRecordForm({
             <>
               <span>
                 <span className="text-xs text-ink-3">单价 </span>
-                <UnitPrice cents={price.unitPrice} product={product} className="text-num-md" />
+                <UnitPrice cents={price.unitPrice} product={product} />
               </span>
               <span>
                 <span className="text-xs text-ink-3">到手价 </span>

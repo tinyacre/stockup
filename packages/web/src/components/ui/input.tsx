@@ -5,14 +5,26 @@ import { cn } from "@/lib/utils"
 const controlClass =
   "w-full min-w-0 rounded-md border border-line-strong bg-surface text-ink transition-[border-color,box-shadow] outline-none placeholder:text-ink-4 hover:border-ink-4 focus-visible:border-ring focus-visible:shadow-focus disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive price-tag:hover:border-ink-3"
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+const bodyText = "text-base wide:text-[13px] price-tag:wide:text-sm"
+
+// Numbers typed in the numeral face; `lg` is a form's main figures. Phone sizes stay at 16px or more so iOS keeps its zoom.
+const figureText = {
+  lg: "numeric text-[17px] font-semibold price-tag:text-[21px] price-tag:font-medium",
+  md: "numeric text-base font-semibold wide:text-[15px] price-tag:text-[17px] price-tag:font-medium price-tag:wide:text-[17px]",
+  sm: "numeric text-base wide:text-[15px]",
+}
+
+type FigureSize = keyof typeof figureText
+
+function Input({ className, type, figure, ...props }: React.ComponentProps<"input"> & { figure?: FigureSize }) {
   return (
     <input
       type={type}
       data-slot="input"
       className={cn(
         controlClass,
-        "h-(--control-height) px-2.5 text-base wide:text-[13px] price-tag:wide:text-sm",
+        "h-(--control-height) px-2.5",
+        figure ? figureText[figure] : bodyText,
         "file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
         className
       )}
@@ -25,7 +37,7 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return (
     <textarea
       data-slot="textarea"
-      className={cn(controlClass, "min-h-16 px-2.5 py-1.5 text-base wide:text-[13px] price-tag:wide:text-sm", className)}
+      className={cn(controlClass, "min-h-16 px-2.5 py-1.5", bodyText, className)}
       {...props}
     />
   )
@@ -46,12 +58,13 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function InputGroupInput({ className, ...props }: React.ComponentProps<"input">) {
+function InputGroupInput({ className, figure, ...props }: React.ComponentProps<"input"> & { figure?: FigureSize }) {
   return (
     <input
       data-slot="input-group-input"
       className={cn(
-        "h-full w-full min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-4 wide:text-[13px] price-tag:wide:text-sm",
+        "h-full w-full min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-4",
+        figure ? figureText[figure] : bodyText,
         className
       )}
       {...props}

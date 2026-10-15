@@ -16,7 +16,7 @@ function List({
       className={cn(
         "group/list flex flex-col",
         variant === "item" ? "gap-px px-2" : "divide-y divide-line",
-        "price-tag:gap-0 price-tag:px-0 price-tag:divide-y-0 price-tag:[&>*]:border-b price-tag:[&>*]:border-line",
+        "price-tag:gap-0 price-tag:px-0 price-tag:divide-y-0 price-tag:[&>*]:border-b price-tag:[&>*]:border-line price-tag:[&>[data-slot=list-header]]:border-ink",
         className
       )}
       {...props}
@@ -52,4 +52,37 @@ function ListRow({
   )
 }
 
-export { List, ListRow }
+// Column heads of a `ruled` list, laid out like its rows; screen readers get each row's own labels instead.
+function ListHeader({ className, ...props }: React.ComponentProps<"li">) {
+  return (
+    <li
+      aria-hidden
+      data-slot="list-header"
+      className={cn(
+        "flex min-h-9 items-center gap-2.5 bg-surface-subtle px-4 text-[11px] font-medium tracking-[.02em] text-ink-3",
+        "price-tag:min-h-[34px] price-tag:bg-transparent price-tag:px-1 price-tag:text-xs price-tag:font-normal price-tag:tracking-[.08em]",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+// A column of a `ruled` list. Figure columns line up on their right edge in the price-tag theme.
+function ListCell({
+  className,
+  asChild,
+  figure,
+  ...props
+}: React.ComponentProps<"div"> & { asChild?: boolean; figure?: boolean }) {
+  const Comp = asChild ? Slot.Root : "div"
+  return (
+    <Comp
+      data-slot="list-cell"
+      className={cn("min-w-0", figure && "flex flex-col items-start price-tag:items-end price-tag:text-right", className)}
+      {...props}
+    />
+  )
+}
+
+export { List, ListRow, ListHeader, ListCell }

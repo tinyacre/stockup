@@ -6,7 +6,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Field } from '@/components/ui/field';
 import { Input, InputGroup, InputGroupInput } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
-import { List, ListRow } from '@/components/ui/list';
+import { List, ListCell, ListHeader, ListRow } from '@/components/ui/list';
+import { PriceFigure } from '@/components/ui/price-figure';
 import { NativeSelect } from '@/components/ui/native-select';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel } from '@/components/ui/panel';
@@ -15,7 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, attempt, describeError, NameForm, nameTaken, RetryAlert, type Action } from '@/components/editing';
 import { NewProductForm, NoteField } from '@/components/product-form';
 import { api, type CategoryGroup, type Product, type ProductSummary } from '@/lib/api';
-import { formatSize, formatYuan } from '@/lib/format';
+import { formatSize } from '@/lib/format';
 import { useHistoryState } from '@/lib/history';
 import { useProductSearch } from '@/lib/search';
 import { cn } from '@/lib/utils';
@@ -424,6 +425,8 @@ function GroupItem({
   );
 }
 
+const priceColumns = 'grid grid-cols-3 gap-3';
+
 const rowGrid =
   'wide:grid-cols-[minmax(0,1fr)_6rem_minmax(0,26rem)_4.5rem] wide:items-center wide:gap-x-4';
 
@@ -586,18 +589,15 @@ function CategoryPanel({
       ) : (
         <Panel className="overflow-hidden">
           <List variant="ruled" aria-label="商品">
-            {/* The column heads share the rows' list, so they take the same theme padding. */}
-            <li aria-hidden className="max-wide:hidden">
-              <ListRow className={cn('grid min-h-9! bg-surface-subtle py-0! text-[11px] font-medium tracking-[.02em] text-ink-3 hover:bg-surface-subtle!', rowGrid)}>
-                <span>商品</span>
-                <span>基准规格</span>
-                <span className="grid grid-cols-3 gap-3">
-                  <span>入手价</span>
-                  <span>历史最低单价</span>
-                  <span>最近单价</span>
-                </span>
-              </ListRow>
-            </li>
+            <ListHeader className={cn('grid max-wide:hidden', rowGrid)}>
+              <span>商品</span>
+              <span>基准规格</span>
+              <span className={priceColumns}>
+                <ListCell figure>入手价</ListCell>
+                <ListCell figure>历史最低单价</ListCell>
+                <ListCell figure>最近单价</ListCell>
+              </span>
+            </ListHeader>
             {products.map((product) => (
               <li key={product.id} aria-label={product.name}>
                 {editingId === product.id ? (
@@ -678,39 +678,39 @@ function PriceSummary({ product }: { product: ProductSummary }) {
   const { stockLine, lowestUnitPrice, latestPrice } = product;
   const none = <span className="text-sm text-ink-4">暂无</span>;
   return (
-    <dl aria-label="价格概览" className="col-span-2 grid grid-cols-3 gap-3 wide:col-span-1">
-      <div className="min-w-0">
+    <dl aria-label="价格概览" className={cn('col-span-2 wide:col-span-1', priceColumns)}>
+      <ListCell figure>
         <dt className="text-xs text-ink-3 wide:sr-only">入手价</dt>
         <dd>
-          {stockLine === null ? <span className="text-sm text-ink-4">未设置</span> : <Figure cents={stockLine} />}
+          {stockLine === null ? (
+            <span className="text-sm text-ink-4">未设置</span>
+          ) : (
+            <PriceFigure cents={stockLine} tone="target" />
+          )}
         </dd>
-      </div>
-      <div className="min-w-0">
+      </ListCell>
+      <ListCell figure>
         <dt className="text-xs text-ink-3 wide:sr-only">历史最低单价</dt>
-        <dd className="text-ink-2">{lowestUnitPrice === null ? none : <Figure cents={lowestUnitPrice} />}</dd>
-      </div>
-      <div className="min-w-0">
+        <dd>{lowestUnitPrice === null ? none : <PriceFigure cents={lowestUnitPrice} tone="low" />}</dd>
+      </ListCell>
+      <ListCell figure>
         <dt className="text-xs text-ink-3 wide:sr-only">最近单价</dt>
         <dd>
           {latestPrice === null ? (
             none
           ) : (
             <>
-              <span className="flex flex-wrap items-center gap-x-1.5">
-                <Figure cents={latestPrice.unitPrice} />{' '}
+              <span className="inline-flex flex-wrap items-center gap-x-1.5">
+                <PriceFigure cents={latestPrice.unitPrice} />{' '}
                 {latestPrice.verdict && <VerdictBadge verdict={latestPrice.verdict} />}
               </span>{' '}
               <span className="numeric block text-xs text-ink-3">{latestPrice.date}</span>
             </>
           )}
         </dd>
-      </div>
+      </ListCell>
     </dl>
   );
-}
-
-function Figure({ cents }: { cents: number }) {
-  return <span className="numeric text-num-md font-medium">{formatYuan(cents)}</span>;
 }
 
 function ArchivedProducts({ categoryId, onOpenProduct }: { categoryId: string; onOpenProduct(id: string): void }) {
