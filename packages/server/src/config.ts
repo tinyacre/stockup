@@ -7,6 +7,8 @@ export interface Config {
   port: number;
   evidenceDir: string;
   webDir: string | undefined;
+  // Set only when a proxy in front of the server overwrites this header with the client address.
+  clientIpHeader: string | undefined;
   // Screenshot recognition is unavailable without an API key.
   recognizer: { apiKey: string; model: string } | undefined;
 }
@@ -38,6 +40,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     port,
     evidenceDir: path.resolve(env.STOCKUP_EVIDENCE_DIR || 'data/evidence'),
     webDir: env.STOCKUP_WEB_DIR ? path.resolve(env.STOCKUP_WEB_DIR) : undefined,
+    clientIpHeader: env.STOCKUP_CLIENT_IP_HEADER?.toLowerCase() || undefined,
     recognizer: env.STOCKUP_ANTHROPIC_API_KEY
       ? { apiKey: env.STOCKUP_ANTHROPIC_API_KEY, model: env.STOCKUP_ANTHROPIC_MODEL || 'claude-haiku-5-5' }
       : undefined,

@@ -39,6 +39,7 @@ describe('loadConfig', () => {
       port: 8080,
       evidenceDir: path.resolve('data/evidence'),
       webDir: undefined,
+      clientIpHeader: undefined,
       recognizer: undefined,
     });
   });
@@ -50,6 +51,7 @@ describe('loadConfig', () => {
         STOCKUP_PORT: '3000',
         STOCKUP_EVIDENCE_DIR: '/srv/evidence',
         STOCKUP_WEB_DIR: '/srv/web',
+        STOCKUP_CLIENT_IP_HEADER: 'CF-Connecting-IP',
         STOCKUP_ANTHROPIC_API_KEY: 'sk-ant-test',
         STOCKUP_ANTHROPIC_MODEL: 'claude-sonnet-5-5',
       }),
@@ -60,6 +62,7 @@ describe('loadConfig', () => {
       port: 3000,
       evidenceDir: '/srv/evidence',
       webDir: '/srv/web',
+      clientIpHeader: 'cf-connecting-ip',
       recognizer: { apiKey: 'sk-ant-test', model: 'claude-sonnet-5-5' },
     });
   });
@@ -107,6 +110,7 @@ describe('bootstrap', () => {
       port: 0,
       evidenceDir,
       webDir: undefined,
+      clientIpHeader: undefined,
       recognizer: undefined,
     };
 
@@ -129,6 +133,7 @@ describe('bootstrap', () => {
       port: 0,
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
+      clientIpHeader: undefined,
       recognizer: undefined,
     };
     const without = await bootstrap(config);
@@ -161,6 +166,7 @@ describe('bootstrap', () => {
       port: 0,
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
+      clientIpHeader: undefined,
       recognizer: undefined,
     };
     const stuck = { recognize: () => new Promise<never>(() => {}) };
@@ -195,6 +201,7 @@ describe('bootstrap', () => {
       port: 0,
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
+      clientIpHeader: undefined,
       recognizer: undefined,
     });
     cleanups.push(close);

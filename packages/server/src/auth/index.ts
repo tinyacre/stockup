@@ -25,18 +25,19 @@ export interface AuthOptions {
   db: Database;
   secret: string;
   baseURL: string;
+  // Rate limiting keys on this header; without it better-auth reads a single-address X-Forwarded-For.
+  clientIpHeader?: string;
   // The default transport only fetches client metadata from publicly routable HTTPS hosts.
   fetchClientMetadataResource?: ClientMetadataResourceFetch;
 }
 
-export function createAuth({ db, secret, baseURL, fetchClientMetadataResource }: AuthOptions) {
+export function createAuth({ db, secret, baseURL, clientIpHeader, fetchClientMetadataResource }: AuthOptions) {
   return betterAuth({
     baseURL,
     basePath: '/api/auth',
     secret,
     database: drizzleAdapter(db, { provider: 'pg', schema }),
-    // Cloudflare fronts the server and sets CF-Connecting-IP to the client address; rate limiting keys on it.
-    advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
+    ...(clientIpHeader && { advanced: { ipAddress: { ipAddressHeaders: [clientIpHeader] } } }),
     // Accounts are created by onboarding and (later) invitations, never by open sign-up.
     emailAndPassword: { enabled: true, disableSignUp: true },
     user: {
