@@ -1,9 +1,9 @@
 name: image
 
+# Images are built for releases only: a v* tag is the deploy signal.
 on:
   push:
-    branches: [master]
-  workflow_dispatch:
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -34,9 +34,10 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/stockup
           flavor: latest=false
+          # The deployment follows latest; a version tag is what a rollback pins.
           tags: |
-            type=sha,format=short
-            type=raw,value=edge
+            type=semver,pattern={{version}}
+            type=raw,value=latest
 
       - uses: docker/build-push-action@v7
         with:
