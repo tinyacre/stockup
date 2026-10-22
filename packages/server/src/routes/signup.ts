@@ -4,7 +4,7 @@ import type { Auth } from '../auth';
 import type { Database } from '../db';
 import { NameTakenError } from '../db/errors';
 import { EmailCodeInvalidError, EmailCodeThrottledError, normalizeEmail, type EmailCodes } from '../email-codes';
-import { emailInUse, EmailTakenError } from '../households';
+import { emailInUse, EmailTakenError, isPlaceholderEmail } from '../households';
 import { signUp } from '../signup';
 import { accountSchema } from './setup';
 
@@ -45,7 +45,7 @@ const sendCodeRoute = createRoute({
       required: true,
       content: {
         'application/json': {
-          schema: z.object({ email: emailSchema, purpose: z.enum(['register', 'change-email']), invitationId: z.string().optional() }),
+          schema: z.object({ email: emailSchema, purpose: z.enum(['register', 'change-email', 'password-reset']), invitationId: z.string().optional() }),
         },
       },
     },
@@ -105,6 +105,10 @@ export function signupRoutes(db: Database, auth: Auth, { codes, signupOpen }: { 
           }
           // Whether another account has the address is reported only after its code is redeemed.
           deliver = true;
+          break;
+        case 'password-reset':
+          // Unknown addresses are rate-limited and answered alike, so the answer does not reveal who is registered.
+          deliver = !isPlaceholderEmail(email) && (await emailInUse(db, email));
           break;
       }
       try {

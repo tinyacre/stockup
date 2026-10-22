@@ -289,6 +289,8 @@ export const api = {
     await request('/api/signup', { method: 'POST', body, headers: turnstileHeaders(turnstileToken) });
     await clearCachedData();
   },
+  resetPassword: (body: { email: string; code: string; newPassword: string }, turnstileToken?: string) =>
+    request('/api/password-reset', { method: 'POST', body, headers: turnstileHeaders(turnstileToken) }),
   setupStatus: () => request<{ needsSetup: boolean }>('/api/setup'),
   setUp: (body: NewAccount & { householdName: string }) => request('/api/setup', { method: 'POST', body }),
   me: async () => {
