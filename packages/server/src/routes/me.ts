@@ -2,8 +2,12 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { APIError } from 'better-auth/api';
 import type { Auth } from '../auth';
 import type { Database } from '../db';
-import { requireMember, updateTheme, type CurrentMember } from '../members';
+import { NameTakenError } from '../db/errors';
+import type { EmailCodes } from '../email-codes';
+import { EmailTakenError } from '../households';
+import { changeEmail, requireMember, updateTheme, type CurrentMember } from '../members';
 import { accountSchema } from './setup';
+import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode } from './signup';
 
 export const themes = ['tool', 'price-tag'] as const;
 type Theme = (typeof themes)[number];
@@ -40,7 +44,7 @@ function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };
 }
 
-export function meRoutes(db: Database, auth: Auth) {
+export function meRoutes(db: Database, auth: Auth, codes?: EmailCodes) {
   const middleware = requireMember(auth, db);
   const unauthenticated = { 401: { description: 'Not signed in' } };
 
@@ -98,6 +102,24 @@ export function meRoutes(db: Database, auth: Auth) {
     responses: { 204: { description: 'Signed out' }, ...unauthenticated },
   });
 
+  const emailRoute = createRoute({
+    method: 'post',
+    path: '/me/email',
+    tags: ['members'],
+    summary: "Change or add the signed-in member's email",
+    description:
+      'Takes the code mailed to the new address (purpose change-email). The member then signs in and resets the password with it.',
+    middleware,
+    request: { body: json(z.object({ email: emailSchema, code: emailCodeSchema })) },
+    responses: {
+      200: { description: 'The updated member', content: { 'application/json': { schema: meSchema } } },
+      ...unauthenticated,
+      403: { description: 'The instance cannot mail: email_unavailable', content: errorContent },
+      409: { description: 'Another account has the address: email_taken', content: errorContent },
+      ...codeFailures,
+    },
+  });
+
   return new OpenAPIHono()
     .openapi(route, (c) => c.json(toMe(c.var.member), 200))
     .openapi(updateRoute, async (c) => {
@@ -117,6 +139,19 @@ export function meRoutes(db: Database, auth: Auth) {
         throw error;
       }
       return c.body(null, 204);
+    })
+    .openapi(emailRoute, async (c) => {
+      if (!codes) return c.json({ error: 'email_unavailable' }, 403);
+      const { email, code } = c.req.valid('json');
+      try {
+        await changeEmail(codes, c.var.member.userId, email, code);
+      } catch (error) {
+        if (error instanceof EmailTakenError || error instanceof NameTakenError) {
+          return c.json({ error: 'email_taken' }, 409);
+        }
+        return respondToInvalidCode(c, error);
+      }
+      return c.json(toMe({ ...c.var.member, email }), 200);
     })
     .openapi(signOutOthersRoute, async (c) => {
       await auth.api.revokeOtherSessions({ headers: c.req.raw.headers });
