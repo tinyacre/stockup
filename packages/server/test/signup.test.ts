@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { createApp } from '../src/app';
 import { emailCode } from '../src/db/schema';
+import { advance, freezeClock, minutes } from './support/clock';
 import { fakeMailer } from './support/fake-mailer';
 import {
   joinHousehold,
@@ -32,18 +33,6 @@ function submit(ctx: TestContext, visitor: ReturnType<typeof newVisitor>, code: 
   return ctx.app.request('/api/signup', jsonRequest('POST', { ...visitor, code }));
 }
 
-const minutes = (n: number) => n * 60_000;
-
-// Stops the clock at the current time, so the waits a test checks come out exact.
-function freezeClock() {
-  const start = new Date();
-  setSystemTime(start);
-  return start;
-}
-
-function advance(start: Date, ms: number) {
-  setSystemTime(new Date(start.getTime() + ms));
-}
 
 afterEach(() => {
   setSystemTime();
@@ -175,6 +164,34 @@ describe('open signup', () => {
     // No code was mailed, so none can be redeemed: the address does not surface as taken.
     const res = await submit(ctx, { ...newVisitor(), email: member.email }, '000000');
     expect(await res.json()).toEqual({ error: 'code_invalid' });
+  });
+
+  test('a registered and a fresh address run out of attempts and expire alike', async () => {
+    const start = freezeClock();
+    const member = await signUpWithEmail(ctx, mailer);
+    const visitor = newVisitor();
+    const addresses = [member.email, visitor.email];
+    const sendAll = async () => {
+      for (const email of addresses) expect((await sendCode(ctx, email)).status).toBe(204);
+    };
+    advance(start, minutes(1));
+    await sendAll();
+    const wrong = (await mailer.codeFor(visitor.email)) === '000000' ? '111111' : '000000';
+    const errorFor = async (email: string) => (await submit(ctx, { ...newVisitor(), email }, wrong)).json();
+
+    for (const email of addresses) {
+      const errors = [];
+      for (let i = 0; i < 6; i++) errors.push(await errorFor(email));
+      expect(errors).toEqual([
+        ...Array(5).fill({ error: 'code_invalid' }),
+        { error: 'code_attempts_exceeded' },
+      ]);
+    }
+
+    advance(start, minutes(2));
+    await sendAll();
+    advance(start, minutes(12));
+    for (const email of addresses) expect(await errorFor(email)).toEqual({ error: 'code_expired' });
   });
 
   test('rejects an address that is not an email', async () => {

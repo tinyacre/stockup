@@ -133,7 +133,7 @@ export function createEmailCodes({ db, mailer, secret }: { db: Database; mailer:
     async redeem(rawEmail, purpose, code, work) {
       const email = normalizeEmail(rawEmail);
       const row = await find(email, purpose);
-      if (!row?.codeHash) throw new EmailCodeInvalidError('invalid');
+      if (!row) throw new EmailCodeInvalidError('invalid');
       if (new Date() >= row.expiresAt) throw new EmailCodeInvalidError('expired');
 
       const current = and(eq(emailCode.email, email), eq(emailCode.purpose, purpose), eq(emailCode.sentAt, row.sentAt));
@@ -149,16 +149,18 @@ export function createEmailCodes({ db, mailer, secret }: { db: Database; mailer:
         throw new EmailCodeInvalidError(superseded ? 'invalid' : 'attempts_exceeded');
       }
 
-      const expected = Buffer.from(row.codeHash, 'hex');
+      // A send that mailed nothing leaves a row without a code. It spends attempts and expires like any other,
+      // so the answers do not tell a registered address from a fresh one.
+      const { codeHash } = row;
       const given = Buffer.from(hash(email, purpose, code), 'hex');
-      if (!timingSafeEqual(expected, given)) throw new EmailCodeInvalidError('invalid');
+      if (!codeHash || !timingSafeEqual(Buffer.from(codeHash, 'hex'), given)) throw new EmailCodeInvalidError('invalid');
 
       return db.transaction(async (tx) => {
         // The send history stays, so redeeming a code does not reset the hourly limit.
         const used = await tx
           .update(emailCode)
           .set({ codeHash: null })
-          .where(and(current, eq(emailCode.codeHash, row.codeHash!)))
+          .where(and(current, eq(emailCode.codeHash, codeHash)))
           .returning({ email: emailCode.email });
         if (used.length === 0) throw new EmailCodeInvalidError('invalid');
         return work(tx);

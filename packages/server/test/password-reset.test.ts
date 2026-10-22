@@ -2,6 +2,7 @@ import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { eq } from 'drizzle-orm';
 import { user } from '../src/db/schema';
 import { CLAUDE_CLIENT_ID } from './support/claude-metadata';
+import { advance, freezeClock, minutes } from './support/clock';
 import { fakeMailer } from './support/fake-mailer';
 import {
   jsonRequest,
@@ -27,19 +28,7 @@ async function signInStatus(ctx: TestContext, username: string, password: string
   return res.status;
 }
 
-const minutes = (n: number) => n * 60_000;
 const newPassword = () => `new-password-${crypto.randomUUID().slice(0, 8)}`;
-
-// Stops the clock at the current time, so the waits a test checks come out exact.
-function freezeClock() {
-  const start = new Date();
-  setSystemTime(start);
-  return start;
-}
-
-function advance(start: Date, ms: number) {
-  setSystemTime(new Date(start.getTime() + ms));
-}
 
 afterEach(() => {
   setSystemTime();
@@ -111,6 +100,33 @@ describe('password reset', () => {
     const res = await reset(ctx, { email, code: '000000', newPassword: newPassword() });
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: 'code_invalid' });
+  });
+
+  test('a registered and an unregistered address run out of attempts and expire alike', async () => {
+    const start = freezeClock();
+    const member = await signUpWithEmail(ctx, mailer);
+    const stranger = `nobody_${crypto.randomUUID().slice(0, 8)}@example.com`;
+    const addresses = [member.email, stranger];
+    const sendAll = async () => {
+      for (const email of addresses) expect((await sendCode(ctx, email)).status).toBe(204);
+    };
+    await sendAll();
+    const wrong = (await mailer.codeFor(member.email)) === '000000' ? '111111' : '000000';
+    const errorFor = async (email: string) => (await reset(ctx, { email, code: wrong, newPassword: newPassword() })).json();
+
+    for (const email of addresses) {
+      const errors = [];
+      for (let i = 0; i < 6; i++) errors.push(await errorFor(email));
+      expect(errors).toEqual([
+        ...Array(5).fill({ error: 'code_invalid' }),
+        { error: 'code_attempts_exceeded' },
+      ]);
+    }
+
+    advance(start, minutes(1));
+    await sendAll();
+    advance(start, minutes(11));
+    for (const email of addresses) expect(await errorFor(email)).toEqual({ error: 'code_expired' });
   });
 
   test('members without an email cannot be reset through their placeholder address', async () => {
