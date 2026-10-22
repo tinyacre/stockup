@@ -57,7 +57,7 @@ test('a member prices a product from the home page and keeps it as seen only', a
   await options.getByLabel('日期').fill('2026-06-18');
   await expect(references.getByRole('listitem')).toHaveText(['历史最低 · 去年6182.30', '入手价4.00']);
 
-  const form = page.getByRole('form', { name: '快速算价' });
+  const form = page.getByRole('form', { name: '录入价格' });
   await form.getByLabel('原价').fill('99');
   await form.getByLabel('件数').fill('3×6');
   await expect(form).toContainText('共 18');
@@ -118,7 +118,7 @@ test('pricing without saving leaves no record', async ({ page, household }) => {
   await page.getByRole('region', { name: '搜索结果' }).getByRole('button', { name: productName }).click();
   await expect(page.getByRole('list', { name: '参考单价' })).toHaveCount(0);
   await expect(page.getByText('暂无价格记录')).toBeVisible();
-  await page.getByRole('form', { name: '快速算价' }).getByLabel('原价').fill('39.9');
+  await page.getByRole('form', { name: '录入价格' }).getByLabel('原价').fill('39.9');
   await expect(page.getByRole('status', { name: '判断' })).toContainText('无参考');
 
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '商品' }).click();
@@ -200,7 +200,7 @@ test('quick price shows the same judgment as the judgment API', async ({ page, h
     { product: unrecorded, listPrice: 19.9, discount: 0, quantity: '1', size: 90, date: '2026-06-18' },
   ];
 
-  const form = page.getByRole('form', { name: '快速算价' });
+  const form = page.getByRole('form', { name: '录入价格' });
   const options = page.getByRole('region', { name: '保存选项' });
   const judgmentOutput = page.getByRole('status', { name: '判断' });
   let picked: string | undefined;
@@ -291,8 +291,8 @@ test('a wide screen shows the product list, the form and the result side by side
   await list.getByRole('button', { name: productName }).click();
   await expect(page.getByRole('heading', { name: productName })).toBeVisible();
 
-  const form = page.getByRole('form', { name: '快速算价' });
-  const result = page.getByRole('region', { name: '算价结果' });
+  const form = page.getByRole('form', { name: '录入价格' });
+  const result = page.getByRole('region', { name: '判断结果' });
   await expect(list).toBeVisible();
   await expect(form).toBeVisible();
   await expect(result).toBeVisible();
@@ -338,7 +338,7 @@ test('a member prices and saves with the keyboard alone', async ({ page, househo
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: productName })).toBeVisible();
 
-  const form = page.getByRole('form', { name: '快速算价' });
+  const form = page.getByRole('form', { name: '录入价格' });
   await expect(form.getByLabel('原价')).toBeFocused();
   await page.keyboard.type('99');
   await page.keyboard.press('Tab');
@@ -386,7 +386,7 @@ test('a member creates a product that search misses and goes on pricing it', asy
 
   await expect(page.getByRole('heading', { name: productName })).toBeVisible();
   await expect(search).toHaveValue('');
-  await page.getByRole('form', { name: '快速算价' }).getByLabel('原价').fill('19.9');
+  await page.getByRole('form', { name: '录入价格' }).getByLabel('原价').fill('19.9');
   await expect(page.getByRole('status', { name: '判断' })).toContainText('无参考');
   await expect(page.getByRole('status', { name: '判断' })).toContainText('¥19.90 / 80 片');
 });

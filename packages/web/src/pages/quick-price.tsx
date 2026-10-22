@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Calculator, ChevronRight, Plus, ScanText, Search, X } from 'lucide-react';
+import { ChevronRight, Plus, ScanText, Search, SquarePen, X } from 'lucide-react';
 import { findLastYearPromotionLowest, judge, type Judgment, type Price } from '@stockup/domain';
 import { Alert, attempt, describeError, RetryAlert } from '@/components/editing';
 import { PriceRuler, type RulerReferences } from '@/components/price-ruler';
@@ -269,7 +269,7 @@ export function QuickPricePage() {
       )}
     >
       <PageHeader
-        title="算价"
+        title="录入"
         actions={
           <Button variant="outline" size="sm" asChild>
             <Link href="/recognitions">
@@ -297,7 +297,7 @@ export function QuickPricePage() {
         quickPrice(wide ? 'wide' : 'narrow')
       ) : wide ? (
         <div className="col-span-2 flex h-[calc(100svh-var(--page-bar-height))]">
-          {household && <EmptyState title="未选择商品" icon={<Calculator />} />}
+          {household && <EmptyState title="未选择商品" icon={<SquarePen />} />}
         </div>
       ) : (
         !trimmed && list
@@ -614,7 +614,7 @@ function QuickPrice({
     <>
       <Panel asChild>
         <form
-          aria-label="快速算价"
+          aria-label="录入价格"
           onSubmit={(e) => {
             e.preventDefault();
             save();
@@ -622,7 +622,7 @@ function QuickPrice({
         >
           <PanelHeader
             as="h3"
-            title="快速算价"
+            title="录入价格"
             actions={
               <Button type="button" variant="ghost" size="sm" onClick={onClear}>
                 清空
@@ -862,7 +862,7 @@ function QuickPrice({
   );
   const offlineStatus = !online && (
     <p role="status" className="rounded-md bg-surface-hover px-3 py-2 text-sm text-ink-2">
-      离线中：照常算价，联网后才能保存。
+      离线中：照常填写和判断，联网后才能保存。
     </p>
   );
   const details = priced && 'input' in read && [
@@ -922,9 +922,9 @@ function QuickPrice({
           {header}
           {entry}
         </div>
-        <section aria-label="算价结果" className={cn(stickyColumn, 'border-l border-line px-5 py-5')}>
+        <section aria-label="判断结果" className={cn(stickyColumn, 'border-l border-line px-5 py-5')}>
           <div className="flex flex-col gap-5">
-            <SectionHeader as="h2" title="算价结果" />
+            <SectionHeader as="h2" title="判断结果" />
             {verdictOutput()}
             {ruler}
             <div className="flex flex-col gap-2">
