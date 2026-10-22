@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import { jsonRequest, signUpHousehold, useTestApp, type SignedInMember } from './support/harness';
+import { jsonRequest, signUpHousehold, useTestApp, type SignedInMember, type TestContext } from './support/harness';
 
 const ctx = useTestApp();
 
@@ -76,8 +74,8 @@ async function evidenceOf(m: SignedInMember, recordId: string) {
   return ((await res.json()) as { evidence: Evidence[] }).evidence;
 }
 
-function stored(id: string) {
-  return existsSync(path.join(ctx.evidenceDir, id));
+async function stored(ctx: TestContext, id: string) {
+  return (await ctx.evidence.get(id)) !== null;
 }
 
 describe('evidence', () => {
@@ -85,34 +83,6 @@ describe('evidence', () => {
     const m = await signUpHousehold(ctx);
     const record = await createRecord(m);
     expect(record.evidence).toEqual([]);
-  });
-
-  test('one or more screenshots are uploaded to a price record and shown in its detail', async () => {
-    const m = await signUpHousehold(ctx);
-    const record = await createRecord(m);
-    const order = image(pngSignature, 1, 2, 3);
-    const page = image(jpegSignature, 4, 5);
-
-    const uploaded = await created<Evidence[]>(
-      await upload(m, record.id, [
-        { bytes: order, name: 'order.png' },
-        { bytes: page, name: 'page.jpg', type: 'image/jpeg' },
-      ]),
-    );
-    expect(uploaded).toEqual([
-      { id: expect.any(String), contentType: 'image/png', size: order.length, createdAt: expect.any(String) },
-      { id: expect.any(String), contentType: 'image/jpeg', size: page.length, createdAt: expect.any(String) },
-    ]);
-    expect(await evidenceOf(m, record.id)).toEqual(uploaded);
-
-    const more = await created<Evidence[]>(await upload(m, record.id, [{ bytes: order, name: 'again.png' }]));
-    expect(await evidenceOf(m, record.id)).toEqual([...uploaded, ...more]);
-
-    const read = await m.request(`/api/evidence/${uploaded[1]!.id}`);
-    expect(read.status).toBe(200);
-    expect(read.headers.get('content-type')).toBe('image/jpeg');
-    expect(read.headers.get('x-content-type-options')).toBe('nosniff');
-    expect(new Uint8Array(await read.arrayBuffer())).toEqual(page);
   });
 
   test('the content type comes from the file itself, not the upload', async () => {
@@ -171,10 +141,10 @@ describe('evidence', () => {
         { bytes: image(pngSignature, 2), name: 'b.png' },
       ]),
     );
-    expect(stored(removed!.id)).toBe(true);
+    expect(await stored(ctx, removed!.id)).toBe(true);
 
     expect((await m.request(`/api/evidence/${removed!.id}`, { method: 'DELETE' })).status).toBe(204);
-    expect(stored(removed!.id)).toBe(false);
+    expect(await stored(ctx, removed!.id)).toBe(false);
     expect((await m.request(`/api/evidence/${removed!.id}`)).status).toBe(404);
     expect((await m.request(`/api/evidence/${removed!.id}`, { method: 'DELETE' })).status).toBe(404);
     expect(await evidenceOf(m, record.id)).toEqual([kept!]);
@@ -192,29 +162,13 @@ describe('evidence', () => {
 
     expect((await m.request(`/api/price-records/${record.id}`, { method: 'DELETE' })).status).toBe(204);
     for (const { id } of uploaded) {
-      expect(stored(id)).toBe(false);
+      expect(await stored(ctx, id)).toBe(false);
       expect((await m.request(`/api/evidence/${id}`)).status).toBe(404);
     }
   });
 });
 
 describe('evidence isolation', () => {
-  test("another household's members cannot upload, read or delete it", async () => {
-    const owner = await signUpHousehold(ctx);
-    const other = await signUpHousehold(ctx);
-    const record = await createRecord(owner);
-    const [evidence] = await created<Evidence[]>(
-      await upload(owner, record.id, [{ bytes: image(pngSignature, 1), name: 'a.png' }]),
-    );
-
-    expect((await upload(other, record.id, [{ bytes: image(pngSignature), name: 'b.png' }])).status).toBe(404);
-    expect((await other.request(`/api/evidence/${evidence!.id}`)).status).toBe(404);
-    expect((await other.request(`/api/evidence/${evidence!.id}`, { method: 'DELETE' })).status).toBe(404);
-
-    expect(stored(evidence!.id)).toBe(true);
-    expect(await evidenceOf(owner, record.id)).toEqual([evidence!]);
-  });
-
   test('evidence requires a signed-in member', async () => {
     const owner = await signUpHousehold(ctx);
     const record = await createRecord(owner);
@@ -230,3 +184,54 @@ describe('evidence isolation', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// Serving and guarding evidence over HTTP runs on both stores, so S3 is covered end to end, not only at the store interface.
+for (const kind of ['local', 's3'] as const) {
+  describe(`evidence in the ${kind} store`, () => {
+    const ctx = useTestApp({ evidenceStore: kind });
+
+    test('one or more screenshots are uploaded to a price record and shown in its detail', async () => {
+      const m = await signUpHousehold(ctx);
+      const record = await createRecord(m);
+      const order = image(pngSignature, 1, 2, 3);
+      const page = image(jpegSignature, 4, 5);
+
+      const uploaded = await created<Evidence[]>(
+        await upload(m, record.id, [
+          { bytes: order, name: 'order.png' },
+          { bytes: page, name: 'page.jpg', type: 'image/jpeg' },
+        ]),
+      );
+      expect(uploaded).toEqual([
+        { id: expect.any(String), contentType: 'image/png', size: order.length, createdAt: expect.any(String) },
+        { id: expect.any(String), contentType: 'image/jpeg', size: page.length, createdAt: expect.any(String) },
+      ]);
+      expect(await evidenceOf(m, record.id)).toEqual(uploaded);
+
+      const more = await created<Evidence[]>(await upload(m, record.id, [{ bytes: order, name: 'again.png' }]));
+      expect(await evidenceOf(m, record.id)).toEqual([...uploaded, ...more]);
+
+      const read = await m.request(`/api/evidence/${uploaded[1]!.id}`);
+      expect(read.status).toBe(200);
+      expect(read.headers.get('content-type')).toBe('image/jpeg');
+      expect(read.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(new Uint8Array(await read.arrayBuffer())).toEqual(page);
+    });
+
+    test("another household's members cannot upload, read or delete it", async () => {
+      const owner = await signUpHousehold(ctx);
+      const other = await signUpHousehold(ctx);
+      const record = await createRecord(owner);
+      const [evidence] = await created<Evidence[]>(
+        await upload(owner, record.id, [{ bytes: image(pngSignature, 1), name: 'a.png' }]),
+      );
+
+      expect((await upload(other, record.id, [{ bytes: image(pngSignature), name: 'b.png' }])).status).toBe(404);
+      expect((await other.request(`/api/evidence/${evidence!.id}`)).status).toBe(404);
+      expect((await other.request(`/api/evidence/${evidence!.id}`, { method: 'DELETE' })).status).toBe(404);
+
+      expect(await stored(ctx, evidence!.id)).toBe(true);
+      expect(await evidenceOf(owner, record.id)).toEqual([evidence!]);
+    });
+  });
+}

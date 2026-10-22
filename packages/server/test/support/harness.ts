@@ -7,11 +7,13 @@ import postgres from 'postgres';
 import { createApp, type AppOptions } from '../../src/app';
 import { createAuth, type Auth } from '../../src/auth';
 import { connect, migrate, type Database } from '../../src/db';
-import { localEvidenceStore } from '../../src/evidence-store';
+import { localEvidenceStore, type EvidenceStore } from '../../src/evidence-store';
 import { createHousehold } from '../../src/households';
+import { s3EvidenceStore } from '../../src/s3-evidence-store';
 import { fetchClaudeMetadata } from './claude-metadata';
 import type { FakeMailer } from './fake-mailer';
 import { PASSING_TURNSTILE_TOKEN } from './fake-turnstile';
+import { testS3Config } from './s3';
 
 const adminUrl =
   process.env.STOCKUP_TEST_DATABASE_URL ?? 'postgres://stockup:stockup@127.0.0.1:55432/postgres';
@@ -50,18 +52,26 @@ export interface TestContext {
   baseUrl: string;
   auth: Auth;
   database: TestDatabase;
+  evidence: EvidenceStore;
+  // Backs the local store; empty when the app uses S3.
   evidenceDir: string;
 }
 
 // Registers suite-level hooks that give the calling test file its own migrated database
 // and evidence directory. With `listen`, the app also serves HTTP on a free port, which the MCP endpoint
-// needs because it fetches the signing keys from its own base URL.
-export function useTestApp({ listen = false, ...options }: Omit<AppOptions, 'db' | 'auth' | 'evidence'> & { listen?: boolean } = {}) {
+// needs because it fetches the signing keys from its own base URL. With `evidenceStore: 's3'`, evidence goes
+// to the test bucket from testS3Config() instead of the directory.
+export function useTestApp({
+  listen = false,
+  evidenceStore = 'local',
+  ...options
+}: Omit<AppOptions, 'db' | 'auth' | 'evidence'> & { listen?: boolean; evidenceStore?: 'local' | 's3' } = {}) {
   const ctx = {} as TestContext;
   let server: ReturnType<typeof Bun.serve> | undefined;
   beforeAll(async () => {
     ctx.database = await createTestDatabase();
     ctx.evidenceDir = mkdtempSync(path.join(tmpdir(), 'stockup-evidence-'));
+    ctx.evidence = evidenceStore === 's3' ? s3EvidenceStore(testS3Config()) : localEvidenceStore(ctx.evidenceDir);
     server = listen ? Bun.serve({ port: 0, fetch: (req) => ctx.app.fetch(req) }) : undefined;
     ctx.baseUrl = server?.url.origin ?? 'http://localhost';
     ctx.auth = createAuth({
@@ -75,7 +85,7 @@ export function useTestApp({ listen = false, ...options }: Omit<AppOptions, 'db'
       ...options,
       db: ctx.database.db,
       auth: ctx.auth,
-      evidence: localEvidenceStore(ctx.evidenceDir),
+      evidence: ctx.evidence,
     });
   });
   afterAll(async () => {
