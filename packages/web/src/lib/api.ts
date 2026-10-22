@@ -329,6 +329,7 @@ export const api = {
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request('/api/me/password', { method: 'POST', body }),
   signOutOthers: () => request('/api/me/sign-out-others', { method: 'POST' }),
+  changeEmail: (body: { email: string; code: string }) => request<Me>('/api/me/email', { method: 'POST', body }),
   authorizedClients: () => request<AuthorizedClient[]>('/api/mcp-clients'),
   revokeClient: (clientId: string) =>
     request(`/api/mcp-clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
