@@ -3,6 +3,7 @@ import { createApp } from '../src/app';
 import { emailCode } from '../src/db/schema';
 import { fakeMailer } from './support/fake-mailer';
 import {
+  joinHousehold,
   jsonRequest,
   requestAs,
   sessionCookie,
@@ -299,11 +300,8 @@ describe('open signup', () => {
 
   test('ordinary members cannot rename the household', async () => {
     const admin = await signUpWithEmail(ctx, mailer);
-    const invited = await admin.request('/api/invitations', jsonRequest('POST', { expiresInDays: 1 }));
-    const { id } = (await invited.json()) as { id: string };
-    const account = { username: `member_${crypto.randomUUID().slice(0, 8)}`, password: 'member-password', name: '家人' };
-    const joined = await ctx.app.request(`/api/join/${id}`, jsonRequest('POST', account));
-    const res = await requestAs(ctx, sessionCookie(joined), '/api/household', jsonRequest('PATCH', { name: '他们家' }));
+    const member = await joinHousehold(ctx, admin, { mailer });
+    const res = await member.request('/api/household', jsonRequest('PATCH', { name: '他们家' }));
     expect(res.status).toBe(403);
   });
 });

@@ -34,7 +34,7 @@ export interface AppOptions {
   // Recognition is unavailable without one.
   recognizer?: ScreenshotRecognizer;
   webDir?: string;
-  // Email-based flows (code sending, signup) are unavailable without one.
+  // Email-based flows (code sending, signup, joining with an email) are unavailable without one.
   mailer?: Mailer;
   // Open signup; requires a mailer.
   signupOpen?: boolean;
@@ -54,7 +54,7 @@ export function createApp({ db, auth, evidence, recognizer, webDir, mailer, sign
     .route('/api', meRoutes(db, auth))
     .route('/api', memberRoutes(db, auth))
     .route('/api', householdRoutes(db, auth))
-    .route('/api', invitationRoutes(db, auth))
+    .route('/api', invitationRoutes(db, auth, { codes }))
     .route('/api', promotionRoutes(db, auth))
     .route('/api', catalogRoutes(db, auth))
     .route('/api', channelRoutes(db, auth))

@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { eq } from 'drizzle-orm';
 import { invitation } from '../src/db/schema';
+import { fakeMailer } from './support/fake-mailer';
 import {
   joinHousehold,
   jsonRequest,
@@ -12,6 +13,7 @@ import {
   signUpHousehold,
   useTestApp,
   type SignedInMember,
+  type TestContext,
 } from './support/harness';
 
 const ctx = useTestApp();
@@ -29,13 +31,17 @@ function newcomer() {
   return { username: `newcomer_${suffix}`, password: `password-${suffix}`, name: `Newcomer ${suffix}` };
 }
 
+function newcomerEmail() {
+  return `newcomer_${crypto.randomUUID().slice(0, 8)}@example.com`;
+}
+
 async function invite(admin: SignedInMember, expiresInDays = 7) {
   const res = await admin.request('/api/invitations', jsonRequest('POST', { expiresInDays }));
   expect(res.status).toBe(201);
   return (await res.json()) as Invitation;
 }
 
-function join(id: string, account = newcomer()) {
+function join(id: string, account: Record<string, unknown> = newcomer()) {
   return ctx.app.request(`/api/join/${id}`, jsonRequest('POST', account));
 }
 
@@ -326,5 +332,173 @@ describe('rejoining with an existing account', () => {
   test('requires a signed-in account', async () => {
     const { id } = await invite(await signUpHousehold(ctx));
     expect((await ctx.app.request(`/api/join/${id}/rejoin`, { method: 'POST' })).status).toBe(401);
+  });
+});
+
+describe('an instance without mail', () => {
+  test('joins without an email and refuses to send join codes', async () => {
+    const admin = await signUpHousehold(ctx);
+    const { id } = await invite(admin);
+    const email = newcomerEmail();
+
+    const sent = await ctx.app.request(
+      '/api/email-codes',
+      jsonRequest('POST', { email, purpose: 'join', invitationId: id }),
+    );
+    expect(sent.status).toBe(403);
+    expect(await sent.json()).toEqual({ error: 'email_unavailable' });
+
+    const res = await join(id, { ...newcomer(), email, code: '123456' });
+    expect(res.status).toBe(201);
+    expect(await (await requestAs(ctx, sessionCookie(res), '/api/me')).json()).toMatchObject({ user: { email: null } });
+  });
+});
+
+describe('joining on an instance with mail', () => {
+  afterEach(() => {
+    setSystemTime();
+  });
+
+  const mailer = fakeMailer();
+  const mailCtx = useTestApp({ mailer });
+
+  function sendJoinCode(c: TestContext, email: string, invitationId?: string) {
+    return c.app.request('/api/email-codes', jsonRequest('POST', { email, purpose: 'join', invitationId }));
+  }
+
+  function joinWithEmail(id: string, body: Record<string, unknown>) {
+    return mailCtx.app.request(`/api/join/${id}`, jsonRequest('POST', { ...newcomer(), ...body }));
+  }
+
+  async function pendingInvitations(admin: SignedInMember) {
+    const listed = (await (await admin.request('/api/invitations')).json()) as Invitation[];
+    return listed.filter((i) => i.status === 'pending').map((i) => i.id);
+  }
+
+  test('offers email to the join form', async () => {
+    expect(await (await mailCtx.app.request('/api/capabilities')).json()).toMatchObject({ email: true });
+  });
+
+  test('the invitee verifies an email, joins with it and can sign in with it', async () => {
+    const admin = await signUpHousehold(mailCtx);
+    const { id } = await invite(admin);
+    const email = newcomerEmail();
+    expect((await sendJoinCode(mailCtx, email, id)).status).toBe(204);
+
+    const account = newcomer();
+    const res = await mailCtx.app.request(
+      `/api/join/${id}`,
+      jsonRequest('POST', { ...account, email: email.toUpperCase(), code: await mailer.codeFor(email) }),
+    );
+    expect(res.status).toBe(201);
+    expect(await (await requestAs(mailCtx, sessionCookie(res), '/api/me')).json()).toMatchObject({
+      user: { username: account.username, email },
+      household: { id: admin.householdId, role: 'member' },
+    });
+    const cookie = await signIn(mailCtx, email, account.password);
+    expect((await requestAs(mailCtx, cookie, '/api/me')).status).toBe(200);
+    expect(await pendingInvitations(admin)).toEqual([]);
+  });
+
+  test('mails join codes only for a usable invitation', async () => {
+    const admin = await signUpHousehold(mailCtx);
+    const { id } = await invite(admin);
+    await admin.request(`/api/invitations/${id}/revoke`, { method: 'POST' });
+    const email = newcomerEmail();
+
+    const missing = await sendJoinCode(mailCtx, email);
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: 'not_found' });
+    expect((await sendJoinCode(mailCtx, email, crypto.randomUUID())).status).toBe(404);
+    const revoked = await sendJoinCode(mailCtx, email, id);
+    expect(revoked.status).toBe(410);
+    expect(await revoked.json()).toEqual({ error: 'invitation_revoked' });
+    await mailer.expectNoMailTo(email);
+  });
+
+  test('refuses to join without a valid code and leaves the invitation usable', async () => {
+    const admin = await signUpHousehold(mailCtx);
+    const { id } = await invite(admin);
+    const email = newcomerEmail();
+
+    for (const body of [{}, { email }, { email, code: '000000' }]) {
+      const res = await joinWithEmail(id, body);
+      expect(res.status).toBe(422);
+      expect(await res.json()).toEqual({ error: 'code_invalid' });
+    }
+
+    expect((await sendJoinCode(mailCtx, email, id)).status).toBe(204);
+    const code = await mailer.codeFor(email);
+    const wrong = code === '999999' ? '000000' : '999999';
+    expect((await joinWithEmail(id, { email, code: wrong })).status).toBe(422);
+    expect(await pendingInvitations(admin)).toEqual([id]);
+    expect((await joinWithEmail(id, { email, code })).status).toBe(201);
+  });
+
+  test('a code mailed for another address does not admit', async () => {
+    const admin = await signUpHousehold(mailCtx);
+    const { id } = await invite(admin);
+    const email = newcomerEmail();
+    await sendJoinCode(mailCtx, email, id);
+    const res = await joinWithEmail(id, { email: newcomerEmail(), code: await mailer.codeFor(email) });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: 'code_invalid' });
+  });
+
+  test('a code is used once', async () => {
+    const admin = await signUpHousehold(mailCtx);
+    const [first, second] = [await invite(admin), await invite(admin)];
+    const email = newcomerEmail();
+    await sendJoinCode(mailCtx, email, first.id);
+    const code = await mailer.codeFor(email);
+    expect((await joinWithEmail(first.id, { email, code })).status).toBe(201);
+    const again = await joinWithEmail(second.id, { email, code });
+    expect(again.status).toBe(422);
+    expect(await again.json()).toEqual({ error: 'code_invalid' });
+  });
+
+  test('rejects an email another account has, keeping the invitation usable', async () => {
+    // The address was mailed a code moments ago; the clock moves past its resend cooldown.
+    const start = new Date();
+    setSystemTime(start);
+    const admin = await signUpHousehold(mailCtx);
+    const first = await joinHousehold(mailCtx, admin, { mailer });
+    const { id } = await invite(admin);
+    const taken = first.email!;
+    setSystemTime(new Date(start.getTime() + 61_000));
+    expect((await sendJoinCode(mailCtx, taken, id)).status).toBe(204);
+
+    const res = await joinWithEmail(id, { email: taken, code: await mailer.codeFor(taken) });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'email_taken' });
+    expect(await pendingInvitations(admin)).toEqual([id]);
+  });
+
+  test('a taken username keeps the code usable', async () => {
+    const admin = await signUpHousehold(mailCtx);
+    const { id } = await invite(admin);
+    const email = newcomerEmail();
+    await sendJoinCode(mailCtx, email, id);
+    const code = await mailer.codeFor(email);
+
+    const res = await joinWithEmail(id, { email, code, username: admin.username });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'username_taken' });
+    expect((await joinWithEmail(id, { email, code })).status).toBe(201);
+  });
+
+  test('a refused invitation leaves the code usable', async () => {
+    const admin = await signUpHousehold(mailCtx);
+    const { id } = await invite(admin);
+    const other = await invite(admin);
+    const email = newcomerEmail();
+    await sendJoinCode(mailCtx, email, id);
+    const code = await mailer.codeFor(email);
+    await admin.request(`/api/invitations/${id}/revoke`, { method: 'POST' });
+
+    const res = await joinWithEmail(id, { email, code });
+    expect(res.status).toBe(410);
+    expect(await res.json()).toEqual({ error: 'invitation_revoked' });
+    expect((await joinWithEmail(other.id, { email, code })).status).toBe(201);
   });
 });
