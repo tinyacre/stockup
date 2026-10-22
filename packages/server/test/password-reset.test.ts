@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { eq } from 'drizzle-orm';
 import { user } from '../src/db/schema';
+import { CLAUDE_CLIENT_ID } from './support/claude-metadata';
 import { fakeMailer } from './support/fake-mailer';
 import {
   jsonRequest,
@@ -11,6 +12,7 @@ import {
   useTestApp,
   type TestContext,
 } from './support/harness';
+import { authorizeAsClaude } from './support/mcp-client';
 
 function sendCode(ctx: TestContext, email: string) {
   return ctx.app.request('/api/email-codes', jsonRequest('POST', { email, purpose: 'password-reset' }));
@@ -193,5 +195,49 @@ describe('password reset', () => {
     }
     advance(start, minutes(30));
     expect(await (await sendCode(ctx, stranger)).json()).toEqual({ error: 'code_rate_limited', retryAfter: 30 * 60 });
+  });
+});
+
+describe('password reset and MCP clients', () => {
+  const mailer = fakeMailer();
+  const ctx = useTestApp({ mailer, signupOpen: true, listen: true });
+
+  const listTools = (accessToken: string) =>
+    fetch(new URL('/mcp', ctx.baseUrl), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    });
+
+  test('a reset revokes the MCP clients authorized before it, tokens and all', async () => {
+    const member = await signUpWithEmail(ctx, mailer);
+    const { accessToken, refreshToken } = await authorizeAsClaude(ctx.baseUrl, member, {
+      scope: 'stockup:read offline_access',
+    });
+    expect((await listTools(accessToken)).status).toBe(200);
+    expect(refreshToken).toBeTruthy();
+
+    await sendCode(ctx, member.email);
+    const password = newPassword();
+    const code = await mailer.codeFor(member.email);
+    expect((await reset(ctx, { email: member.email, code, newPassword: password })).status).toBe(204);
+
+    expect((await listTools(accessToken)).status).toBe(401);
+    const refreshed = await fetch(new URL('/api/auth/oauth2/token', ctx.baseUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken!, client_id: CLAUDE_CLIENT_ID }),
+    });
+    expect(refreshed.ok).toBe(false);
+
+    // Token issue times are in whole seconds, and a grant newer than the token is what rejects it.
+    await Bun.sleep(1000);
+    const renewed = await authorizeAsClaude(ctx.baseUrl, { ...member, password });
+    expect((await listTools(renewed.accessToken)).status).toBe(200);
+    expect((await listTools(accessToken)).status).toBe(401);
   });
 });
