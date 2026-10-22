@@ -1,6 +1,7 @@
 import type { Browser, Page } from '@playwright/test';
 import { expect, test } from './test';
 import { founder } from './founder';
+import { latestCode } from './mail';
 
 function suffix() {
   return crypto.randomUUID().slice(0, 6);
@@ -61,6 +62,10 @@ async function invite(page: Page, browser: Browser) {
   const context = await browser.newContext();
   const other = await context.newPage();
   await other.goto(link);
+  const email = `${account.username}@example.com`;
+  await other.getByLabel('邮箱').fill(email);
+  await other.getByRole('button', { name: '发送验证码' }).click();
+  await other.getByLabel('验证码').fill(await latestCode(other.request, email));
   await other.getByLabel('显示名称').fill(account.name);
   await other.getByLabel('用户名').fill(account.username);
   await other.getByLabel('密码').fill(account.password);
