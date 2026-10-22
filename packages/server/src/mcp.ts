@@ -12,11 +12,16 @@ import {
   createProduct,
   deleteCategory,
   deleteCategoryGroup,
+  deleteProduct,
   findProduct,
   listCatalog,
+  mergeProducts,
+  MergedProductNotFoundError,
+  SameProductError,
   searchProducts,
   updateCategory,
   updateCategoryGroup,
+  updateProduct,
 } from './catalog';
 import { createChannel, deleteChannel, listChannels, updateChannel } from './channels';
 import type { Database } from './db';
@@ -31,13 +36,16 @@ import {
   PromotionNotFoundError,
 } from './price-records';
 import {
+  atMostOnePlacement,
   catalogSchema,
   categoryChangesSchema,
   categoryGroupSchema,
   categorySchema,
   name as catalogName,
   newProductSchema,
+  productChangesSchema,
   productSchema,
+  twoPlacements,
 } from './routes/catalog';
 import { channelChangesSchema, channelSchema, name as channelName } from './routes/channels';
 import { judgmentInputSchema, judgmentSchema } from './routes/judgments';
@@ -59,15 +67,24 @@ interface FailureSentences {
   missingParent?: string;
   nameTaken?: string;
   notEmpty?: string;
+  incompatibleUnits?: string;
 }
 
 // The assistant relays these to the member, so they say what to change rather than name the error.
-function describeFailure(error: unknown, { missingParent, nameTaken, notEmpty }: FailureSentences) {
+function describeFailure(
+  error: unknown,
+  { missingParent, nameTaken, notEmpty, incompatibleUnits }: FailureSentences,
+) {
   if (error instanceof ProductNotFoundError) return productNotFound;
   if (error instanceof ParentNotFoundError && missingParent) return missingParent;
   if (error instanceof NameTakenError && nameTaken) return nameTaken;
   if (error instanceof NotEmptyError && notEmpty) return notEmpty;
   if (error instanceof PromotionNotFoundError) return '这个家庭没有这个大促，请省略 promotionId 让系统按日期自动标注。';
+  if (error instanceof IncompatibleUnitsError && incompatibleUnits) return incompatibleUnits;
+  if (error instanceof SameProductError) return '要合并的两个商品是同一个，请用 search_products 找到重复的那一个。';
+  if (error instanceof MergedProductNotFoundError) {
+    return '这个家庭没有要合并的商品，请先用 search_products 找到重复商品的 ID。';
+  }
   if (error instanceof IncompatibleUnitsError) {
     return `规格的单位 ${error.from.name} 无法换算成商品的计价单位 ${error.to.name}，请用同一量纲的单位；计数单位须与计价单位同名。`;
   }
@@ -411,6 +428,82 @@ function stockupServer(db: Database, userId: string, scopes: string[]) {
       asMember(
         async (member) => ((await deleteCategory(db, member, categoryId)) ? { deletedId: categoryId } : categoryNotFound),
         { notEmpty: '这个品类里还有商品，无法删除；请先把商品移到其他品类或删除。' },
+      ),
+  );
+
+  // Only the placement a product moves to can be missing, so the sentence follows the field given.
+  const missingPlacement = (input: { categoryId?: string }) =>
+    input.categoryId === undefined ? categoryGroupNotFound : categoryNotFound;
+
+  server.registerTool(
+    'update_product',
+    {
+      title: 'Update a product',
+      description: `Rename a product, move it to another category or with categoryGroupId directly into a category group, change its note, pricing unit, base size or stock line, or archive it so it leaves search by default, or restore it. A new pricing unit must be of the same dimension (g to kg); every price record's size is converted to it. stockLine is in cents per base size and null clears it; without a new stock line, a new base size scales the stock line along.`,
+      inputSchema: z
+        .object({ productId: z.string(), ...productChangesSchema.shape })
+        .refine(({ productId, ...changes }) => hasChanges(changes), nothingToChange)
+        .refine(atMostOnePlacement, twoPlacements),
+      outputSchema: z.object({ product: productSchema }),
+      annotations: write,
+    },
+    ({ productId, ...changes }) =>
+      asMember(
+        async (member) => {
+          const product = await updateProduct(db, member, productId, changes);
+          return product ? { product } : productNotFound;
+        },
+        {
+          missingParent: missingPlacement(changes),
+          incompatibleUnits:
+            '计价单位只能换成同一量纲的单位（如 g 换成 kg），计数单位不能改名；需要换量纲或计数单位时，请新建一个商品。',
+        },
+      ),
+  );
+
+  server.registerTool(
+    'merge_products',
+    {
+      title: 'Merge duplicate products',
+      description:
+        "Merge a duplicate into the product to keep: every price record of duplicateProductId moves to productId, its size converted to the kept product's pricing unit, and the duplicate is deleted. The kept product's name, placement, base size and stock line stay as they are. Both must be priced in units of the same dimension.",
+      inputSchema: z.object({
+        productId: z.string().describe('The product to keep'),
+        duplicateProductId: z.string().describe('The duplicate to merge and delete'),
+      }),
+      outputSchema: z.object({ product: productSchema }),
+      annotations: destructive,
+    },
+    ({ productId, duplicateProductId }) =>
+      asMember(
+        async (member) => {
+          const product = await mergeProducts(db, member, productId, duplicateProductId);
+          return product ? { product } : productNotFound;
+        },
+        {
+          incompatibleUnits:
+            '两个商品的计价单位无法换算（量纲不同，或计数单位不同名），不能合并；可以先用 update_product 归档重复的那一个。',
+        },
+      ),
+  );
+
+  server.registerTool(
+    'delete_product',
+    {
+      title: 'Delete a product',
+      description:
+        'Delete a product that has no price records, such as one created by mistake. Archive one no longer bought with update_product, or merge a duplicate with merge_products.',
+      inputSchema: z.object({ productId: z.string() }),
+      outputSchema: z.object({ deletedId: z.string() }),
+      annotations: destructive,
+    },
+    ({ productId }) =>
+      asMember(
+        async (member) => ((await deleteProduct(db, member, productId)) ? { deletedId: productId } : productNotFound),
+        {
+          notEmpty:
+            '这个商品还有价格记录，无法删除；可以用 update_product 改为归档，重复的商品可以用 merge_products 合并到另一个。',
+        },
       ),
   );
 

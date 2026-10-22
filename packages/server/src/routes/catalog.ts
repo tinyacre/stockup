@@ -112,9 +112,9 @@ const placement = {
     .openapi({ description: 'Places the product in the group outside any category; give this or categoryId' }),
 };
 
-const atMostOnePlacement = (value: { categoryId?: string; categoryGroupId?: string }) =>
+export const atMostOnePlacement = (value: { categoryId?: string; categoryGroupId?: string }) =>
   value.categoryId === undefined || value.categoryGroupId === undefined;
-const twoPlacements = { message: 'Give either categoryId or categoryGroupId' };
+export const twoPlacements = { message: 'Give either categoryId or categoryGroupId' };
 
 export const newProductSchema = z
   .object({
@@ -130,7 +130,7 @@ export const categoryChangesSchema = z
   .object({ name: name.optional(), categoryGroupId: z.string().optional() })
   .refine(atLeastOne, nothingToChange);
 
-const productChangesSchema = z
+export const productChangesSchema = z
   .object({
     name: z.string().trim().min(1).max(100).optional(),
     ...placement,
