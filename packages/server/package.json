@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "bun --watch src/main.ts",
     "start": "bun src/main.ts",
+    "migrate:evidence": "bun src/migrate-evidence.ts",
     "typecheck": "tsc --noEmit -p .",
     "test": "bun test",
     "db:generate": "drizzle-kit generate"
