@@ -4,14 +4,7 @@ import type { Database } from './db';
 import { NameTakenError, translate } from './db/errors';
 import { invitation, member, organization, user } from './db/schema';
 import type { EmailCodes } from './email-codes';
-import {
-  emailInUse,
-  EmailTakenError,
-  hashPassword,
-  HOUSEHOLD_MEMBER_ROLE,
-  insertMember,
-  type NewAccount,
-} from './households';
+import { hashPassword, HOUSEHOLD_MEMBER_ROLE, insertMember, type NewAccount } from './households';
 import type { CurrentMember } from './members';
 
 export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired';
@@ -166,8 +159,6 @@ async function useInvitation<T>(
 
 function admitNewAccount(tx: Transaction, id: string, account: NewAccount, passwordHash: string) {
   return useInvitation(tx, id, async ({ householdId, role }) => {
-    // Checked up front because the unique violation on user.email would otherwise read as a taken username.
-    if (account.email !== undefined && (await emailInUse(tx, account.email))) throw new EmailTakenError();
     const userId = await insertMember(tx, { account, passwordHash, householdId, role });
     return { userId, householdId };
   });

@@ -5,13 +5,7 @@ import type { Database } from './db';
 import { translate } from './db/errors';
 import { member, organization, session, user } from './db/schema';
 import type { EmailCodes } from './email-codes';
-import {
-  EmailTakenError,
-  HOUSEHOLD_ADMIN_ROLE,
-  HOUSEHOLD_MEMBER_ROLE,
-  INSTANCE_ADMIN_ROLE,
-  isPlaceholderEmail,
-} from './households';
+import { HOUSEHOLD_ADMIN_ROLE, HOUSEHOLD_MEMBER_ROLE, INSTANCE_ADMIN_ROLE, isPlaceholderEmail } from './households';
 
 // The member a request acts as. Household-scoped services take it instead of a household ID,
 // so callers can only ever reach their own household's data.
@@ -184,13 +178,10 @@ export async function updateTheme(db: Database, userId: string, theme: string) {
   await db.update(user).set({ theme }).where(eq(user.id, userId));
 }
 
-// Fails with EmailTakenError when another account has the address, which is only revealed to whoever holds
-// its code; a concurrent change to the same address surfaces as the unique violation, translated to NameTakenError.
+// Fails with EmailTakenError when another account has the address, which is only revealed to whoever holds its code.
 export async function changeEmail(codes: EmailCodes, userId: string, email: string, code: string) {
   await translate(() =>
     codes.redeem(email, 'change-email', code, async (tx) => {
-      const [holder] = await tx.select({ id: user.id }).from(user).where(eq(user.email, email));
-      if (holder && holder.id !== userId) throw new EmailTakenError();
       await tx.update(user).set({ email, emailVerified: true }).where(eq(user.id, userId));
     }),
   );

@@ -1,9 +1,8 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Auth } from '../auth';
 import type { Database } from '../db';
-import { NameTakenError } from '../db/errors';
+import { EmailTakenError, NameTakenError } from '../db/errors';
 import { EmailCodeInvalidError, type EmailCodes } from '../email-codes';
-import { EmailTakenError } from '../households';
 import {
   acceptInvitation,
   acceptInvitationWithEmail,

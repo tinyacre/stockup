@@ -33,10 +33,6 @@ export function isPlaceholderEmail(email: string) {
   return email.endsWith(placeholderEmailDomain);
 }
 
-export class EmailTakenError extends Error {
-  override name = 'EmailTakenError';
-}
-
 export interface NewHousehold {
   householdName: string;
   admin: NewAccount;
@@ -96,8 +92,6 @@ export async function createHousehold(db: Executor, auth: Auth, input: NewHouseh
   const passwordHash = await hashPassword(auth, input.admin.password);
   return translate(() =>
     db.transaction(async (tx) => {
-      // Checked up front because the unique violation on user.email would otherwise read as a taken username.
-      if (input.admin.email !== undefined && (await emailInUse(tx, input.admin.email))) throw new EmailTakenError();
       await tx
         .insert(organization)
         .values({ id: householdId, name: input.householdName, slug: householdId, createdAt: new Date() });

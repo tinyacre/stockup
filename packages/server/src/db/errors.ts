@@ -2,6 +2,10 @@ export class NameTakenError extends Error {
   override name = 'NameTakenError';
 }
 
+export class EmailTakenError extends Error {
+  override name = 'EmailTakenError';
+}
+
 export class NotEmptyError extends Error {
   override name = 'NotEmptyError';
 }
@@ -14,10 +18,15 @@ export class ParentNotFoundError extends Error {
 const UNIQUE_VIOLATION = '23505';
 const FOREIGN_KEY_VIOLATION = '23503';
 
-// Drizzle wraps driver errors, so the Postgres error code sits somewhere along the cause chain.
-function pgErrorCode(error: unknown): string | undefined {
+const USER_EMAIL_UNIQUE = 'user_email_unique';
+
+// Drizzle wraps driver errors, so the Postgres error sits somewhere along the cause chain.
+function pgError(error: unknown): { code: string; constraint?: string } | undefined {
   for (let e = error; e instanceof Error; e = e.cause) {
-    if ('code' in e && typeof e.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code)) return e.code;
+    if ('code' in e && typeof e.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code)) {
+      const constraint = 'constraint_name' in e && typeof e.constraint_name === 'string' ? e.constraint_name : undefined;
+      return { code: e.code, constraint };
+    }
   }
   return undefined;
 }
@@ -28,9 +37,9 @@ export async function translate<T>(write: () => Promise<T>, onForeignKey?: new (
   try {
     return await write();
   } catch (error) {
-    const code = pgErrorCode(error);
-    if (code === UNIQUE_VIOLATION) throw new NameTakenError();
-    if (code === FOREIGN_KEY_VIOLATION && onForeignKey) throw new onForeignKey();
+    const pg = pgError(error);
+    if (pg?.code === UNIQUE_VIOLATION) throw pg.constraint === USER_EMAIL_UNIQUE ? new EmailTakenError() : new NameTakenError();
+    if (pg?.code === FOREIGN_KEY_VIOLATION && onForeignKey) throw new onForeignKey();
     throw error;
   }
 }

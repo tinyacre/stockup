@@ -2,9 +2,8 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { APIError } from 'better-auth/api';
 import type { Auth } from '../auth';
 import type { Database } from '../db';
-import { NameTakenError } from '../db/errors';
+import { EmailTakenError } from '../db/errors';
 import type { EmailCodes } from '../email-codes';
-import { EmailTakenError } from '../households';
 import { changeEmail, requireMember, updateTheme, type CurrentMember } from '../members';
 import { accountSchema } from './setup';
 import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode } from './signup';
@@ -146,9 +145,7 @@ export function meRoutes(db: Database, auth: Auth, codes?: EmailCodes) {
       try {
         await changeEmail(codes, c.var.member.userId, email, code);
       } catch (error) {
-        if (error instanceof EmailTakenError || error instanceof NameTakenError) {
-          return c.json({ error: 'email_taken' }, 409);
-        }
+        if (error instanceof EmailTakenError) return c.json({ error: 'email_taken' }, 409);
         return respondToInvalidCode(c, error);
       }
       return c.json(toMe({ ...c.var.member, email }), 200);

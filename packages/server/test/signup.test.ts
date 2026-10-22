@@ -220,6 +220,25 @@ describe('open signup', () => {
     expect((await submit(ctx, visitor, code)).status).toBe(201);
   });
 
+  test('an address another account takes before the code is redeemed is reported taken', async () => {
+    const start = freezeClock();
+    const visitor = newVisitor();
+    expect((await sendCode(ctx, visitor.email)).status).toBe(204);
+    const code = await mailer.codeFor(visitor.email);
+
+    const other = await signUpWithEmail(ctx, mailer);
+    advance(start, minutes(1));
+    const sent = await other.request('/api/email-codes', jsonRequest('POST', { email: visitor.email, purpose: 'change-email' }));
+    expect(sent.status).toBe(204);
+    const changeCode = await mailer.codeFor(visitor.email);
+    const changed = await other.request('/api/me/email', jsonRequest('POST', { email: visitor.email, code: changeCode }));
+    expect(changed.status).toBe(200);
+
+    const res = await submit(ctx, visitor, code);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'email_taken' });
+  });
+
   test('a wrong code is refused, and five wrong tries use the code up', async () => {
     const visitor = newVisitor();
     await sendCode(ctx, visitor.email);
