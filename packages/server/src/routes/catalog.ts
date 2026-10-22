@@ -24,14 +24,13 @@ import type { Database } from '../db';
 import { NameTakenError, NotEmptyError, ParentNotFoundError } from '../db/errors';
 import { requireMember } from '../members';
 import { lowestUnitPrice, summarizePrices } from '../price-records';
+import { hasChanges, nothingToChange } from './changes';
 
 const errorSchema = z.object({ error: z.string() });
 const errorContent = { 'application/json': { schema: errorSchema } };
-export const name = z.string().trim().min(1).max(50);
+export const catalogNameSchema = z.string().trim().min(1).max(50);
 const idParams = z.object({ id: z.string() });
 
-const atLeastOne = (value: object) => Object.values(value).some((v) => v !== undefined);
-const nothingToChange = { message: 'Provide at least one field to change' };
 
 export const categoryGroupSchema = z.object({ id: z.string(), name: z.string() }).openapi('CategoryGroup');
 
@@ -127,8 +126,8 @@ export const newProductSchema = z
   .refine((value) => (value.categoryId === undefined) !== (value.categoryGroupId === undefined), twoPlacements);
 
 export const categoryChangesSchema = z
-  .object({ name: name.optional(), categoryGroupId: z.string().optional() })
-  .refine(atLeastOne, nothingToChange);
+  .object({ name: catalogNameSchema.optional(), categoryGroupId: z.string().optional() })
+  .refine(hasChanges, nothingToChange);
 
 export const productChangesSchema = z
   .object({
@@ -154,7 +153,7 @@ export const productChangesSchema = z
       .openapi({ description: 'Cents per base size; null clears it' }),
     archived: z.boolean().optional(),
   })
-  .refine(atLeastOne, nothingToChange)
+  .refine(hasChanges, nothingToChange)
   .refine(atMostOnePlacement, twoPlacements);
 
 // Names the parent a create or move could not find.
@@ -200,7 +199,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
     tags: ['catalog'],
     summary: 'Create a category group',
     middleware,
-    request: { body: json(z.object({ name })) },
+    request: { body: json(z.object({ name: catalogNameSchema })) },
     responses: {
       201: { description: 'Created', content: { 'application/json': { schema: categoryGroupSchema } } },
       ...unauthenticated,
@@ -214,7 +213,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
     tags: ['catalog'],
     summary: 'Rename a category group',
     middleware,
-    request: { params: idParams, body: json(z.object({ name })) },
+    request: { params: idParams, body: json(z.object({ name: catalogNameSchema })) },
     responses: {
       200: { description: 'Updated', content: { 'application/json': { schema: categoryGroupSchema } } },
       ...unauthenticated,
@@ -244,7 +243,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
     tags: ['catalog'],
     summary: 'Create a category in a category group',
     middleware,
-    request: { body: json(z.object({ name, categoryGroupId: z.string() })) },
+    request: { body: json(z.object({ name: catalogNameSchema, categoryGroupId: z.string() })) },
     responses: {
       201: { description: 'Created', content: { 'application/json': { schema: categorySchema } } },
       ...unauthenticated,

@@ -43,14 +43,16 @@ import {
   catalogSchema,
   categoryChangesSchema,
   categoryGroupSchema,
+  catalogNameSchema,
   categorySchema,
-  name as catalogName,
+  missingPlacement,
   newProductSchema,
   productChangesSchema,
   productSchema,
   twoPlacements,
 } from './routes/catalog';
-import { channelChangesSchema, channelSchema, name as channelName } from './routes/channels';
+import { hasChanges, nothingToChange } from './routes/changes';
+import { channelChangesSchema, channelNameSchema, channelSchema } from './routes/channels';
 import { judgmentInputSchema, judgmentSchema } from './routes/judgments';
 import { priceRecordInputSchema, priceRecordSchema } from './routes/price-records';
 
@@ -64,6 +66,7 @@ const productNotFound = '这个家庭没有这个商品，请先用 search_produ
 const channelNotFound = '这个家庭没有这个渠道，请先用 list_channels 找到渠道 ID。';
 const categoryGroupNotFound = '这个家庭没有这个大类，请先用 list_categories 找到大类 ID。';
 const categoryNotFound = '这个家庭没有这个品类，请先用 list_categories 找到品类 ID。';
+const placementNotFound = { category_group_not_found: categoryGroupNotFound, category_not_found: categoryNotFound };
 const priceRecordNotFound = '这个家庭没有这条价格记录，请先用 get_product 找到价格记录 ID。';
 
 // The same domain error means different things per tool, so each tool supplies its own sentence.
@@ -84,13 +87,12 @@ function describeFailure(
   if (error instanceof NameTakenError && nameTaken) return nameTaken;
   if (error instanceof NotEmptyError && notEmpty) return notEmpty;
   if (error instanceof PromotionNotFoundError) return '这个家庭没有这个大促，请省略 promotionId 让系统按日期自动标注。';
-  if (error instanceof IncompatibleUnitsError && incompatibleUnits) return incompatibleUnits;
   if (error instanceof SameProductError) return '要合并的两个商品是同一个，请用 search_products 找到重复的那一个。';
   if (error instanceof MergedProductNotFoundError) {
     return '这个家庭没有要合并的商品，请先用 search_products 找到重复商品的 ID。';
   }
   if (error instanceof IncompatibleUnitsError) {
-    return `规格的单位 ${error.from.name} 无法换算成商品的计价单位 ${error.to.name}，请用同一量纲的单位；计数单位须与计价单位同名。`;
+    return incompatibleUnits ?? `规格的单位 ${error.from.name} 无法换算成商品的计价单位 ${error.to.name}，请用同一量纲的单位；计数单位须与计价单位同名。`;
   }
   if (error instanceof InvalidPriceError) return '优惠合计不能达到或超过原价。';
   return undefined;
@@ -102,10 +104,6 @@ const centsHelp = 'Every price is in cents: 99 元 is 9900.';
 
 const mcpPriceRecordSchema = priceRecordSchema.omit({ evidence: true });
 const discounts = priceRecordInputSchema.shape.discounts.default([]);
-
-// The change schemas demand at least one field; beside an always-present id that check has to skip the id.
-const hasChanges = (changes: object) => Object.values(changes).some((v) => v !== undefined);
-const nothingToChange = { message: 'Provide at least one field to change' };
 
 // The tools act as the member the access token was issued to. Their household is looked up on every
 // call, so the token never carries it and leaving a household takes effect before the token expires.
@@ -247,10 +245,7 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
     },
     (input) =>
       asMember(async (member) => ({ product: await createProduct(db, member, input) }), {
-        missingParent:
-          input.categoryId === undefined
-            ? categoryGroupNotFound
-            : categoryNotFound,
+        missingParent: placementNotFound[missingPlacement(input)],
         nameTaken: '这个家庭已经有同名的商品。',
       }),
   );
@@ -282,7 +277,7 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
       title: 'Create a channel',
       description:
         'Create a channel, a place the household buys from such as 京东自营 or 山姆. Check list_channels with includeArchived first, and restore an archived channel with update_channel instead of creating it again.',
-      inputSchema: z.object({ name: channelName }),
+      inputSchema: z.object({ name: channelNameSchema }),
       outputSchema: z.object({ channel: channelSchema }),
       annotations: write,
     },
@@ -336,7 +331,7 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
       title: 'Create a category group',
       description:
         'Create a category group, the top level of the catalog such as 生活用品 or 食品. Check list_categories first.',
-      inputSchema: z.object({ name: catalogName }),
+      inputSchema: z.object({ name: catalogNameSchema }),
       outputSchema: z.object({ categoryGroup: categoryGroupSchema }),
       annotations: write,
     },
@@ -351,7 +346,7 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
     {
       title: 'Rename a category group',
       description: 'Rename a category group.',
-      inputSchema: z.object({ categoryGroupId: z.string(), name: catalogName }),
+      inputSchema: z.object({ categoryGroupId: z.string(), name: catalogNameSchema }),
       outputSchema: z.object({ categoryGroup: categoryGroupSchema }),
       annotations: write,
     },
@@ -387,7 +382,7 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
       title: 'Create a category',
       description:
         'Create a category, such as 纸品, in one of the category groups list_categories returns. Check list_categories first.',
-      inputSchema: z.object({ categoryGroupId: z.string(), name: catalogName }),
+      inputSchema: z.object({ categoryGroupId: z.string(), name: catalogNameSchema }),
       outputSchema: z.object({ category: categorySchema }),
       annotations: write,
     },
@@ -435,10 +430,6 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
       ),
   );
 
-  // Only the placement a product moves to can be missing, so the sentence follows the field given.
-  const missingPlacement = (input: { categoryId?: string }) =>
-    input.categoryId === undefined ? categoryGroupNotFound : categoryNotFound;
-
   server.registerTool(
     'update_product',
     {
@@ -458,7 +449,7 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
           return product ? { product } : productNotFound;
         },
         {
-          missingParent: missingPlacement(changes),
+          missingParent: placementNotFound[missingPlacement(changes)],
           incompatibleUnits:
             '计价单位只能换成同一量纲的单位（如 g 换成 kg），计数单位不能改名；需要换量纲或计数单位时，请新建一个商品。',
         },

@@ -28,6 +28,7 @@ import {
   priceRecordSchema,
   sizeSchema,
 } from './price-records';
+import { hasChanges, nothingToChange } from './changes';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 const idParams = z.object({ id: z.string() });
@@ -107,9 +108,7 @@ const draftChangesSchema = z
       .openapi({ description: "Cents: adjusts this draft's share of the order discounts" }),
     productId: z.string().nullable().optional(),
   })
-  .refine((value) => Object.values(value).some((v) => v !== undefined), {
-    message: 'Provide at least one field to change',
-  });
+  .refine(hasChanges, nothingToChange);
 
 const confirmationSchema = priceRecordInputSchema.pick({ date: true, channelId: true, purchased: true, promotionId: true });
 

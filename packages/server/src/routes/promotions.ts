@@ -6,6 +6,7 @@ import type { Database } from '../db';
 import { NameTakenError } from '../db/errors';
 import { requireMember } from '../members';
 import { createPromotion, findPromotion, listPromotions, updatePromotion } from '../promotions';
+import { hasChanges, nothingToChange } from './changes';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 const idParams = z.object({ id: z.string() });
@@ -32,9 +33,7 @@ const promotionInputSchema = z.object({
 
 const promotionChangesSchema = promotionInputSchema
   .partial()
-  .refine((value) => Object.values(value).some((v) => v !== undefined), {
-    message: 'Provide at least one field to change',
-  });
+  .refine(hasChanges, nothingToChange);
 
 function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };

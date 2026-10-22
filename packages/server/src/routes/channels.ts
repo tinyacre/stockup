@@ -5,9 +5,10 @@ import { createChannel, deleteChannel, findChannel, lastUsedChannel, listChannel
 import type { Database } from '../db';
 import { NameTakenError, NotEmptyError } from '../db/errors';
 import { requireMember } from '../members';
+import { hasChanges, nothingToChange } from './changes';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
-export const name = z.string().trim().min(1).max(50);
+export const channelNameSchema = z.string().trim().min(1).max(50);
 const idParams = z.object({ id: z.string() });
 
 export const channelSchema = z
@@ -19,10 +20,8 @@ export const channelSchema = z
   .openapi('Channel');
 
 export const channelChangesSchema = z
-  .object({ name: name.optional(), archived: z.boolean().optional() })
-  .refine((value) => Object.values(value).some((v) => v !== undefined), {
-    message: 'Provide at least one field to change',
-  });
+  .object({ name: channelNameSchema.optional(), archived: z.boolean().optional() })
+  .refine(hasChanges, nothingToChange);
 
 function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };
@@ -93,7 +92,7 @@ export function channelRoutes(db: Database, auth: Auth) {
     tags: ['channels'],
     summary: 'Create a channel',
     middleware,
-    request: { body: json(z.object({ name })) },
+    request: { body: json(z.object({ name: channelNameSchema })) },
     responses: { 201: { description: 'Created', content: channelContent }, ...unauthenticated, ...nameTaken },
   });
 
