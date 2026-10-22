@@ -27,6 +27,7 @@ test('a member without an email adds one in settings and signs in with it', asyn
   await expect(panel.getByText(email)).toBeVisible();
 
   await page.getByRole('button', { name: '登出', exact: true }).click();
+  await expect(page.getByRole('button', { name: '登录' })).toBeVisible();
   await signIn(page, email, admin.password);
   await expect(page.getByText(household.name)).toBeVisible();
 });
