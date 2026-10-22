@@ -26,14 +26,17 @@ import {
 import { createChannel, deleteChannel, listChannels, updateChannel } from './channels';
 import type { Database } from './db';
 import { NameTakenError, NotEmptyError, ParentNotFoundError } from './db/errors';
+import type { EvidenceStore } from './evidence-store';
 import { describePriceHistory, judgePrice } from './judgments';
 import { findMcpGrant } from './mcp-clients';
 import { findCurrentMember, type CurrentMember } from './members';
 import {
   createPriceRecord,
+  deletePriceRecord,
   InvalidPriceError,
   ProductNotFoundError,
   PromotionNotFoundError,
+  replacePriceRecord,
 } from './price-records';
 import {
   atMostOnePlacement,
@@ -61,6 +64,7 @@ const productNotFound = '这个家庭没有这个商品，请先用 search_produ
 const channelNotFound = '这个家庭没有这个渠道，请先用 list_channels 找到渠道 ID。';
 const categoryGroupNotFound = '这个家庭没有这个大类，请先用 list_categories 找到大类 ID。';
 const categoryNotFound = '这个家庭没有这个品类，请先用 list_categories 找到品类 ID。';
+const priceRecordNotFound = '这个家庭没有这条价格记录，请先用 get_product 找到价格记录 ID。';
 
 // The same domain error means different things per tool, so each tool supplies its own sentence.
 interface FailureSentences {
@@ -105,7 +109,7 @@ const nothingToChange = { message: 'Provide at least one field to change' };
 
 // The tools act as the member the access token was issued to. Their household is looked up on every
 // call, so the token never carries it and leaving a household takes effect before the token expires.
-function stockupServer(db: Database, userId: string, scopes: string[]) {
+function stockupServer(db: Database, store: EvidenceStore, userId: string, scopes: string[]) {
   const server = new McpServer({ name: 'stockup', version: '0.1.0' });
 
   async function asMember<T extends Record<string, unknown>>(
@@ -507,15 +511,52 @@ function stockupServer(db: Database, userId: string, scopes: string[]) {
       ),
   );
 
+  server.registerTool(
+    'update_price_record',
+    {
+      title: 'Correct a price record',
+      description: `Replace every field of a price record get_product lists, to correct a wrong date, channel, price, discounts, quantity, size, purchase, promotion or note; its product stays. Pass every field as it should end up: discounts and note left out are cleared. ${centsHelp} listPrice is the total before discounts. ${sizeHelp} Omit promotionId to keep the record's promotion, or pass null to clear it.`,
+      inputSchema: priceRecordInputSchema.extend({ priceRecordId: z.string(), discounts }),
+      outputSchema: z.object({ priceRecord: mcpPriceRecordSchema }),
+      annotations: write,
+    },
+    ({ priceRecordId, ...input }) =>
+      asMember(
+        async (member) => {
+          const replaced = await replacePriceRecord(db, member, priceRecordId, input);
+          if (!replaced) return priceRecordNotFound;
+          const { evidence, ...priceRecord } = replaced;
+          return { priceRecord };
+        },
+        { missingParent: channelNotFound },
+      ),
+  );
+
+  server.registerTool(
+    'delete_price_record',
+    {
+      title: 'Delete a price record',
+      description:
+        'Delete a price record get_product lists, such as a duplicate or one recorded by mistake, together with its screenshots. Correct a wrong field with update_price_record instead.',
+      inputSchema: z.object({ priceRecordId: z.string() }),
+      outputSchema: z.object({ deletedId: z.string() }),
+      annotations: destructive,
+    },
+    ({ priceRecordId }) =>
+      asMember(async (member) =>
+        (await deletePriceRecord(db, store, member, priceRecordId)) ? { deletedId: priceRecordId } : priceRecordNotFound,
+      ),
+  );
+
   return server;
 }
 
-export function mcpRoutes(db: Database, auth: Auth) {
+export function mcpRoutes(db: Database, auth: Auth, store: EvidenceStore) {
   const resource = mcpResource(auth.options.baseURL);
   // Asks clients for both scopes up front; a token with only the read scope still reaches the read tools.
   const challengeScopes = [MCP_READ_SCOPE, MCP_WRITE_SCOPE];
   const handler = createMcpHandler(
-    ({ authInfo }) => stockupServer(db, String(authInfo?.extra?.sub), authInfo?.scopes ?? []),
+    ({ authInfo }) => stockupServer(db, store, String(authInfo?.extra?.sub), authInfo?.scopes ?? []),
     { onerror: (error) => console.error('MCP request failed', error) },
   );
 

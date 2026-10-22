@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { CLAUDE_CLIENT_ID } from './support/claude-metadata';
 import { jsonRequest, joinHousehold, signUpHousehold, useTestApp, type SignedInMember } from './support/harness';
 import { authorizeAsClaude, connectAsClaude } from './support/mcp-client';
@@ -58,6 +60,8 @@ const writeTools = [
   'update_product',
   'merge_products',
   'delete_product',
+  'update_price_record',
+  'delete_price_record',
 ];
 
 const mcpUrl = () => new URL('/mcp', ctx.baseUrl);
@@ -885,6 +889,206 @@ describe('product tools', () => {
     expect(await (await bob.request(`/api/products/${others.product.id}`)).json()).toEqual(bobsProduct);
     expect(await listRecords(bob, others.product.id)).toEqual(bobsRecords);
     expect((await alice.request(`/api/products/${own.product.id}`)).status).toBe(200);
+  });
+});
+
+interface StoredRecord {
+  id: string;
+  date: string;
+  channel: { id: string };
+  purchased: boolean;
+  promotion: { id: string } | null;
+  listPrice: number;
+  discounts: { amount: number; name?: string }[];
+  quantity: number;
+  enteredSize: { amount: number; unit: { name: string } };
+  note: string;
+  netPrice: number;
+  unitPrice: number;
+  evidence: { id: string }[];
+}
+
+const readRecord = async (m: SignedInMember, id: string) => {
+  const res = await m.request(`/api/price-records/${id}`);
+  expect(res.status).toBe(200);
+  return (await res.json()) as StoredRecord;
+};
+
+async function attachEvidence(m: SignedInMember, recordId: string) {
+  const form = new FormData();
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]);
+  form.append('files', new File([png], 'a.png', { type: 'image/png' }));
+  form.append('files', new File([png], 'b.png', { type: 'image/png' }));
+  const res = await m.request(`/api/price-records/${recordId}/evidence`, { method: 'POST', body: form });
+  expect(res.status).toBe(201);
+  return ((await res.json()) as { id: string }[]).map((e) => e.id);
+}
+
+describe('price record tools', () => {
+  test('get_product lists record ids that update_price_record replaces as a whole, repricing the history', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    const other = await post<{ id: string }>(m, '/api/channels', { name: `山姆 ${crypto.randomUUID().slice(0, 8)}` });
+    await recordPrice(m, s, '2026-03-01', 7000, 10);
+    const typo = await recordPrice(m, s, '2026-03-02', 90000, 10);
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+
+    const before = await call<{ lowestUnitPrice: number; priceRecords: { id: string }[] }>(client, 'get_product', {
+      productId: s.product.id,
+    });
+    expect(before.lowestUnitPrice).toBe(700);
+    expect(before.priceRecords.map((r) => r.id)).toContain(typo.id);
+    const quote = { productId: s.product.id, listPrice: 6500, quantity: 10, size: { amount: 130, unit: sheet } };
+    expect(await call(client, 'judge_price', quote)).toMatchObject({ verdict: 'recordLow' });
+
+    const { priceRecord } = await call<{ priceRecord: StoredRecord }>(client, 'update_price_record', {
+      priceRecordId: typo.id,
+      date: '2026-03-05',
+      channelId: other.id,
+      purchased: false,
+      listPrice: 9000,
+      discounts: [{ amount: 3000, name: '满减' }],
+      quantity: 20,
+      size: { amount: 65, unit: sheet },
+      note: '会员价',
+    });
+    const expected = {
+      id: typo.id,
+      date: '2026-03-05',
+      channel: { id: other.id },
+      purchased: false,
+      listPrice: 9000,
+      discounts: [{ amount: 3000, name: '满减' }],
+      quantity: 20,
+      enteredSize: { amount: 65, unit: { name: '抽' } },
+      note: '会员价',
+      netPrice: 6000,
+      unitPrice: 600,
+    };
+    expect(priceRecord).toMatchObject(expected);
+    expect(priceRecord).not.toHaveProperty('evidence');
+    expect(await readRecord(m, typo.id)).toMatchObject(expected);
+
+    const after = await call<{ lowestUnitPrice: number }>(client, 'get_product', { productId: s.product.id });
+    expect(after.lowestUnitPrice).toBe(600);
+    expect(await call(client, 'judge_price', quote)).toMatchObject({ verdict: null, lowestUnitPrice: 600 });
+
+    // A full replace: discounts and note left out are cleared, not kept.
+    await call(client, 'update_price_record', {
+      priceRecordId: typo.id,
+      date: '2026-03-05',
+      channelId: other.id,
+      purchased: false,
+      listPrice: 9000,
+      quantity: 20,
+      size: { amount: 65, unit: sheet },
+    });
+    expect(await readRecord(m, typo.id)).toMatchObject({ discounts: [], note: '', unitPrice: 900 });
+  });
+
+  test('an omitted promotionId keeps the tag, as over HTTP, and null clears it', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    const promotion = await post<{ id: string }>(m, '/api/promotions', {
+      name: `双11 ${crypto.randomUUID().slice(0, 4)}`,
+      startsOn: '11-01',
+      endsOn: '11-11',
+    });
+    const record = await recordPrice(m, s, '2025-11-11', 5000, 10);
+    expect((await readRecord(m, record.id)).promotion?.id).toBe(promotion.id);
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+    const input = {
+      priceRecordId: record.id,
+      channelId: s.channelId,
+      purchased: true,
+      listPrice: 5000,
+      quantity: 10,
+      size: { amount: 130, unit: sheet },
+    };
+
+    await call(client, 'update_price_record', { ...input, date: '2025-11-12' });
+    expect((await readRecord(m, record.id)).promotion?.id).toBe(promotion.id);
+
+    await call(client, 'update_price_record', { ...input, date: '2025-11-12', promotionId: null });
+    expect((await readRecord(m, record.id)).promotion).toBeNull();
+  });
+
+  test('a size in another dimension or discounts that cover the price fail and change nothing', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    const record = await recordPrice(m, s, '2026-03-01', 7000, 10);
+    const before = await readRecord(m, record.id);
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+    const input = {
+      priceRecordId: record.id,
+      date: '2026-03-01',
+      channelId: s.channelId,
+      purchased: true,
+      listPrice: 7000,
+      quantity: 10,
+      size: { amount: 130, unit: sheet },
+    };
+
+    expect(
+      await callFails(client, 'update_price_record', { ...input, size: { amount: 1, unit: { dimension: 'weight', name: 'kg' } } }),
+    ).toContain('单位');
+    expect(await callFails(client, 'update_price_record', { ...input, discounts: [{ amount: 7000 }] })).toContain('优惠');
+    expect(await readRecord(m, record.id)).toEqual(before);
+  });
+
+  test('delete_price_record deletes the record with its evidence', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    const kept = await recordPrice(m, s, '2026-03-01', 7000, 10);
+    const duplicate = await recordPrice(m, s, '2026-03-01', 7000, 10);
+    const evidenceIds = await attachEvidence(m, duplicate.id);
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+
+    expect(await call(client, 'delete_price_record', { priceRecordId: duplicate.id })).toEqual({
+      deletedId: duplicate.id,
+    });
+    expect((await m.request(`/api/price-records/${duplicate.id}`)).status).toBe(404);
+    for (const id of evidenceIds) {
+      expect((await m.request(`/api/evidence/${id}`)).status).toBe(404);
+      expect(existsSync(path.join(ctx.evidenceDir, id))).toBe(false);
+    }
+    expect((await listRecords(m, s.product.id)).map((r) => r.id)).toEqual([kept.id]);
+    expect(await callFails(client, 'delete_price_record', { priceRecordId: duplicate.id })).toContain('价格记录');
+  });
+
+  test("another household's price records are not found and stay as they were, evidence included", async () => {
+    const alice = await signUpHousehold(ctx);
+    const bob = await signUpHousehold(ctx);
+    const own = await seedHousehold(alice);
+    const others = await seedHousehold(bob);
+    const ownRecord = await recordPrice(alice, own, '2026-03-01', 7000, 10);
+    const bobsRecord = await recordPrice(bob, others, '2026-03-01', 7000, 10);
+    const bobsEvidence = await attachEvidence(bob, bobsRecord.id);
+    const bobsBefore = await readRecord(bob, bobsRecord.id);
+    const ownBefore = await readRecord(alice, ownRecord.id);
+    const { client } = await connectAsClaude(ctx.baseUrl, alice);
+    const input = {
+      date: '2026-03-02',
+      purchased: false,
+      listPrice: 100,
+      quantity: 1,
+      size: { amount: 130, unit: sheet },
+    };
+
+    expect(
+      await callFails(client, 'update_price_record', { ...input, priceRecordId: bobsRecord.id, channelId: own.channelId }),
+    ).toContain('价格记录');
+    expect(
+      await callFails(client, 'update_price_record', { ...input, priceRecordId: ownRecord.id, channelId: others.channelId }),
+    ).toContain('渠道');
+    expect(await callFails(client, 'delete_price_record', { priceRecordId: bobsRecord.id })).toContain('价格记录');
+
+    expect(await readRecord(bob, bobsRecord.id)).toEqual(bobsBefore);
+    for (const id of bobsEvidence) {
+      expect((await bob.request(`/api/evidence/${id}`)).status).toBe(200);
+      expect(existsSync(path.join(ctx.evidenceDir, id))).toBe(true);
+    }
+    expect(await readRecord(alice, ownRecord.id)).toEqual(ownBefore);
   });
 });
 
