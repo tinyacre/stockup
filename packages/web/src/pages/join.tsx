@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { AuthForm, AuthLayout, AuthNotice } from '@/components/auth-form';
+import { codeErrors, EmailCodeField } from '@/components/email-code-field';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { describeError } from '@/components/editing';
 import { api, ApiError } from '@/lib/api';
+import { useCapabilities } from '@/lib/capabilities';
 
 const unusable: Record<string, string> = {
   not_found: '邀请链接不存在',
@@ -29,6 +31,7 @@ export function JoinPage({
   onDone(): void;
   onSignIn?(): void;
 }) {
+  const capabilities = useCapabilities();
   const [invitation, setInvitation] = useState<Invitation>({ state: 'loading' });
   useEffect(() => {
     api.describeInvitation(invitationId).then(
@@ -37,7 +40,7 @@ export function JoinPage({
     );
   }, [invitationId]);
 
-  if (invitation.state === 'loading') {
+  if (invitation.state === 'loading' || !capabilities) {
     return (
       <AuthLayout>
         <Skeleton className="h-64 w-full" />
@@ -87,18 +90,21 @@ export function JoinPage({
         ]}
         onSubmit={async (values) => {
           try {
-            const { name, username, password } = values;
-            await api.join(invitationId, { name: name!, username: username!, password: password! });
+            const { name, username, password, email, code } = values;
+            await api.join(invitationId, { name: name!, username: username!, password: password!, email, code });
           } catch (error) {
             if (error instanceof ApiError && error.code === 'username_taken') return '用户名已被使用';
             if (error instanceof ApiError && error.status === 400) {
               return '填写有误';
             }
-            return describeError(error, unusable);
+            return describeError(error, { ...unusable, ...codeErrors, email_taken: '邮箱已被其他账号使用' });
           }
           onDone();
         }}
-      />
+      >
+        {/* Only an instance that can mail asks for an email, so members can recover their password with it. */}
+        {capabilities.email && <EmailCodeField purpose="join" invitationId={invitationId} messages={unusable} />}
+      </AuthForm>
       {onSignIn && (
         <Button variant="link" className="mt-4 self-center" onClick={onSignIn}>
           已有账号？登录后用它加入

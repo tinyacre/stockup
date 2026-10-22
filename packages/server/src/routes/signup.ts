@@ -5,7 +5,9 @@ import type { Database } from '../db';
 import { NameTakenError } from '../db/errors';
 import { EmailCodeInvalidError, EmailCodeThrottledError, normalizeEmail, type EmailCodes } from '../email-codes';
 import { emailInUse, EmailTakenError, isPlaceholderEmail } from '../households';
+import { describeInvitation } from '../invitations';
 import { signUp } from '../signup';
+import { respondToInvitationError } from './invitation-errors';
 import { accountSchema } from './setup';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
@@ -45,7 +47,11 @@ const sendCodeRoute = createRoute({
       required: true,
       content: {
         'application/json': {
-          schema: z.object({ email: emailSchema, purpose: z.enum(['register', 'change-email', 'password-reset']), invitationId: z.string().optional() }),
+          schema: z.object({
+            email: emailSchema,
+            purpose: z.enum(['register', 'change-email', 'password-reset', 'join']),
+            invitationId: z.string().optional().openapi({ description: 'Required for join' }),
+          }),
         },
       },
     },
@@ -55,6 +61,11 @@ const sendCodeRoute = createRoute({
     401: { description: 'A change-email code was requested without signing in', content: errorContent },
     403: {
       description: 'The instance cannot mail (email_unavailable) or signup is closed (signup_closed)',
+      content: errorContent,
+    },
+    404: { description: 'join: no such invitation (not_found)', content: errorContent },
+    410: {
+      description: 'join: the invitation was used, revoked or has expired (invitation_used, invitation_revoked, invitation_expired)',
       content: errorContent,
     },
     429: {
@@ -90,7 +101,7 @@ const signUpRoute = createRoute({
 export function signupRoutes(db: Database, auth: Auth, { codes, signupOpen }: { codes?: EmailCodes; signupOpen: boolean }) {
   return new OpenAPIHono()
     .openapi(sendCodeRoute, async (c) => {
-      const { email, purpose } = c.req.valid('json');
+      const { email, purpose, invitationId } = c.req.valid('json');
       if (!codes) return c.json({ error: 'email_unavailable' }, 403);
       let deliver: boolean;
       switch (purpose) {
@@ -109,6 +120,16 @@ export function signupRoutes(db: Database, auth: Auth, { codes, signupOpen }: { 
         case 'password-reset':
           // Unknown addresses are rate-limited and answered alike, so the answer does not reveal who is registered.
           deliver = !isPlaceholderEmail(email) && (await emailInUse(db, email));
+          break;
+        case 'join':
+          // Only the holder of a usable link gets this far, and a taken address is refused once its code verifies.
+          if (invitationId === undefined) return c.json({ error: 'not_found' }, 404);
+          try {
+            await describeInvitation(db, invitationId);
+          } catch (error) {
+            return respondToInvitationError(c, error);
+          }
+          deliver = true;
           break;
       }
       try {

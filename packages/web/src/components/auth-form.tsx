@@ -54,19 +54,23 @@ export interface Field {
   hint?: string;
 }
 
-// A card with labelled inputs; `onSubmit` receives the values and returns an error message or nothing.
+// A card with labelled inputs; `onSubmit` receives the values of every named input, `children`'s included,
+// and returns an error message or nothing.
 export function AuthForm({
   title,
   description,
   fields,
   submitLabel,
   onSubmit,
+  children,
 }: {
   title: string;
   description?: string;
   fields: Field[];
   submitLabel: string;
   onSubmit(values: Record<string, string>): Promise<string | void>;
+  // Inputs placed above `fields`.
+  children?: ReactNode;
 }) {
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
@@ -74,7 +78,7 @@ export function AuthForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const values = Object.fromEntries(fields.map((f) => [f.name, String(data.get(f.name) ?? '')]));
+    const values = Object.fromEntries([...data].map(([name, value]) => [name, String(value)]));
     setPending(true);
     setError(undefined);
     try {
@@ -89,6 +93,7 @@ export function AuthForm({
   return (
     <AuthCard title={title} description={description}>
       <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        {children}
         {fields.map((f) => (
           <FormField key={f.name} label={f.label} htmlFor={f.name} hint={f.hint}>
             <Input id={f.name} name={f.name} type={f.type ?? 'text'} autoComplete={f.autoComplete} required />

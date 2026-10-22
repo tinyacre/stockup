@@ -3,7 +3,15 @@ import type { Auth } from './auth';
 import type { Database } from './db';
 import { NameTakenError, translate } from './db/errors';
 import { invitation, member, organization, user } from './db/schema';
-import { hashPassword, HOUSEHOLD_MEMBER_ROLE, insertMember, type NewAccount } from './households';
+import type { EmailCodes } from './email-codes';
+import {
+  emailInUse,
+  EmailTakenError,
+  hashPassword,
+  HOUSEHOLD_MEMBER_ROLE,
+  insertMember,
+  type NewAccount,
+} from './households';
 import type { CurrentMember } from './members';
 
 export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired';
@@ -156,17 +164,34 @@ async function useInvitation<T>(
   return admitted;
 }
 
+function admitNewAccount(tx: Transaction, id: string, account: NewAccount, passwordHash: string) {
+  return useInvitation(tx, id, async ({ householdId, role }) => {
+    // Checked up front because the unique violation on user.email would otherwise read as a taken username.
+    if (account.email !== undefined && (await emailInUse(tx, account.email))) throw new EmailTakenError();
+    const userId = await insertMember(tx, { account, passwordHash, householdId, role });
+    return { userId, householdId };
+  });
+}
+
 // A new account cannot belong to a household yet, so nobody who already does can use an invitation to switch.
-// Fails with NameTakenError when the username is in use.
-export async function acceptInvitation(db: Database, auth: Auth, id: string, account: NewAccount) {
+// Fails with NameTakenError when the username is in use. The account gets no email.
+export async function acceptInvitation(db: Database, auth: Auth, id: string, account: Omit<NewAccount, 'email'>) {
+  const passwordHash = await hashPassword(auth, account.password);
+  return translate(() => db.transaction((tx) => admitNewAccount(tx, id, account, passwordHash)));
+}
+
+// The join code is redeemed in the transaction that creates the account, so the account exists only with a
+// verified email, and a refused join (taken username or email, unusable invitation) leaves the code usable.
+export async function acceptInvitationWithEmail(
+  auth: Auth,
+  codes: EmailCodes,
+  id: string,
+  input: NewAccount & { email: string; code: string },
+) {
+  const { code, ...account } = input;
   const passwordHash = await hashPassword(auth, account.password);
   return translate(() =>
-    db.transaction((tx) =>
-      useInvitation(tx, id, async ({ householdId, role }) => {
-        const userId = await insertMember(tx, { account, passwordHash, householdId, role });
-        return { userId, householdId };
-      }),
-    ),
+    codes.redeem(account.email, 'join', code, (tx) => admitNewAccount(tx, id, account, passwordHash)),
   );
 }
 

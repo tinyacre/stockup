@@ -137,7 +137,12 @@ export async function signUpWithEmail(ctx: TestContext, mailer: FakeMailer): Pro
 }
 
 // The household's admin invites a new member, who registers through the invitation and is signed in.
-export async function joinHousehold(ctx: TestContext, admin: SignedInMember): Promise<SignedInMember> {
+// Pass the app's mailer when it has one: the invitee then verifies an email with a join code.
+export async function joinHousehold(
+  ctx: TestContext,
+  admin: SignedInMember,
+  { mailer }: { mailer?: FakeMailer } = {},
+): Promise<SignedInMember & { email?: string }> {
   const invited = await admin.request('/api/invitations', jsonRequest('POST', { expiresInDays: 1 }));
   if (invited.status !== 201) throw new Error(`invitation failed with ${invited.status}: ${await invited.text()}`);
   const { id } = (await invited.json()) as { id: string };
@@ -146,7 +151,14 @@ export async function joinHousehold(ctx: TestContext, admin: SignedInMember): Pr
   const username = `member_${suffix}`;
   const password = `password-${suffix}`;
   const account = { username, password, name: `Member ${suffix}` };
-  const res = await ctx.app.request(`/api/join/${id}`, jsonRequest('POST', account));
+  let verified: { email: string; code: string } | undefined;
+  if (mailer) {
+    const email = `${username}@example.com`;
+    const sent = await ctx.app.request('/api/email-codes', jsonRequest('POST', { email, purpose: 'join', invitationId: id }));
+    if (sent.status !== 204) throw new Error(`sending a code failed with ${sent.status}: ${await sent.text()}`);
+    verified = { email, code: await mailer.codeFor(email) };
+  }
+  const res = await ctx.app.request(`/api/join/${id}`, jsonRequest('POST', { ...account, ...verified }));
   if (res.status !== 201) throw new Error(`joining failed with ${res.status}: ${await res.text()}`);
   const { userId, householdId } = (await res.json()) as { userId: string; householdId: string };
   const cookie = sessionCookie(res);
@@ -156,6 +168,7 @@ export async function joinHousehold(ctx: TestContext, admin: SignedInMember): Pr
     username,
     name: account.name,
     password,
+    email: verified?.email,
     cookie,
     request: (path, init) => requestAs(ctx, cookie, path, init),
   };

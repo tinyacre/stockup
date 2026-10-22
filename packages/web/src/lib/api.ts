@@ -352,7 +352,8 @@ export const api = {
   describeInvitation: (id: string) =>
     request<{ householdName: string; invitedBy: string }>(`/api/join/${encodeURIComponent(id)}`),
   rejoin: (id: string) => request(`/api/join/${encodeURIComponent(id)}/rejoin`, { method: 'POST' }),
-  join: async (id: string, body: NewAccount) => {
+  // `email` and its join code are required when the instance can mail, and ignored otherwise.
+  join: async (id: string, body: NewAccount & { email?: string; code?: string }) => {
     await request(`/api/join/${encodeURIComponent(id)}`, { method: 'POST', body });
     await clearCachedData();
   },
