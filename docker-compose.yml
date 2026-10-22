@@ -21,6 +21,11 @@ services:
       # volume below while all are empty. Setting only some fails the boot, as does a bucket the server cannot write,
       # read and delete in. The bucket stays private: members read evidence through the server. Region defaults to
       # us-east-1 (R2 takes auto); set PATH_STYLE=true for servers that do not route buckets by subdomain, e.g. RustFS.
+      # To move an instance that already keeps evidence in the volume, set these and run
+      #   docker compose run --rm --no-deps stockup bun packages/server/src/migrate-evidence.ts
+      # before `docker compose up -d`. It copies every file under its own key, skips keys the bucket already has (so
+      # it is safe to rerun), prints uploaded/skipped/failed counts and exits non-zero if any failed. The volume is
+      # left as it was; remove it yourself once the bucket is trusted.
       STOCKUP_S3_ENDPOINT: ${STOCKUP_S3_ENDPOINT:-}
       STOCKUP_S3_REGION: ${STOCKUP_S3_REGION:-}
       STOCKUP_S3_BUCKET: ${STOCKUP_S3_BUCKET:-}
