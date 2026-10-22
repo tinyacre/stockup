@@ -55,6 +55,9 @@ const writeTools = [
   'create_category',
   'update_category',
   'delete_category',
+  'update_product',
+  'merge_products',
+  'delete_product',
 ];
 
 const mcpUrl = () => new URL('/mcp', ctx.baseUrl);
@@ -278,18 +281,20 @@ async function callFails(client: McpClient, name: string, args: Record<string, u
 const allScopes = 'stockup:read stockup:write offline_access';
 
 describe('MCP tool set', () => {
-  test('offers nothing that merges, sets a stock line or manages members, and marks deletes destructive', async () => {
+  test('offers nothing that manages members, and marks deletes and merges destructive', async () => {
     const m = await signUpHousehold(ctx);
     const { client } = await connectAsClaude(ctx.baseUrl, m);
     const { tools } = await client.listTools();
 
     for (const tool of tools) {
-      expect(tool.name).not.toMatch(/merge|member|invit|household|stock/);
-      expect(Object.keys(tool.inputSchema.properties ?? {})).not.toContain('stockLine');
+      expect(tool.name).not.toMatch(/member|invit|household/);
       if (readTools.includes(tool.name)) {
         expect(tool.annotations?.readOnlyHint).toBe(true);
       } else {
-        expect(tool.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: tool.name.startsWith('delete_') });
+        expect(tool.annotations).toMatchObject({
+          readOnlyHint: false,
+          destructiveHint: tool.name.startsWith('delete_') || tool.name.startsWith('merge_'),
+        });
       }
     }
   });
@@ -691,6 +696,195 @@ describe('category tools', () => {
     ).toContain('大类');
 
     expect(await (await bob.request('/api/category-groups')).json()).toEqual(bobsCatalog);
+  });
+});
+
+interface StoredProduct extends Product {
+  categoryGroupId: string;
+  categoryId: string | null;
+  pricingUnit: { dimension: string; name: string };
+  baseSize: number;
+  stockLine: number | null;
+}
+
+const listRecords = async (m: SignedInMember, productId: string) => {
+  const res = await m.request(`/api/price-records?productId=${productId}`);
+  expect(res.status).toBe(200);
+  return (await res.json()) as { id: string; size: { amount: number; unit: { name: string } } }[];
+};
+
+describe('product tools', () => {
+  test('rename, move, change the pricing unit, base size and stock line, and archive and restore a product', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m, { dimension: 'weight', name: 'g' }, 500);
+    const groupId = (s.product as StoredProduct).categoryGroupId;
+    const record = await post<{ id: string }>(m, '/api/price-records', {
+      productId: s.product.id,
+      channelId: s.channelId,
+      date: '2026-03-01',
+      purchased: true,
+      listPrice: 2000,
+      discounts: [],
+      quantity: 1,
+      size: { amount: 1500, unit: { dimension: 'weight', name: 'g' } },
+    });
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+
+    const { product } = await call<{ product: StoredProduct }>(client, 'update_product', {
+      productId: s.product.id,
+      name: '五常大米',
+      categoryGroupId: groupId,
+      pricingUnit: { dimension: 'weight', name: 'kg' },
+      baseSize: 1,
+      stockLine: 1200,
+      archived: true,
+    });
+    const expected = {
+      id: s.product.id,
+      name: '五常大米',
+      categoryGroupId: groupId,
+      categoryId: null,
+      pricingUnit: { dimension: 'weight', name: 'kg' },
+      baseSize: 1,
+      stockLine: 1200,
+      archived: true,
+    };
+    expect(product).toMatchObject(expected);
+    expect(await (await m.request(`/api/products/${s.product.id}`)).json()).toMatchObject(expected);
+    expect((await listRecords(m, s.product.id)).find((r) => r.id === record.id)!.size).toMatchObject({
+      amount: 1.5,
+      unit: { name: 'kg' },
+    });
+    expect(await searchProducts(client, { query: '五常' })).toEqual([]);
+
+    await call(client, 'update_product', { productId: s.product.id, archived: false, categoryId: s.categoryId });
+    expect(await (await m.request(`/api/products/${s.product.id}`)).json()).toMatchObject({
+      archived: false,
+      categoryId: s.categoryId,
+    });
+  });
+
+  test('an empty change, two placements or a unit of another dimension fail and change nothing', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    const groupId = (s.product as StoredProduct).categoryGroupId;
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+    const before = await (await m.request(`/api/products/${s.product.id}`)).json();
+
+    expect(await callFails(client, 'update_product', { productId: s.product.id })).toBeTruthy();
+    expect(
+      await callFails(client, 'update_product', {
+        productId: s.product.id,
+        categoryId: s.categoryId,
+        categoryGroupId: groupId,
+      }),
+    ).toBeTruthy();
+    expect(
+      await callFails(client, 'update_product', {
+        productId: s.product.id,
+        pricingUnit: { dimension: 'weight', name: 'g' },
+      }),
+    ).toContain('新建');
+    expect(
+      await callFails(client, 'update_product', { productId: s.product.id, pricingUnit: { dimension: 'count', name: '包' } }),
+    ).toContain('新建');
+    expect(await callFails(client, 'update_product', { productId: s.product.id, baseSize: 0 })).toBeTruthy();
+    expect(await (await m.request(`/api/products/${s.product.id}`)).json()).toEqual(before);
+  });
+
+  test("merging moves the duplicate's price records to the kept product and removes the duplicate", async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    const kept = await recordPrice(m, s, '2026-03-01', 7000);
+    const duplicate = await post<Setup['product']>(m, '/api/products', {
+      categoryId: s.categoryId,
+      name: '京东抽纸 重复',
+      pricingUnit: sheet,
+      baseSize: 130,
+    });
+    const moved = await recordPrice(m, { ...s, product: duplicate }, '2026-04-01', 6500);
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+
+    const { product } = await call<{ product: StoredProduct }>(client, 'merge_products', {
+      productId: s.product.id,
+      duplicateProductId: duplicate.id,
+    });
+    expect(product.id).toBe(s.product.id);
+    expect((await listRecords(m, s.product.id)).map((r) => r.id).sort()).toEqual([kept.id, moved.id].sort());
+    expect((await m.request(`/api/products/${duplicate.id}`)).status).toBe(404);
+
+    expect(
+      await callFails(client, 'merge_products', { productId: s.product.id, duplicateProductId: s.product.id }),
+    ).toContain('同一个');
+    expect(
+      await callFails(client, 'merge_products', { productId: s.product.id, duplicateProductId: duplicate.id }),
+    ).toContain('要合并');
+  });
+
+  test('merging a product priced in another dimension fails and keeps both', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    const rice = await post<Product>(m, '/api/products', {
+      categoryId: s.categoryId,
+      name: '大米',
+      pricingUnit: { dimension: 'weight', name: 'kg' },
+      baseSize: 5,
+    });
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+
+    expect(
+      await callFails(client, 'merge_products', { productId: s.product.id, duplicateProductId: rice.id }),
+    ).toContain('计价单位');
+    expect((await m.request(`/api/products/${rice.id}`)).status).toBe(200);
+  });
+
+  test('deletes a product without price records and refuses one that has some', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    await recordPrice(m, s, '2026-03-01', 7000);
+    const spare = await post<Product>(m, '/api/products', {
+      categoryId: s.categoryId,
+      name: '建错的商品',
+      pricingUnit: sheet,
+      baseSize: 130,
+    });
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+
+    expect(await callFails(client, 'delete_product', { productId: s.product.id })).toContain('归档');
+    expect((await m.request(`/api/products/${s.product.id}`)).status).toBe(200);
+    expect(await call(client, 'delete_product', { productId: spare.id })).toEqual({ deletedId: spare.id });
+    expect((await m.request(`/api/products/${spare.id}`)).status).toBe(404);
+  });
+
+  test("another household's products are not found and stay as they were", async () => {
+    const alice = await signUpHousehold(ctx);
+    const bob = await signUpHousehold(ctx);
+    const own = await seedHousehold(alice);
+    const others = await seedHousehold(bob);
+    const othersGroupId = (others.product as StoredProduct).categoryGroupId;
+    await recordPrice(bob, others, '2026-03-01', 7000);
+    const bobsProduct = await (await bob.request(`/api/products/${others.product.id}`)).json();
+    const bobsRecords = await listRecords(bob, others.product.id);
+    const { client } = await connectAsClaude(ctx.baseUrl, alice);
+
+    expect(await callFails(client, 'update_product', { productId: others.product.id, archived: true })).toContain('商品');
+    expect(
+      await callFails(client, 'update_product', { productId: own.product.id, categoryId: others.categoryId }),
+    ).toContain('品类');
+    expect(
+      await callFails(client, 'update_product', { productId: own.product.id, categoryGroupId: othersGroupId }),
+    ).toContain('大类');
+    expect(
+      await callFails(client, 'merge_products', { productId: own.product.id, duplicateProductId: others.product.id }),
+    ).toContain('商品');
+    expect(
+      await callFails(client, 'merge_products', { productId: others.product.id, duplicateProductId: own.product.id }),
+    ).toContain('商品');
+    expect(await callFails(client, 'delete_product', { productId: others.product.id })).toContain('商品');
+
+    expect(await (await bob.request(`/api/products/${others.product.id}`)).json()).toEqual(bobsProduct);
+    expect(await listRecords(bob, others.product.id)).toEqual(bobsRecords);
+    expect((await alice.request(`/api/products/${own.product.id}`)).status).toBe(200);
   });
 });
 
