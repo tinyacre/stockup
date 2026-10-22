@@ -68,6 +68,31 @@ describe('changing the email', () => {
     expect(old.status).toBe(401);
   });
 
+  test('the changed email resets the password, and the old address no longer does', async () => {
+    const member = await signUpWithEmail(ctx, mailer);
+    const email = newEmail();
+    await sendCode(member, email);
+    expect((await changeEmail(member, email, await mailer.codeFor(email))).status).toBe(200);
+
+    // The change-email code was just redeemed; the clock moves past the resend cooldown.
+    setSystemTime(new Date(Date.now() + 61_000));
+    const resetCode = (to: string) =>
+      ctx.app.request('/api/email-codes', jsonRequest('POST', { email: to, purpose: 'password-reset' }));
+    const mailedToOld = mailer.messages.filter((m) => m.to === member.email).length;
+    expect((await resetCode(member.email)).status).toBe(204);
+    expect(mailer.messages.filter((m) => m.to === member.email).length).toBe(mailedToOld);
+
+    expect((await resetCode(email)).status).toBe(204);
+    const newPassword = `reset-${crypto.randomUUID().slice(0, 8)}`;
+    const res = await ctx.app.request(
+      '/api/password-reset',
+      jsonRequest('POST', { email, code: await mailer.codeFor(email), newPassword }),
+    );
+    expect(res.status).toBe(204);
+    const signedIn = await signIn(ctx, email, newPassword);
+    expect(await (await requestAs(ctx, signedIn, '/api/me')).json()).toMatchObject({ user: { id: member.userId } });
+  });
+
   test('a member without an email adds one through the same flow', async () => {
     const member = await signUpHousehold(ctx);
     expect(await (await member.request('/api/me')).json()).toMatchObject({ user: { email: null } });
