@@ -211,7 +211,7 @@ function Home({ me, onSignOut, onSessionChange }: { me: Me; onSignOut(): void; o
         ) : section === '/households' ? (
           <HouseholdsPage />
         ) : section === '/settings' ? (
-          <SettingsPage me={me} onRenamed={onSessionChange} />
+          <SettingsPage me={me} onSessionChange={onSessionChange} />
         ) : section === '/products' ? (
           <CatalogPage />
         ) : (

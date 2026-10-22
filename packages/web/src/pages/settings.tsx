@@ -15,19 +15,19 @@ import { clientHost, scopeDescriptions } from '@/lib/oauth';
 import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
 
 // The header shows the display name, the shell applies the theme and the email panel shows the address,
-// so `onRenamed` reloads the session.
-export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
+// so `onSessionChange` reloads the session.
+export function SettingsPage({ me, onSessionChange }: { me: Me; onSessionChange(): void }) {
   const capabilities = useCapabilities();
   return (
     <PageContent className="grid items-stretch min-[1200px]:grid-cols-2">
       <PageHeader title="个人设置" />
-      <ThemeSetting theme={me.user.theme} onChanged={onRenamed} />
+      <ThemeSetting theme={me.user.theme} onChanged={onSessionChange} />
       <SettingsForm
         title="显示名称"
         submitLabel="保存名称"
         onSubmit={async (data) => {
           const message = await attempt(() => api.rename({ name: String(data.get('name')).trim() }));
-          if (!message) onRenamed();
+          if (!message) onSessionChange();
           return message ? { error: message } : { done: '名称已保存' };
         }}
       >
@@ -59,7 +59,7 @@ export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
           hint="至少 8 位"
         />
       </SettingsForm>
-      {capabilities?.email && <EmailSetting email={me.user.email} onChanged={onRenamed} />}
+      {capabilities?.email && <EmailSetting email={me.user.email} onChanged={onSessionChange} />}
       <SettingsForm
         title="登出所有设备"
         submitLabel="登出其他设备"
