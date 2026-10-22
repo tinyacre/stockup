@@ -203,7 +203,7 @@ function Home({ me, onSignOut, onSessionChange }: { me: Me; onSignOut(): void; o
         ) : section === '/promotions' ? (
           <PromotionsPage />
         ) : section === '/members' ? (
-          <MembersPage meId={me.user.id} onRoleHandedOver={onSessionChange} />
+          <MembersPage meId={me.user.id} householdName={me.household.name} onSessionChange={onSessionChange} />
         ) : section === '/invitations' ? (
           <InvitationsPage />
         ) : section === '/households' ? (

@@ -3,14 +3,23 @@ import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { List, ListCell, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
-import { Panel, PanelHeader } from '@/components/ui/panel';
-import { attempt, ConfirmButton, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
+import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
+import { attempt, ConfirmButton, describeError, ListSkeleton, NameForm, RetryAlert } from '@/components/editing';
 import { api, type Member } from '@/lib/api';
 
 const gone = { not_found: '该成员已不在家庭中' };
 
-// Handing over the admin role changes what the signed-in member may see, so `onRoleHandedOver` reloads the session.
-export function MembersPage({ meId, onRoleHandedOver }: { meId: string; onRoleHandedOver(): void }) {
+// Handing over the admin role changes what the signed-in member may see, and the header shows the household's name,
+// so `onSessionChange` reloads the session after either.
+export function MembersPage({
+  meId,
+  householdName,
+  onSessionChange,
+}: {
+  meId: string;
+  householdName: string;
+  onSessionChange(): void;
+}) {
   const [members, setMembers] = useState<Member[]>();
   const [loadError, setLoadError] = useState<string>();
 
@@ -29,6 +38,24 @@ export function MembersPage({ meId, onRoleHandedOver }: { meId: string; onRoleHa
   return (
     <PageContent>
       <PageHeader title="成员" />
+      <Panel asChild>
+        <section aria-label="家庭名称">
+          <PanelHeader title="家庭名称" />
+          <PanelBody>
+            <NameForm
+              key={householdName}
+              label="家庭名称"
+              submitLabel="保存"
+              defaultValue={householdName}
+              onSubmit={async (name) => {
+                const message = await attempt(() => api.renameHousehold({ name }));
+                if (!message) onSessionChange();
+                return message;
+              }}
+            />
+          </PanelBody>
+        </section>
+      </Panel>
       {loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />}
       <Panel>
         <PanelHeader title="家庭成员" count={members?.length} />
@@ -55,7 +82,7 @@ export function MembersPage({ meId, onRoleHandedOver }: { meId: string; onRoleHa
                         onConfirm={async () => {
                           const message = await attempt(() => api.makeAdmin(member.id), gone);
                           if (message) return message;
-                          onRoleHandedOver();
+                          onSessionChange();
                         }}
                       />
                       <ConfirmButton

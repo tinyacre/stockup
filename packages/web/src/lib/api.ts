@@ -323,6 +323,8 @@ export const api = {
     }),
 
   rename: (body: { name: string }) => request<Me>('/api/me', { method: 'PATCH', body }),
+  renameHousehold: (body: { name: string }) =>
+    request<{ id: string; name: string }>('/api/household', { method: 'PATCH', body }),
   setTheme: (theme: Theme) => request<Me>('/api/me', { method: 'PATCH', body: { theme } }),
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request('/api/me/password', { method: 'POST', body }),

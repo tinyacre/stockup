@@ -125,6 +125,18 @@ test('a signed-out invitee with an account signs in and joins with it', async ({
   await expect(member.page).toHaveURL(/\/$/);
 });
 
+test('a household admin renames the household', async ({ page, household }) => {
+  await signIn(page, household.admin.username, household.admin.password);
+  await openSection(page, '成员');
+  const renamed = `新家${suffix()}`;
+  const panel = page.getByRole('region', { name: '家庭名称' });
+  await panel.getByLabel('家庭名称').fill(renamed);
+  await panel.getByRole('button', { name: '保存' }).click();
+  await expect(page.getByRole('banner')).toContainText(renamed);
+  await page.reload();
+  await expect(page.getByRole('banner')).toContainText(renamed);
+});
+
 test('a household admin hands the admin role to another member', async ({ page, browser, household }) => {
   const { admin } = household;
   await signIn(page, admin.username, admin.password);
