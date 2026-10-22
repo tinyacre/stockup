@@ -44,6 +44,8 @@ describe('loadConfig', () => {
       clientIpHeader: undefined,
       recognizer: undefined,
       s3: undefined,
+      signup: 'closed' as const,
+      smtp: undefined,
     });
   });
 
@@ -68,6 +70,8 @@ describe('loadConfig', () => {
       clientIpHeader: 'cf-connecting-ip',
       recognizer: { apiKey: 'sk-ant-test', model: 'claude-sonnet-5-5' },
       s3: undefined,
+      signup: 'closed' as const,
+      smtp: undefined,
     });
   });
 
@@ -154,6 +158,89 @@ describe('loadConfig for S3 evidence storage', () => {
   });
 });
 
+describe('loadConfig for SMTP and signup', () => {
+  const smtp = { STOCKUP_SMTP_HOST: 'smtp.example.com', STOCKUP_SMTP_FROM: 'StockUp <noreply@example.com>' };
+
+  test('keeps signup closed and mail off by default', () => {
+    expect(loadConfig(required)).toMatchObject({ signup: 'closed', smtp: undefined });
+  });
+
+  test('sends with mandatory STARTTLS on port 587 and no login unless told otherwise', () => {
+    expect(loadConfig({ ...required, ...smtp }).smtp).toEqual({
+      host: 'smtp.example.com',
+      port: 587,
+      username: undefined,
+      password: undefined,
+      from: 'StockUp <noreply@example.com>',
+      tls: 'starttls',
+    });
+  });
+
+  test('picks the standard port for each TLS mode, and reads every setting', () => {
+    expect(loadConfig({ ...required, ...smtp, STOCKUP_SMTP_TLS: 'implicit' }).smtp?.port).toBe(465);
+    expect(loadConfig({ ...required, ...smtp, STOCKUP_SMTP_TLS: 'none' }).smtp?.port).toBe(25);
+    expect(
+      loadConfig({
+        ...required,
+        STOCKUP_SMTP_HOST: 'mail.example.com',
+        STOCKUP_SMTP_PORT: '2525',
+        STOCKUP_SMTP_USERNAME: 'stockup',
+        STOCKUP_SMTP_PASSWORD: 'secret',
+        STOCKUP_SMTP_FROM: 'noreply@example.com',
+        STOCKUP_SMTP_TLS: 'implicit',
+      }).smtp,
+    ).toEqual({
+      host: 'mail.example.com',
+      port: 2525,
+      username: 'stockup',
+      password: 'secret',
+      from: 'noreply@example.com',
+      tls: 'implicit',
+    });
+  });
+
+  test('names every missing variable when only some are set', () => {
+    expect(() => loadConfig({ ...required, STOCKUP_SMTP_PASSWORD: 'secret' })).toThrow(
+      'SMTP is configured but STOCKUP_SMTP_HOST, STOCKUP_SMTP_FROM not set',
+    );
+    expect(() => loadConfig({ ...required, STOCKUP_SMTP_HOST: 'smtp.example.com' })).toThrow(
+      'SMTP is configured but STOCKUP_SMTP_FROM not set',
+    );
+  });
+
+  test('rejects a password without a username', () => {
+    expect(() => loadConfig({ ...required, ...smtp, STOCKUP_SMTP_PASSWORD: 'secret' })).toThrow(
+      'STOCKUP_SMTP_PASSWORD is set but STOCKUP_SMTP_USERNAME is not',
+    );
+  });
+
+  test('rejects a sender that is not an email address', () => {
+    for (const from of ['noreply', 'StockUp <noreply>', 'a@b.com, c@d.com']) {
+      expect(() => loadConfig({ ...required, ...smtp, STOCKUP_SMTP_FROM: from })).toThrow(
+        `STOCKUP_SMTP_FROM "${from}" is not an email address`,
+      );
+    }
+  });
+
+  test('rejects an unknown TLS mode or a bad port', () => {
+    expect(() => loadConfig({ ...required, ...smtp, STOCKUP_SMTP_TLS: 'ssl' })).toThrow('STOCKUP_SMTP_TLS');
+    for (const port of ['0', '65536', 'smtp']) {
+      expect(() => loadConfig({ ...required, ...smtp, STOCKUP_SMTP_PORT: port })).toThrow('STOCKUP_SMTP_PORT');
+    }
+  });
+
+  test('opens signup only when asked, and only with SMTP', () => {
+    expect(loadConfig({ ...required, ...smtp, STOCKUP_SIGNUP: 'open' }).signup).toBe('open');
+    expect(loadConfig({ ...required, STOCKUP_SIGNUP: 'closed' }).signup).toBe('closed');
+    expect(() => loadConfig({ ...required, STOCKUP_SIGNUP: 'open' })).toThrow(
+      'STOCKUP_SIGNUP=open requires SMTP: set STOCKUP_SMTP_HOST and STOCKUP_SMTP_FROM',
+    );
+    expect(() => loadConfig({ ...required, ...smtp, STOCKUP_SIGNUP: 'yes' })).toThrow(
+      'STOCKUP_SIGNUP must be open or closed, got "yes"',
+    );
+  });
+});
+
 describe('bootstrap', () => {
   const cleanups: Array<() => Promise<void>> = [];
   afterAll(async () => {
@@ -178,6 +265,8 @@ describe('bootstrap', () => {
       clientIpHeader: undefined,
       recognizer: undefined,
       s3: undefined,
+      signup: 'closed' as const,
+      smtp: undefined,
     };
 
     const first = await bootstrap(config);
@@ -202,6 +291,8 @@ describe('bootstrap', () => {
       clientIpHeader: undefined,
       recognizer: undefined,
       s3: undefined,
+      signup: 'closed' as const,
+      smtp: undefined,
     };
     const without = await bootstrap(config);
     cleanups.push(without.close);
@@ -236,6 +327,8 @@ describe('bootstrap', () => {
       clientIpHeader: undefined,
       recognizer: undefined,
       s3: undefined,
+      signup: 'closed' as const,
+      smtp: undefined,
     };
     const stuck = { recognize: () => new Promise<never>(() => {}) };
     const first = await bootstrap(config, { recognizer: stuck });
@@ -260,6 +353,26 @@ describe('bootstrap', () => {
     expect(await res.json()).toMatchObject({ status: 'failed', error: 'recognition_interrupted' });
   });
 
+  test('offers signup once it is open and SMTP is configured', async () => {
+    const { app, close } = await bootstrap(
+      loadConfig({
+        STOCKUP_DATABASE_URL: await emptyDatabaseUrl(),
+        STOCKUP_AUTH_SECRET: testAuthSecret,
+        STOCKUP_BASE_URL: 'http://localhost',
+        STOCKUP_EVIDENCE_DIR: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
+        STOCKUP_SIGNUP: 'open',
+        STOCKUP_SMTP_HOST: 'smtp.invalid',
+        STOCKUP_SMTP_FROM: 'noreply@stockup.invalid',
+      }),
+    );
+    cleanups.push(close);
+    expect(await (await app.request('/api/capabilities')).json()).toEqual({
+      signup: true,
+      email: true,
+      turnstileSiteKey: null,
+    });
+  });
+
   test('serves without MCP when the base URL is plain HTTP off loopback', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
     const { app, close } = await bootstrap({
@@ -272,6 +385,8 @@ describe('bootstrap', () => {
       clientIpHeader: undefined,
       recognizer: undefined,
       s3: undefined,
+      signup: 'closed' as const,
+      smtp: undefined,
     });
     cleanups.push(close);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('MCP'));
@@ -294,6 +409,8 @@ describe('bootstrap', () => {
       clientIpHeader: undefined,
       recognizer: undefined,
       s3: testS3Config(),
+      signup: 'closed' as const,
+      smtp: undefined,
     });
     cleanups.push(close);
     expect(existsSync(evidenceDir)).toBe(false);
@@ -364,6 +481,8 @@ describe('bootstrap', () => {
       clientIpHeader: undefined,
       recognizer: undefined,
       s3: testS3Config({ bucket: `stockup-missing-${crypto.randomUUID().slice(0, 8)}` }),
+      signup: 'closed' as const,
+      smtp: undefined,
     };
     await expect(bootstrap(config)).rejects.toThrow(`S3 bucket ${config.s3.bucket} at ${config.s3.endpoint} cannot be written`);
   });

@@ -4,9 +4,12 @@ import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic } from 'hono/bun';
 import { mcpAvailable, type Auth } from './auth';
 import type { Database } from './db';
+import { createEmailCodes } from './email-codes';
 import type { EvidenceStore } from './evidence-store';
+import type { Mailer } from './mailer';
 import { mcpRoutes } from './mcp';
 import type { ScreenshotRecognizer } from './recognizer';
+import { capabilityRoutes } from './routes/capabilities';
 import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
 import { evidenceRoutes } from './routes/evidence';
@@ -21,6 +24,8 @@ import { priceRecordRoutes } from './routes/price-records';
 import { promotionRoutes } from './routes/promotions';
 import { recognitionRoutes } from './routes/recognitions';
 import { setupRoutes } from './routes/setup';
+import { signupRoutes } from './routes/signup';
+import type { TurnstileVerifier } from './turnstile';
 
 export interface AppOptions {
   db: Database;
@@ -29,12 +34,23 @@ export interface AppOptions {
   // Recognition is unavailable without one.
   recognizer?: ScreenshotRecognizer;
   webDir?: string;
+  // Email-based flows (code sending, signup) are unavailable without one.
+  mailer?: Mailer;
+  // Open signup; requires a mailer.
+  signupOpen?: boolean;
+  // Requests pass unchallenged without one.
+  turnstile?: TurnstileVerifier;
 }
 
-export function createApp({ db, auth, evidence, recognizer, webDir }: AppOptions) {
+export function createApp({ db, auth, evidence, recognizer, webDir, mailer, signupOpen = false, turnstile }: AppOptions) {
+  if (signupOpen && !mailer) throw new Error('Open signup requires a mailer');
+  const codes = mailer && createEmailCodes({ db, mailer, secret: auth.options.secret! });
+
   const app = new OpenAPIHono()
     .route('/api', healthRoutes(db))
+    .route('/api', capabilityRoutes({ signupOpen, mailer, turnstile }))
     .route('/api', setupRoutes(db, auth))
+    .route('/api', signupRoutes(db, auth, { codes, signupOpen }))
     .route('/api', meRoutes(db, auth))
     .route('/api', memberRoutes(db, auth))
     .route('/api', householdRoutes(db, auth))
@@ -53,6 +69,20 @@ export function createApp({ db, auth, evidence, recognizer, webDir }: AppOptions
   app.all('/api/auth/organization/*', (c) => c.json({ error: 'not_found' }, 404));
   // Members rename themselves through PATCH /api/me, which applies StockUp's name rules; usernames are fixed.
   app.all('/api/auth/update-user', (c) => c.json({ error: 'not_found' }, 404));
+  // Addresses are verified with StockUp's own codes, which accounts are created or changed together with.
+  app.all('/api/auth/send-verification-email', (c) => c.json({ error: 'not_found' }, 404));
+  app.all('/api/auth/verify-email', (c) => c.json({ error: 'not_found' }, 404));
+  // One field takes a username or an email, but the username endpoint rejects anything shaped like an email.
+  app.post('/api/auth/sign-in/username', async (c) => {
+    const body = (await c.req.raw.clone().json().catch(() => null)) as Record<string, unknown> | null;
+    if (typeof body?.username !== 'string' || !body.username.includes('@')) return auth.handler(c.req.raw);
+    const { username, password, rememberMe, callbackURL, oauth_query } = body;
+    const headers = new Headers(c.req.raw.headers);
+    headers.delete('content-length');
+    const url = new URL('/api/auth/sign-in/email', c.req.url).toString();
+    const json = JSON.stringify({ email: username, password, rememberMe, callbackURL, oauth_query });
+    return auth.handler(new Request(url, { method: 'POST', headers, body: json }));
+  });
   app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
   if (mcpAvailable(auth.options.baseURL)) {
     // Discovery documents live outside /api/auth, where the mcp() plugin serves them only through auth.handler.

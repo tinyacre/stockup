@@ -7,9 +7,11 @@ import { createAuth, mcpAvailable } from './auth';
 import { loadConfig, type Config } from './config';
 import { connect, migrate } from './db';
 import { localEvidenceStore } from './evidence-store';
+import { smtpMailer, type Mailer } from './mailer';
 import { openS3EvidenceStore } from './s3-evidence-store';
 import { failInterruptedRecognitions } from './recognitions';
 import type { ScreenshotRecognizer } from './recognizer';
+import type { TurnstileVerifier } from './turnstile';
 
 // Recognitions give up after two minutes, so a slow call retries once at most and stops by then.
 function configuredRecognizer({ apiKey, model }: NonNullable<Config['recognizer']>) {
@@ -21,13 +23,19 @@ async function openLocalEvidenceStore(dir: string) {
   return localEvidenceStore(dir);
 }
 
-// A recognizer passed in takes the place of the one the config describes.
+// A recognizer or mailer passed in takes the place of the one the config describes.
 export async function bootstrap(
   config: Config,
-  options: { recognizer?: ScreenshotRecognizer; fetchClientMetadataResource?: ClientMetadataResourceFetch } = {},
+  options: {
+    recognizer?: ScreenshotRecognizer;
+    fetchClientMetadataResource?: ClientMetadataResourceFetch;
+    mailer?: Mailer;
+    turnstile?: TurnstileVerifier;
+  } = {},
 ) {
-  const { fetchClientMetadataResource } = options;
+  const { fetchClientMetadataResource, turnstile } = options;
   const recognizer = options.recognizer ?? (config.recognizer && configuredRecognizer(config.recognizer));
+  const mailer = options.mailer ?? (config.smtp && smtpMailer(config.smtp));
   const evidence = config.s3 ? await openS3EvidenceStore(config.s3) : await openLocalEvidenceStore(config.evidenceDir);
   const { db, close } = connect(config.databaseUrl);
   await migrate(db);
@@ -38,7 +46,17 @@ export async function bootstrap(
   const auth = createAuth({ db, secret: config.authSecret, baseURL: config.baseUrl, clientIpHeader: config.clientIpHeader, fetchClientMetadataResource });
   // Plugin init seeds the MCP resource row, so the database must stay open until it finishes.
   await auth.$context;
-  return { app: createApp({ db, auth, evidence, recognizer, webDir: config.webDir }), close };
+  const app = createApp({
+    db,
+    auth,
+    evidence,
+    recognizer,
+    webDir: config.webDir,
+    mailer,
+    signupOpen: config.signup === 'open',
+    turnstile,
+  });
+  return { app, close };
 }
 
 if (import.meta.main) {

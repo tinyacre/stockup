@@ -27,6 +27,18 @@ services:
       STOCKUP_S3_ACCESS_KEY_ID: ${STOCKUP_S3_ACCESS_KEY_ID:-}
       STOCKUP_S3_SECRET_ACCESS_KEY: ${STOCKUP_S3_SECRET_ACCESS_KEY:-}
       STOCKUP_S3_PATH_STYLE: ${STOCKUP_S3_PATH_STYLE:-}
+      # Verification codes go out through this SMTP server; without it, nothing that needs email is offered. Setting
+      # only some fails the boot. HOST and FROM ("StockUp <noreply@example.com>" or a bare address) are required. TLS is
+      # starttls (the default, required rather than opportunistic), implicit or none; PORT defaults to 587, 465 or 25 to
+      # match. Leave USERNAME empty for a server that takes mail without logging in.
+      STOCKUP_SMTP_HOST: ${STOCKUP_SMTP_HOST:-}
+      STOCKUP_SMTP_PORT: ${STOCKUP_SMTP_PORT:-}
+      STOCKUP_SMTP_USERNAME: ${STOCKUP_SMTP_USERNAME:-}
+      STOCKUP_SMTP_PASSWORD: ${STOCKUP_SMTP_PASSWORD:-}
+      STOCKUP_SMTP_FROM: ${STOCKUP_SMTP_FROM:-}
+      STOCKUP_SMTP_TLS: ${STOCKUP_SMTP_TLS:-}
+      # open lets anyone register with an emailed code and get a household of their own; it requires SMTP.
+      STOCKUP_SIGNUP: ${STOCKUP_SIGNUP:-closed}
     volumes:
       - ${STOCKUP_EVIDENCE_PATH:-./data/evidence}:/data/evidence
     healthcheck:

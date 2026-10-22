@@ -3,7 +3,7 @@ import { createMiddleware } from 'hono/factory';
 import type { Auth } from './auth';
 import type { Database } from './db';
 import { member, organization, session, user } from './db/schema';
-import { HOUSEHOLD_ADMIN_ROLE, HOUSEHOLD_MEMBER_ROLE, INSTANCE_ADMIN_ROLE } from './households';
+import { HOUSEHOLD_ADMIN_ROLE, HOUSEHOLD_MEMBER_ROLE, INSTANCE_ADMIN_ROLE, isPlaceholderEmail } from './households';
 
 // The member a request acts as. Household-scoped services take it instead of a household ID,
 // so callers can only ever reach their own household's data.
@@ -15,6 +15,8 @@ export interface CurrentMember {
   householdRole: string;
   username: string;
   name: string;
+  // Null for an account without a verified address.
+  email: string | null;
   theme: string;
   isInstanceAdmin: boolean;
 }
@@ -33,6 +35,7 @@ export async function findCurrentMember(db: Database, userId: string): Promise<C
       householdName: organization.name,
       username: user.username,
       name: user.name,
+      email: user.email,
       theme: user.theme,
       role: user.role,
     })
@@ -41,8 +44,13 @@ export async function findCurrentMember(db: Database, userId: string): Promise<C
     .innerJoin(user, eq(user.id, member.userId))
     .where(eq(member.userId, userId));
   if (!found) return null;
-  const { username, role, ...membership } = found;
-  return { ...membership, username: username ?? '', isInstanceAdmin: role === INSTANCE_ADMIN_ROLE };
+  const { username, email, role, ...membership } = found;
+  return {
+    ...membership,
+    username: username ?? '',
+    email: isPlaceholderEmail(email) ? null : email,
+    isInstanceAdmin: role === INSTANCE_ADMIN_ROLE,
+  };
 }
 
 export function requireMember(
