@@ -17,7 +17,7 @@ import {
 import { requireMember } from '../members';
 import { respondToInvitationError as respondToError, unusableInvitationCode as unusableCode } from './invitation-errors';
 import { accountSchema } from './setup';
-import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode, turnstileFailure } from './signup';
+import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode, turnstileFailure } from './email-codes';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 const idParams = z.object({ id: z.string() });

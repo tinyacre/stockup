@@ -25,6 +25,7 @@ import { priceRecordRoutes } from './routes/price-records';
 import { promotionRoutes } from './routes/promotions';
 import { recognitionRoutes } from './routes/recognitions';
 import { setupRoutes } from './routes/setup';
+import { emailCodeRoutes } from './routes/email-codes';
 import { signupRoutes } from './routes/signup';
 import { requireTurnstile, type TurnstileVerifier } from './turnstile';
 
@@ -72,7 +73,8 @@ export function createApp({
     .route('/api', healthRoutes(db))
     .route('/api', capabilityRoutes({ signupOpen, mailer, turnstile }))
     .route('/api', setupRoutes(db, auth))
-    .route('/api', signupRoutes(db, auth, { codes, signupOpen, turnstile, clientIpHeader }))
+    .route('/api', emailCodeRoutes(db, auth, { codes, signupOpen, turnstile, clientIpHeader }))
+    .route('/api', signupRoutes(auth, { codes, signupOpen }))
     .route('/api', passwordResetRoutes(auth, { codes }))
     .route('/api', meRoutes(db, auth, codes))
     .route('/api', memberRoutes(db, auth))

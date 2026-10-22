@@ -3,7 +3,7 @@ import type { Auth } from '../auth';
 import type { EmailCodes } from '../email-codes';
 import { resetPassword } from '../password-reset';
 import { accountSchema } from './setup';
-import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode, turnstileFailure } from './signup';
+import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode, turnstileFailure } from './email-codes';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 

@@ -6,7 +6,7 @@ import { EmailTakenError } from '../db/errors';
 import type { EmailCodes } from '../email-codes';
 import { changeEmail, requireMember, updateTheme, type CurrentMember } from '../members';
 import { accountSchema } from './setup';
-import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode } from './signup';
+import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode } from './email-codes';
 
 export const themes = ['tool', 'price-tag'] as const;
 type Theme = (typeof themes)[number];

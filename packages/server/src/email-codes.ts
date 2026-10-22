@@ -4,7 +4,6 @@ import type { Database, Transaction } from './db';
 import { emailCode, emailCodePurposes } from './db/schema';
 import type { MailMessage, Mailer } from './mailer';
 
-export { emailCodePurposes };
 export type EmailCodePurpose = (typeof emailCodePurposes)[number];
 
 const CODE_TTL_MS = 10 * 60_000;
