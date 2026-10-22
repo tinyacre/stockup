@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -348,6 +349,32 @@ export const recognitionDraft = pgTable(
       'recognition_draft_size_check',
       sql`(${table.sizeAmount} is null) = (${table.sizeUnitDimension} is null)
         and (${table.sizeAmount} is null) = (${table.sizeUnitName} is null)`,
+    ),
+  ],
+);
+
+export const emailCodePurposes = ['register', 'join', 'password-reset', 'change-email'] as const;
+
+// The latest verification code mailed to an address for one purpose, and the send history that rate-limits it.
+export const emailCode = pgTable(
+  'email_code',
+  {
+    // Lowercase.
+    email: text('email').notNull(),
+    purpose: text('purpose', { enum: emailCodePurposes }).notNull(),
+    // HMAC of the code keyed with the auth secret; null once redeemed, or when the send was counted but not mailed.
+    codeHash: text('code_hash'),
+    expiresAt: timestamp('expires_at').notNull(),
+    attempts: integer('attempts').default(0).notNull(),
+    sentAt: timestamp('sent_at').notNull(),
+    // Send times within the last hour, the sliding window of the hourly limit.
+    recentSends: timestamp('recent_sends').array().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.email, table.purpose] }),
+    check(
+      'email_code_purpose_check',
+      sql`${table.purpose} in (${sql.raw(emailCodePurposes.map((p) => `'${p}'`).join(', '))})`,
     ),
   ],
 );

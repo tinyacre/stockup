@@ -1,6 +1,7 @@
 import { count, desc, eq } from 'drizzle-orm';
 import type { Auth } from './auth';
 import type { Database } from './db';
+import type { CurrentMember } from './members';
 import { translate } from './db/errors';
 import { account, member, organization, promotion, user } from './db/schema';
 
@@ -21,6 +22,19 @@ export interface NewAccount {
   username: string;
   password: string;
   name: string;
+  // A verified address; accounts without one get a placeholder.
+  email?: string;
+}
+
+const placeholderEmailDomain = '@users.stockup.invalid';
+
+// Better Auth requires every account to have a unique email, which members who joined without one do not have.
+export function isPlaceholderEmail(email: string) {
+  return email.endsWith(placeholderEmailDomain);
+}
+
+export class EmailTakenError extends Error {
+  override name = 'EmailTakenError';
 }
 
 export interface NewHousehold {
@@ -50,8 +64,8 @@ export async function insertMember(
     await tx.insert(user).values({
       id: userId,
       name: input.account.name,
-      // Members sign in by username; Better Auth still requires a unique email.
-      email: `${userId}@users.stockup.invalid`,
+      email: input.account.email?.toLowerCase() ?? `${userId}${placeholderEmailDomain}`,
+      emailVerified: input.account.email !== undefined,
       username: input.account.username.toLowerCase(),
       displayUsername: input.account.username,
       role: input.instanceAdmin ? INSTANCE_ADMIN_ROLE : 'user',
@@ -76,12 +90,14 @@ export async function insertMember(
   return userId;
 }
 
-// Fails with NameTakenError when the admin's username is in use.
+// Fails with NameTakenError when the admin's username is in use, and with EmailTakenError when their email is.
 export async function createHousehold(db: Executor, auth: Auth, input: NewHousehold) {
   const householdId = crypto.randomUUID();
   const passwordHash = await hashPassword(auth, input.admin.password);
   return translate(() =>
     db.transaction(async (tx) => {
+      // Checked up front because the unique violation on user.email would otherwise read as a taken username.
+      if (input.admin.email !== undefined && (await emailInUse(tx, input.admin.email))) throw new EmailTakenError();
       await tx
         .insert(organization)
         .values({ id: householdId, name: input.householdName, slug: householdId, createdAt: new Date() });
@@ -96,6 +112,20 @@ export async function createHousehold(db: Executor, auth: Auth, input: NewHouseh
       return { userId, householdId };
     }),
   );
+}
+
+export async function emailInUse(db: Executor, email: string) {
+  const [taken] = await db.select({ id: user.id }).from(user).where(eq(user.email, email.toLowerCase()));
+  return taken !== undefined;
+}
+
+export async function renameHousehold(db: Database, scope: CurrentMember, name: string) {
+  const [renamed] = await db
+    .update(organization)
+    .set({ name })
+    .where(eq(organization.id, scope.householdId))
+    .returning({ id: organization.id, name: organization.name });
+  return renamed!;
 }
 
 export async function listHouseholds(db: Database) {

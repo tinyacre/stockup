@@ -1,14 +1,17 @@
 import { AuthForm, AuthLayout } from '@/components/auth-form';
+import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
+import { useCapabilities } from '@/lib/capabilities';
 
 export function SignInPage({ onDone, oauthQuery }: { onDone(): void; oauthQuery?: string }) {
+  const capabilities = useCapabilities();
   return (
     <AuthLayout>
       <AuthForm
         title="登录 StockUp"
         submitLabel="登录"
         fields={[
-          { name: 'username', label: '用户名', autoComplete: 'username' },
+          { name: 'username', label: '用户名或邮箱', autoComplete: 'username' },
           { name: 'password', label: '密码', type: 'password', autoComplete: 'current-password' },
         ]}
         onSubmit={async (values) => {
@@ -24,6 +27,12 @@ export function SignInPage({ onDone, oauthQuery }: { onDone(): void; oauthQuery?
           else onDone();
         }}
       />
+      {/* Registering would drop an MCP client's authorization request, so it is offered only on the app's own page. */}
+      {capabilities?.signup && oauthQuery === undefined && (
+        <Button variant="link" className="self-center" asChild>
+          <a href="/sign-up">没有账号？注册</a>
+        </Button>
+      )}
     </AuthLayout>
   );
 }

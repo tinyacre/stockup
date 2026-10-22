@@ -38,7 +38,8 @@ export function createAuth({ db, secret, baseURL, clientIpHeader, fetchClientMet
     secret,
     database: drizzleAdapter(db, { provider: 'pg', schema }),
     ...(clientIpHeader && { advanced: { ipAddress: { ipAddressHeaders: [clientIpHeader] } } }),
-    // Accounts are created by onboarding and (later) invitations, never by open sign-up.
+    // Accounts are created by StockUp's onboarding, signup and invitation services, each with its household,
+    // never by Better Auth's own sign-up. Email sign-in serves members who type their address instead of a username.
     emailAndPassword: { enabled: true, disableSignUp: true },
     user: {
       additionalFields: {

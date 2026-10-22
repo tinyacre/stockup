@@ -10,6 +10,7 @@ import { connect, migrate, type Database } from '../../src/db';
 import { localEvidenceStore } from '../../src/evidence-store';
 import { createHousehold } from '../../src/households';
 import { fetchClaudeMetadata } from './claude-metadata';
+import type { FakeMailer } from './fake-mailer';
 
 const adminUrl =
   process.env.STOCKUP_TEST_DATABASE_URL ?? 'postgres://stockup:stockup@127.0.0.1:55432/postgres';
@@ -115,6 +116,24 @@ export async function signUpHousehold(ctx: TestContext, { instanceAdmin = false 
     cookie,
     request: (path, init) => requestAs(ctx, cookie, path, init),
   };
+}
+
+// Registers through open signup with an emailed code, so the member has a verified email and a household of their own.
+// Requires an app with `signupOpen` and this mailer.
+export async function signUpWithEmail(ctx: TestContext, mailer: FakeMailer): Promise<SignedInMember & { email: string }> {
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const email = `member_${suffix}@example.com`;
+  const sent = await ctx.app.request('/api/email-codes', jsonRequest('POST', { email, purpose: 'register' }));
+  if (sent.status !== 204) throw new Error(`sending a code failed with ${sent.status}: ${await sent.text()}`);
+  const account = { username: `member_${suffix}`, password: `password-${suffix}`, name: `Member ${suffix}` };
+  const res = await ctx.app.request(
+    '/api/signup',
+    jsonRequest('POST', { ...account, email, code: await mailer.codeFor(email) }),
+  );
+  if (res.status !== 201) throw new Error(`signup failed with ${res.status}: ${await res.text()}`);
+  const { userId, householdId } = (await res.json()) as { userId: string; householdId: string };
+  const cookie = sessionCookie(res);
+  return { userId, householdId, ...account, email, cookie, request: (path, init) => requestAs(ctx, cookie, path, init) };
 }
 
 // The household's admin invites a new member, who registers through the invitation and is signed in.
