@@ -1,10 +1,7 @@
-import { useState, type FormEvent } from 'react';
-import { AuthCard, AuthLayout, AuthNotice } from '@/components/auth-form';
+import { AuthForm, AuthLayout, AuthNotice } from '@/components/auth-form';
 import { codeErrors, EmailCodeField } from '@/components/email-code-field';
 import { turnstileErrors, useTurnstile } from '@/components/turnstile';
 import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { describeError } from '@/components/editing';
 import { api } from '@/lib/api';
@@ -22,36 +19,6 @@ const signUpErrors = {
 export function SignUpPage({ onDone }: { onDone(): void }) {
   const capabilities = useCapabilities();
   const turnstile = useTurnstile();
-  const [error, setError] = useState<string>();
-  const [pending, setPending] = useState(false);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const value = (name: string) => String(data.get(name) ?? '');
-    setPending(true);
-    setError(undefined);
-    try {
-      await api.signUp(
-        {
-          email: value('email'),
-          code: value('code'),
-          name: value('name'),
-          username: value('username'),
-          password: value('password'),
-        },
-        turnstile.token,
-      );
-    } catch (error) {
-      setError(describeError(error, signUpErrors));
-      setPending(false);
-      return;
-    } finally {
-      turnstile.spend();
-    }
-    window.history.replaceState(null, '', '/');
-    onDone();
-  }
 
   const signIn = (
     <Button variant="link" className="self-center" asChild>
@@ -77,29 +44,38 @@ export function SignUpPage({ onDone }: { onDone(): void }) {
 
   return (
     <AuthLayout>
-      <AuthCard title="注册 StockUp" description="注册后会为你创建一个家庭，可以邀请家人加入">
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <EmailCodeField purpose="register" turnstile={turnstile} />
-          <Field label="显示名称" htmlFor="name">
-            <Input id="name" name="name" maxLength={50} required />
-          </Field>
-          <Field label="用户名" htmlFor="username" hint="3–30 位字母、数字、下划线或点">
-            <Input id="username" name="username" autoComplete="username" required />
-          </Field>
-          <Field label="密码" htmlFor="password" hint="至少 8 位">
-            <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
-          </Field>
-          {turnstile.widget}
-          {error && (
-            <p role="alert" className="text-destructive text-sm">
-              {error}
-            </p>
-          )}
-          <Button type="submit" size="lg" disabled={pending || !turnstile.ready}>
-            注册
-          </Button>
-        </form>
-      </AuthCard>
+      <AuthForm
+        title="注册 StockUp"
+        description="注册后会为你创建一个家庭，可以邀请家人加入"
+        submitLabel="注册"
+        turnstile={turnstile}
+        fields={[
+          { name: 'name', label: '显示名称', maxLength: 50 },
+          { name: 'username', label: '用户名', autoComplete: 'username', hint: '3–30 位字母、数字、下划线或点' },
+          {
+            name: 'password',
+            label: '密码',
+            type: 'password',
+            autoComplete: 'new-password',
+            hint: '至少 8 位',
+            minLength: 8,
+          },
+        ]}
+        onSubmit={async ({ email, code, name, username, password }) => {
+          try {
+            await api.signUp(
+              { email: email!, code: code!, name: name!, username: username!, password: password! },
+              turnstile.token,
+            );
+          } catch (error) {
+            return describeError(error, signUpErrors);
+          }
+          window.history.replaceState(null, '', '/');
+          onDone();
+        }}
+      >
+        <EmailCodeField purpose="register" turnstile={turnstile} />
+      </AuthForm>
       {signIn}
     </AuthLayout>
   );

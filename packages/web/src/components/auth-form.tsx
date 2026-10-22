@@ -53,6 +53,8 @@ export interface Field {
   type?: string;
   autoComplete?: string;
   hint?: string;
+  minLength?: number;
+  maxLength?: number;
 }
 
 // A card with labelled inputs; `onSubmit` receives the values of every named input, `children`'s included,
@@ -101,7 +103,15 @@ export function AuthForm({
         {children}
         {fields.map((f) => (
           <FormField key={f.name} label={f.label} htmlFor={f.name} hint={f.hint}>
-            <Input id={f.name} name={f.name} type={f.type ?? 'text'} autoComplete={f.autoComplete} required />
+            <Input
+              id={f.name}
+              name={f.name}
+              type={f.type ?? 'text'}
+              autoComplete={f.autoComplete}
+              minLength={f.minLength}
+              maxLength={f.maxLength}
+              required
+            />
           </FormField>
         ))}
         {turnstile?.widget}
