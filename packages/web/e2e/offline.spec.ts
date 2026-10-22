@@ -57,7 +57,7 @@ test('offline, a member prices a cached product as online and saves once back on
   await expect(page.getByRole('searchbox', { name: '搜索商品' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
 
-  const form = page.getByRole('form', { name: '快速算价' });
+  const form = page.getByRole('form', { name: '录入价格' });
   const options = page.getByRole('region', { name: '保存选项' });
   const judgment = page.getByRole('status', { name: '判断' });
   const references = page.getByRole('list', { name: '参考单价' }).getByRole('listitem');

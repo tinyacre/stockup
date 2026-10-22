@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import {
-  Calculator,
   House,
   LogOut,
   Package,
   ScanText,
   SlidersHorizontal,
+  SquarePen,
   Store,
   Tag,
   UserPlus,
@@ -18,7 +18,7 @@ import { Link } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
 
 export const sections = [
-  { path: '/', label: '算价', group: 'daily', icon: Calculator },
+  { path: '/', label: '录入', group: 'daily', icon: SquarePen },
   { path: '/products', label: '商品', group: 'daily', icon: Package },
   { path: '/recognitions', label: '识别', group: 'daily', icon: ScanText },
   { path: '/channels', label: '渠道', group: 'daily', icon: Store },
