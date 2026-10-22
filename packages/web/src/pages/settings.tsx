@@ -7,12 +7,16 @@ import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Alert, attempt, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
+import { codeErrors, EmailCodeField } from '@/components/email-code-field';
 import { api, type AuthorizedClient, type Me } from '@/lib/api';
+import { useCapabilities } from '@/lib/capabilities';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
 import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
 
-// The header shows the display name and the shell applies the theme, so `onRenamed` reloads the session.
+// The header shows the display name, the shell applies the theme and the email panel shows the address,
+// so `onRenamed` reloads the session.
 export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
+  const capabilities = useCapabilities();
   return (
     <PageContent className="grid items-stretch min-[1200px]:grid-cols-2">
       <PageHeader title="个人设置" />
@@ -54,6 +58,23 @@ export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
           hint="至少 8 位"
         />
       </SettingsForm>
+      {capabilities?.email && (
+        <SettingsForm
+          title="邮箱"
+          description={me.user.email ?? '未设置邮箱'}
+          submitLabel="更换邮箱"
+          onSubmit={async (data) => {
+            const message = await attempt(
+              () => api.changeEmail({ email: String(data.get('email')), code: String(data.get('code')) }),
+              { ...codeErrors, email_taken: '邮箱已被其他账号使用' },
+            );
+            if (!message) onRenamed();
+            return message ? { error: message } : { done: '邮箱已更新', reset: true };
+          }}
+        >
+          <EmailCodeField purpose="change-email" emailLabel="新邮箱" />
+        </SettingsForm>
+      )}
       <SettingsForm
         title="登出所有设备"
         submitLabel="登出其他设备"

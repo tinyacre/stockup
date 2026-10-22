@@ -45,13 +45,14 @@ const sendCodeRoute = createRoute({
       required: true,
       content: {
         'application/json': {
-          schema: z.object({ email: emailSchema, purpose: z.enum(['register']), invitationId: z.string().optional() }),
+          schema: z.object({ email: emailSchema, purpose: z.enum(['register', 'change-email']), invitationId: z.string().optional() }),
         },
       },
     },
   },
   responses: {
     204: { description: 'Accepted' },
+    401: { description: 'A change-email code was requested without signing in', content: errorContent },
     403: {
       description: 'The instance cannot mail (email_unavailable) or signup is closed (signup_closed)',
       content: errorContent,
@@ -97,6 +98,13 @@ export function signupRoutes(db: Database, auth: Auth, { codes, signupOpen }: { 
           if (!signupOpen) return c.json({ error: 'signup_closed' }, 403);
           // A registered address is rate-limited all the same but mailed nothing, so it looks like any other.
           deliver = !(await emailInUse(db, email));
+          break;
+        case 'change-email':
+          if (!(await auth.api.getSession({ headers: c.req.raw.headers }))) {
+            return c.json({ error: 'unauthenticated' }, 401);
+          }
+          // Whether another account has the address is reported only after its code is redeemed.
+          deliver = true;
           break;
       }
       try {
