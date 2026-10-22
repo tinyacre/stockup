@@ -7,12 +7,18 @@ import { createAuth, mcpAvailable } from './auth';
 import { loadConfig, type Config } from './config';
 import { connect, migrate } from './db';
 import { localEvidenceStore } from './evidence-store';
+import { openS3EvidenceStore } from './s3-evidence-store';
 import { failInterruptedRecognitions } from './recognitions';
 import type { ScreenshotRecognizer } from './recognizer';
 
 // Recognitions give up after two minutes, so a slow call retries once at most and stops by then.
 function configuredRecognizer({ apiKey, model }: NonNullable<Config['recognizer']>) {
   return anthropicRecognizer(new Anthropic({ apiKey, timeout: 55_000, maxRetries: 1 }), model);
+}
+
+async function openLocalEvidenceStore(dir: string) {
+  await mkdir(dir, { recursive: true });
+  return localEvidenceStore(dir);
 }
 
 // A recognizer passed in takes the place of the one the config describes.
@@ -22,7 +28,7 @@ export async function bootstrap(
 ) {
   const { fetchClientMetadataResource } = options;
   const recognizer = options.recognizer ?? (config.recognizer && configuredRecognizer(config.recognizer));
-  await mkdir(config.evidenceDir, { recursive: true });
+  const evidence = config.s3 ? await openS3EvidenceStore(config.s3) : await openLocalEvidenceStore(config.evidenceDir);
   const { db, close } = connect(config.databaseUrl);
   await migrate(db);
   await failInterruptedRecognitions(db);
@@ -32,7 +38,6 @@ export async function bootstrap(
   const auth = createAuth({ db, secret: config.authSecret, baseURL: config.baseUrl, clientIpHeader: config.clientIpHeader, fetchClientMetadataResource });
   // Plugin init seeds the MCP resource row, so the database must stay open until it finishes.
   await auth.$context;
-  const evidence = localEvidenceStore(config.evidenceDir);
   return { app: createApp({ db, auth, evidence, recognizer, webDir: config.webDir }), close };
 }
 

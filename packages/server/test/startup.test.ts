@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { loadConfig } from '../src/config';
 import { bootstrap } from '../src/main';
+import { s3EvidenceStore } from '../src/s3-evidence-store';
 import { createTestDatabase, jsonRequest, sessionCookie, testAuthSecret } from './support/harness';
+import { testS3Config } from './support/s3';
 
 const required = {
   STOCKUP_DATABASE_URL: 'postgres://x/y',
@@ -41,6 +43,7 @@ describe('loadConfig', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognizer: undefined,
+      s3: undefined,
     });
   });
 
@@ -64,6 +67,7 @@ describe('loadConfig', () => {
       webDir: '/srv/web',
       clientIpHeader: 'cf-connecting-ip',
       recognizer: { apiKey: 'sk-ant-test', model: 'claude-sonnet-5-5' },
+      s3: undefined,
     });
   });
 
@@ -86,6 +90,67 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...required, STOCKUP_PORT: 'abc' })).toThrow(
       'STOCKUP_PORT',
     );
+  });
+});
+
+describe('loadConfig for S3 evidence storage', () => {
+  const s3 = {
+    STOCKUP_S3_ENDPOINT: 'https://account.r2.cloudflarestorage.com',
+    STOCKUP_S3_BUCKET: 'stockup-evidence',
+    STOCKUP_S3_ACCESS_KEY_ID: 'key-id',
+    STOCKUP_S3_SECRET_ACCESS_KEY: 'secret',
+  };
+
+  test('stores evidence in S3 once the bucket and credentials are set, in us-east-1 by virtual host unless told otherwise', () => {
+    expect(loadConfig({ ...required, ...s3 }).s3).toEqual({
+      endpoint: 'https://account.r2.cloudflarestorage.com',
+      region: 'us-east-1',
+      bucket: 'stockup-evidence',
+      accessKeyId: 'key-id',
+      secretAccessKey: 'secret',
+      pathStyle: false,
+    });
+  });
+
+  test('reads the region and path style', () => {
+    expect(
+      loadConfig({ ...required, ...s3, STOCKUP_S3_REGION: 'auto', STOCKUP_S3_PATH_STYLE: 'true' }).s3,
+    ).toMatchObject({ region: 'auto', pathStyle: true });
+    for (const value of ['1', 'yes', 'TRUE']) {
+      expect(loadConfig({ ...required, ...s3, STOCKUP_S3_PATH_STYLE: value }).s3?.pathStyle).toBe(true);
+    }
+    for (const value of ['0', 'no', 'false', '']) {
+      expect(loadConfig({ ...required, ...s3, STOCKUP_S3_PATH_STYLE: value }).s3?.pathStyle).toBe(false);
+    }
+  });
+
+  test('rejects a path style that is neither true nor false', () => {
+    expect(() => loadConfig({ ...required, ...s3, STOCKUP_S3_PATH_STYLE: 'maybe' })).toThrow('STOCKUP_S3_PATH_STYLE');
+  });
+
+  test('names every missing variable when only some are set', () => {
+    expect(() =>
+      loadConfig({ ...required, STOCKUP_S3_ENDPOINT: s3.STOCKUP_S3_ENDPOINT, STOCKUP_S3_ACCESS_KEY_ID: 'key-id' }),
+    ).toThrow('S3 evidence storage is configured but STOCKUP_S3_BUCKET, STOCKUP_S3_SECRET_ACCESS_KEY not set');
+    expect(() => loadConfig({ ...required, ...s3, STOCKUP_S3_BUCKET: '' })).toThrow(
+      'S3 evidence storage is configured but STOCKUP_S3_BUCKET not set',
+    );
+  });
+
+  test('counts the region or path style alone as a partial S3 setup', () => {
+    const missing =
+      'S3 evidence storage is configured but STOCKUP_S3_ENDPOINT, STOCKUP_S3_BUCKET, STOCKUP_S3_ACCESS_KEY_ID, STOCKUP_S3_SECRET_ACCESS_KEY not set';
+    expect(() => loadConfig({ ...required, STOCKUP_S3_REGION: 'auto' })).toThrow(missing);
+    expect(() => loadConfig({ ...required, STOCKUP_S3_PATH_STYLE: 'true' })).toThrow(missing);
+  });
+
+  test('accepts only a bare http(s) origin as the endpoint', () => {
+    expect(loadConfig({ ...required, ...s3, STOCKUP_S3_ENDPOINT: 'http://127.0.0.1:9000/' }).s3?.endpoint).toBe(
+      'http://127.0.0.1:9000',
+    );
+    for (const endpoint of ['minio:9000', 'ftp://host', 'https://host/bucket', 'https://host?x=1', 'https://user:pw@host']) {
+      expect(() => loadConfig({ ...required, ...s3, STOCKUP_S3_ENDPOINT: endpoint })).toThrow('STOCKUP_S3_ENDPOINT');
+    }
   });
 });
 
@@ -112,6 +177,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognizer: undefined,
+      s3: undefined,
     };
 
     const first = await bootstrap(config);
@@ -135,6 +201,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognizer: undefined,
+      s3: undefined,
     };
     const without = await bootstrap(config);
     cleanups.push(without.close);
@@ -168,6 +235,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognizer: undefined,
+      s3: undefined,
     };
     const stuck = { recognize: () => new Promise<never>(() => {}) };
     const first = await bootstrap(config, { recognizer: stuck });
@@ -203,6 +271,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognizer: undefined,
+      s3: undefined,
     });
     cleanups.push(close);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('MCP'));
@@ -211,5 +280,91 @@ describe('bootstrap', () => {
     expect((await app.request('/api/health')).status).toBe(200);
     expect((await app.request('/mcp', { method: 'POST' })).status).toBe(404);
     expect((await app.request('/.well-known/oauth-protected-resource/mcp')).status).toBe(404);
+  });
+
+  test('serves evidence from S3 with the same headers and no local directory', async () => {
+    const evidenceDir = path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence');
+    const { app, close } = await bootstrap({
+      databaseUrl: await emptyDatabaseUrl(),
+      authSecret: testAuthSecret,
+      baseUrl: 'http://localhost',
+      port: 0,
+      evidenceDir,
+      webDir: undefined,
+      clientIpHeader: undefined,
+      recognizer: undefined,
+      s3: testS3Config(),
+    });
+    cleanups.push(close);
+    expect(existsSync(evidenceDir)).toBe(false);
+
+    const username = `member_${crypto.randomUUID().slice(0, 8)}`;
+    const password = 'password-s3-evidence';
+    await app.request('/api/setup', jsonRequest('POST', { householdName: 'Home', username, password, name: 'Member' }));
+    const cookie = sessionCookie(await app.request('/api/auth/sign-in/username', jsonRequest('POST', { username, password })));
+    const asMember = (url: string, init: RequestInit = {}) =>
+      app.request(url, { ...init, headers: { ...init.headers, cookie } });
+    const created = async (res: Response) => {
+      expect(res.status).toBe(201);
+      return (await res.json()) as { id: string };
+    };
+    const group = await created(await asMember('/api/category-groups', jsonRequest('POST', { name: '生活用品' })));
+    const category = await created(
+      await asMember('/api/categories', jsonRequest('POST', { name: '抽纸', categoryGroupId: group.id })),
+    );
+    const product = await created(
+      await asMember(
+        '/api/products',
+        jsonRequest('POST', { categoryId: category.id, name: '得宝抽纸', pricingUnit: { dimension: 'count', name: '抽' }, baseSize: 90 }),
+      ),
+    );
+    const channel = await created(await asMember('/api/channels', jsonRequest('POST', { name: '京东' })));
+    const record = await created(
+      await asMember(
+        '/api/price-records',
+        jsonRequest('POST', {
+          productId: product.id,
+          channelId: channel.id,
+          date: '2026-06-18',
+          purchased: true,
+          listPrice: 9900,
+          discounts: [],
+          quantity: 18,
+          size: { amount: 130, unit: { dimension: 'count', name: '抽' } },
+        }),
+      ),
+    );
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const form = new FormData();
+    form.append('files', new File([png], 'order.png', { type: 'image/png' }));
+    const uploaded = await asMember(`/api/price-records/${record.id}/evidence`, { method: 'POST', body: form });
+    expect(uploaded.status).toBe(201);
+    const [evidence] = (await uploaded.json()) as { id: string }[];
+    expect(await s3EvidenceStore(testS3Config()).has(evidence!.id)).toBe(true);
+
+    const read = await asMember(`/api/evidence/${evidence!.id}`);
+    expect(read.status).toBe(200);
+    expect(read.headers.get('content-type')).toBe('image/png');
+    expect(read.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(read.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+    expect(new Uint8Array(await read.arrayBuffer())).toEqual(png);
+
+    expect((await asMember(`/api/evidence/${evidence!.id}`, { method: 'DELETE' })).status).toBe(204);
+    expect(await s3EvidenceStore(testS3Config()).has(evidence!.id)).toBe(false);
+  });
+
+  test('refuses to start when the S3 bucket cannot be written', async () => {
+    const config = {
+      databaseUrl: await emptyDatabaseUrl(),
+      authSecret: testAuthSecret,
+      baseUrl: 'http://localhost',
+      port: 0,
+      evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
+      webDir: undefined,
+      clientIpHeader: undefined,
+      recognizer: undefined,
+      s3: testS3Config({ bucket: `stockup-missing-${crypto.randomUUID().slice(0, 8)}` }),
+    };
+    await expect(bootstrap(config)).rejects.toThrow(`S3 bucket ${config.s3.bucket} at ${config.s3.endpoint} cannot be written`);
   });
 });
