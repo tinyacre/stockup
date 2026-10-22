@@ -1,4 +1,4 @@
-# Local Postgres for development and tests; the app runs on the host.
+# Local Postgres and S3-compatible storage (RustFS) for development and tests; the app runs on the host.
 name: stockup-dev
 services:
   postgres:
@@ -17,5 +17,33 @@ services:
       timeout: 3s
       retries: 15
 
+  rustfs:
+    image: rustfs/rustfs:1.0.3
+    environment:
+      RUSTFS_ACCESS_KEY: stockup
+      RUSTFS_SECRET_KEY: stockup-secret
+    ports:
+      - "127.0.0.1:59000:9000"
+    volumes:
+      - stockup-dev-rustfs:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health || wget -qO- http://127.0.0.1:9000/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # RustFS creates no buckets on its own, and an empty directory under /data does not become one.
+  rustfs-buckets:
+    image: amazon/aws-cli:2.27.0
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: stockup
+      AWS_SECRET_ACCESS_KEY: stockup-secret
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["sh", "-c", "aws --endpoint-url http://rustfs:9000 s3api head-bucket --bucket stockup-test 2>/dev/null || aws --endpoint-url http://rustfs:9000 s3 mb s3://stockup-test"]
+
 volumes:
   stockup-dev-postgres:
+  stockup-dev-rustfs:
