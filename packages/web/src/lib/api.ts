@@ -2,7 +2,8 @@ import type { Discount, PromotionLowest, Size, Unit, Verdict } from '@stockup/do
 import type { Theme } from '@/lib/theme';
 
 export interface Me {
-  user: { id: string; username: string; name: string; theme: Theme; isInstanceAdmin: boolean };
+  // `email` is null until the member has a verified address.
+  user: { id: string; username: string; name: string; email: string | null; theme: Theme; isInstanceAdmin: boolean };
   household: { id: string; name: string; role: string };
 }
 
@@ -244,13 +245,16 @@ async function clearCachedData() {
   if ('caches' in window) await caches.delete('api');
 }
 
-async function request<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: { method?: string; body?: unknown; headers?: Record<string, string> },
+): Promise<T> {
   let res: Response;
   try {
     const json = init?.body !== undefined && !(init.body instanceof FormData);
     res = await fetch(path, {
       method: init?.method ?? 'GET',
-      headers: json ? { 'content-type': 'application/json' } : undefined,
+      headers: { ...(json && { 'content-type': 'application/json' }), ...init?.headers },
       body: json ? JSON.stringify(init.body) : (init?.body as FormData | undefined),
     });
   } catch (error) {
@@ -264,7 +268,27 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
   return payload as T;
 }
 
+export interface Capabilities {
+  signup: boolean;
+  email: boolean;
+  turnstileSiteKey: string | null;
+}
+
+export type EmailCodePurpose = 'register' | 'join' | 'password-reset' | 'change-email';
+
+// Turnstile tokens travel in a header so the server can check them before reading the body.
+function turnstileHeaders(token: string | undefined) {
+  return token ? { 'x-turnstile-token': token } : undefined;
+}
+
 export const api = {
+  capabilities: () => request<Capabilities>('/api/capabilities'),
+  sendEmailCode: (body: { email: string; purpose: EmailCodePurpose; invitationId?: string }, turnstileToken?: string) =>
+    request('/api/email-codes', { method: 'POST', body, headers: turnstileHeaders(turnstileToken) }),
+  signUp: async (body: NewAccount & { email: string; code: string }, turnstileToken?: string) => {
+    await request('/api/signup', { method: 'POST', body, headers: turnstileHeaders(turnstileToken) });
+    await clearCachedData();
+  },
   setupStatus: () => request<{ needsSetup: boolean }>('/api/setup'),
   setUp: (body: NewAccount & { householdName: string }) => request('/api/setup', { method: 'POST', body }),
   me: async () => {
