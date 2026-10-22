@@ -57,7 +57,7 @@ export function createApp({ db, auth, evidence, recognizer, webDir }: AppOptions
   if (mcpAvailable(auth.options.baseURL)) {
     // Discovery documents live outside /api/auth, where the mcp() plugin serves them only through auth.handler.
     app.on(['GET', 'HEAD'], '/.well-known/*', (c) => auth.handler(c.req.raw));
-    app.route('/', mcpRoutes(db, auth));
+    app.route('/', mcpRoutes(db, auth, evidence));
   }
 
   app.doc31('/api/openapi.json', {
