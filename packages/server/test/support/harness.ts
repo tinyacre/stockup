@@ -11,6 +11,7 @@ import { localEvidenceStore } from '../../src/evidence-store';
 import { createHousehold } from '../../src/households';
 import { fetchClaudeMetadata } from './claude-metadata';
 import type { FakeMailer } from './fake-mailer';
+import { PASSING_TURNSTILE_TOKEN } from './fake-turnstile';
 
 const adminUrl =
   process.env.STOCKUP_TEST_DATABASE_URL ?? 'postgres://stockup:stockup@127.0.0.1:55432/postgres';
@@ -123,12 +124,12 @@ export async function signUpHousehold(ctx: TestContext, { instanceAdmin = false 
 export async function signUpWithEmail(ctx: TestContext, mailer: FakeMailer): Promise<SignedInMember & { email: string }> {
   const suffix = crypto.randomUUID().slice(0, 8);
   const email = `member_${suffix}@example.com`;
-  const sent = await ctx.app.request('/api/email-codes', jsonRequest('POST', { email, purpose: 'register' }));
+  const sent = await ctx.app.request('/api/email-codes', challenged(jsonRequest('POST', { email, purpose: 'register' })));
   if (sent.status !== 204) throw new Error(`sending a code failed with ${sent.status}: ${await sent.text()}`);
   const account = { username: `member_${suffix}`, password: `password-${suffix}`, name: `Member ${suffix}` };
   const res = await ctx.app.request(
     '/api/signup',
-    jsonRequest('POST', { ...account, email, code: await mailer.codeFor(email) }),
+    challenged(jsonRequest('POST', { ...account, email, code: await mailer.codeFor(email) })),
   );
   if (res.status !== 201) throw new Error(`signup failed with ${res.status}: ${await res.text()}`);
   const { userId, householdId } = (await res.json()) as { userId: string; householdId: string };
@@ -154,11 +155,14 @@ export async function joinHousehold(
   let verified: { email: string; code: string } | undefined;
   if (mailer) {
     const email = `${username}@example.com`;
-    const sent = await ctx.app.request('/api/email-codes', jsonRequest('POST', { email, purpose: 'join', invitationId: id }));
+    const sent = await ctx.app.request(
+      '/api/email-codes',
+      challenged(jsonRequest('POST', { email, purpose: 'join', invitationId: id })),
+    );
     if (sent.status !== 204) throw new Error(`sending a code failed with ${sent.status}: ${await sent.text()}`);
     verified = { email, code: await mailer.codeFor(email) };
   }
-  const res = await ctx.app.request(`/api/join/${id}`, jsonRequest('POST', { ...account, ...verified }));
+  const res = await ctx.app.request(`/api/join/${id}`, challenged(jsonRequest('POST', { ...account, ...verified })));
   if (res.status !== 201) throw new Error(`joining failed with ${res.status}: ${await res.text()}`);
   const { userId, householdId } = (await res.json()) as { userId: string; householdId: string };
   const cookie = sessionCookie(res);
@@ -175,7 +179,7 @@ export async function joinHousehold(
 }
 
 export async function signIn(ctx: TestContext, username: string, password: string) {
-  const res = await ctx.app.request('/api/auth/sign-in/username', jsonRequest('POST', { username, password }));
+  const res = await ctx.app.request('/api/auth/sign-in/username', challenged(jsonRequest('POST', { username, password })));
   if (res.status !== 200) throw new Error(`sign-in failed with ${res.status}: ${await res.text()}`);
   return sessionCookie(res);
 }
@@ -190,6 +194,13 @@ export async function requestAs(ctx: TestContext, cookie: string, path: string, 
   const headers = new Headers(init.headers);
   headers.set('cookie', cookie);
   return ctx.app.request(path, { ...init, headers });
+}
+
+// Carries the token fakeTurnstile() passes, so the helpers work whether or not the app checks one.
+export function challenged(init: RequestInit): RequestInit {
+  const headers = new Headers(init.headers);
+  headers.set('x-turnstile-token', PASSING_TURNSTILE_TOKEN);
+  return { ...init, headers };
 }
 
 export function jsonRequest(method: string, body: unknown): RequestInit {

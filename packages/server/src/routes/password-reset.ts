@@ -3,7 +3,7 @@ import type { Auth } from '../auth';
 import type { EmailCodes } from '../email-codes';
 import { resetPassword } from '../password-reset';
 import { accountSchema } from './setup';
-import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode } from './signup';
+import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode, turnstileFailure } from './signup';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 
@@ -25,6 +25,7 @@ const resetRoute = createRoute({
   },
   responses: {
     204: { description: 'The password was changed and every session of the account ended' },
+    ...turnstileFailure,
     403: { description: 'The instance cannot mail: email_unavailable', content: errorContent },
     ...codeFailures,
   },

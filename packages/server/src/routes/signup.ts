@@ -6,6 +6,7 @@ import { NameTakenError } from '../db/errors';
 import { EmailCodeInvalidError, EmailCodeThrottledError, normalizeEmail, type EmailCodes } from '../email-codes';
 import { emailInUse, EmailTakenError, isPlaceholderEmail } from '../households';
 import { describeInvitation } from '../invitations';
+import { passesTurnstile, type TurnstileVerifier } from '../turnstile';
 import { signUp } from '../signup';
 import { respondToInvitationError } from './invitation-errors';
 import { accountSchema } from './setup';
@@ -32,6 +33,11 @@ export const codeFailures = {
     description: 'The code is wrong or superseded (code_invalid), expired (code_expired), or out of attempts (code_attempts_exceeded)',
     content: errorContent,
   },
+};
+
+// For the endpoints createApp challenges; the instance's capabilities say whether a token is needed.
+export const turnstileFailure = {
+  400: { description: 'The x-turnstile-token header is missing or failed: turnstile_failed', content: errorContent },
 };
 
 const sendCodeRoute = createRoute({
@@ -68,6 +74,7 @@ const sendCodeRoute = createRoute({
       description: 'join: the invitation was used, revoked or has expired (invitation_used, invitation_revoked, invitation_expired)',
       content: errorContent,
     },
+    400: { description: 'The address is malformed, or the Turnstile token failed (turnstile_failed)', content: errorContent },
     429: {
       description: 'Sent too recently: code_rate_limited, with retryAfter seconds (also in Retry-After)',
       content: { 'application/json': { schema: z.object({ error: z.string(), retryAfter: z.number().int() }) } },
@@ -92,17 +99,29 @@ const signUpRoute = createRoute({
       description: 'The member and their household were created',
       content: { 'application/json': { schema: z.object({ userId: z.string(), householdId: z.string() }) } },
     },
+    ...turnstileFailure,
     403: { description: 'Signup is closed: signup_closed', content: errorContent },
     409: { description: 'The username (username_taken) or email (email_taken) is in use', content: errorContent },
     ...codeFailures,
   },
 });
 
-export function signupRoutes(db: Database, auth: Auth, { codes, signupOpen }: { codes?: EmailCodes; signupOpen: boolean }) {
+export function signupRoutes(
+  db: Database,
+  auth: Auth,
+  {
+    codes,
+    signupOpen,
+    turnstile,
+    clientIpHeader,
+  }: { codes?: EmailCodes; signupOpen: boolean; turnstile?: TurnstileVerifier; clientIpHeader?: string },
+) {
   return new OpenAPIHono()
     .openapi(sendCodeRoute, async (c) => {
       const { email, purpose, invitationId } = c.req.valid('json');
       if (!codes) return c.json({ error: 'email_unavailable' }, 403);
+      // Checked before the purpose's own checks, so scripts cannot probe invitations or signup without solving it.
+      if (!(await passesTurnstile(c, turnstile, clientIpHeader))) return c.json({ error: 'turnstile_failed' }, 400);
       let deliver: boolean;
       switch (purpose) {
         case 'register':

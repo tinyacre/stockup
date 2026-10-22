@@ -11,7 +11,7 @@ import { smtpMailer, type Mailer } from './mailer';
 import { openS3EvidenceStore } from './s3-evidence-store';
 import { failInterruptedRecognitions } from './recognitions';
 import type { ScreenshotRecognizer } from './recognizer';
-import type { TurnstileVerifier } from './turnstile';
+import { cloudflareTurnstile, type TurnstileVerifier } from './turnstile';
 
 // Recognitions give up after two minutes, so a slow call retries once at most and stops by then.
 function configuredRecognizer({ apiKey, model }: NonNullable<Config['recognizer']>) {
@@ -23,7 +23,7 @@ async function openLocalEvidenceStore(dir: string) {
   return localEvidenceStore(dir);
 }
 
-// A recognizer or mailer passed in takes the place of the one the config describes.
+// A recognizer, mailer or Turnstile verifier passed in takes the place of the one the config describes.
 export async function bootstrap(
   config: Config,
   options: {
@@ -33,9 +33,10 @@ export async function bootstrap(
     turnstile?: TurnstileVerifier;
   } = {},
 ) {
-  const { fetchClientMetadataResource, turnstile } = options;
+  const { fetchClientMetadataResource } = options;
   const recognizer = options.recognizer ?? (config.recognizer && configuredRecognizer(config.recognizer));
   const mailer = options.mailer ?? (config.smtp && smtpMailer(config.smtp));
+  const turnstile = options.turnstile ?? (config.turnstile && cloudflareTurnstile(config.turnstile));
   const evidence = config.s3 ? await openS3EvidenceStore(config.s3) : await openLocalEvidenceStore(config.evidenceDir);
   const { db, close } = connect(config.databaseUrl);
   await migrate(db);
@@ -55,6 +56,7 @@ export async function bootstrap(
     mailer,
     signupOpen: config.signup === 'open',
     turnstile,
+    clientIpHeader: config.clientIpHeader,
   });
   return { app, close };
 }

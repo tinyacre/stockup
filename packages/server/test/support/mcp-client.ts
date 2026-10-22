@@ -1,7 +1,7 @@
 import { Client, StreamableHTTPClientTransport, UnauthorizedError } from '@modelcontextprotocol/client';
 import type { OAuthClientProvider } from '@modelcontextprotocol/client';
 import { CLAUDE_CLIENT_ID, claudeMetadata } from './claude-metadata';
-import { jsonRequest, type SignedInMember } from './harness';
+import { challenged, jsonRequest, type SignedInMember } from './harness';
 
 // Plays the part of Claude: the OAuth state lives in memory and the redirect to the authorization
 // page is captured, so the test can sign in and consent as the member would in the browser.
@@ -56,11 +56,13 @@ async function signInAndConsent(baseUrl: string, member: SignedInMember, authori
   const signedIn = await expectStatus(
     await fetch(
       new URL('/api/auth/sign-in/username', baseUrl),
-      jsonRequest('POST', {
-        username: member.username,
-        password: member.password,
-        oauth_query: signInUrl.search.slice(1),
-      }),
+      challenged(
+        jsonRequest('POST', {
+          username: member.username,
+          password: member.password,
+          oauth_query: signInUrl.search.slice(1),
+        }),
+      ),
     ),
     200,
   );

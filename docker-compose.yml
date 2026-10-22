@@ -44,6 +44,11 @@ services:
       STOCKUP_SMTP_TLS: ${STOCKUP_SMTP_TLS:-}
       # open lets anyone register with an emailed code and get a household of their own; it requires SMTP.
       STOCKUP_SIGNUP: ${STOCKUP_SIGNUP:-closed}
+      # Cloudflare Turnstile challenges signup, code sending, sign-in (MCP authorization included), password reset and
+      # joining once both keys are set; setting only one fails the boot. Requests are refused while Cloudflare cannot
+      # be reached. Set STOCKUP_CLIENT_IP_HEADER behind a proxy so Cloudflare sees the visitor's address.
+      STOCKUP_TURNSTILE_SITE_KEY: ${STOCKUP_TURNSTILE_SITE_KEY:-}
+      STOCKUP_TURNSTILE_SECRET_KEY: ${STOCKUP_TURNSTILE_SECRET_KEY:-}
     volumes:
       - ${STOCKUP_EVIDENCE_PATH:-./data/evidence}:/data/evidence
     healthcheck:
