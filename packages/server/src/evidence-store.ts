@@ -12,10 +12,15 @@ export interface EvidenceStore {
 
 const keyPattern = /^[A-Za-z0-9_-]+$/;
 
+// Keys map straight to file names in the local store, so every store accepts only plain names
+// and evidence can move between stores under the same keys.
+export function checkEvidenceKey(key: string) {
+  if (!keyPattern.test(key)) throw new RangeError(`Invalid evidence key "${key}"`);
+}
+
 export function localEvidenceStore(dir: string): EvidenceStore {
-  // Keys map straight to file names, so only plain names are accepted.
   const fileOf = async (key: string) => {
-    if (!keyPattern.test(key)) throw new RangeError(`Invalid evidence key "${key}"`);
+    checkEvidenceKey(key);
     return path.join(dir, key);
   };
 
@@ -39,4 +44,22 @@ export function localEvidenceStore(dir: string): EvidenceStore {
       await rm(await fileOf(key), { force: true });
     },
   };
+}
+
+// A store that cannot write, read back and delete a throwaway object rejects with which of the three failed.
+export async function probeEvidenceStore(store: EvidenceStore, name = 'Evidence store') {
+  const key = `stockup-probe-${crypto.randomUUID().replaceAll('-', '')}`;
+  const data = new TextEncoder().encode(key);
+  const step = async <T>(failure: string, run: () => Promise<T>) => {
+    try {
+      return await run();
+    } catch (error) {
+      throw new Error(`${name} cannot be ${failure}: ${error instanceof Error ? error.message : error}`, { cause: error });
+    }
+  };
+
+  await step('written', () => store.put(key, data));
+  const read = await step('read', () => store.get(key));
+  if (!read || !Buffer.from(read).equals(data)) throw new Error(`${name} cannot be read: the probe object came back different`);
+  await step('deleted', () => store.delete(key));
 }

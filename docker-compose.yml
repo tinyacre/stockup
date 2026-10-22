@@ -17,6 +17,16 @@ services:
       # The header carrying the client address for rate limiting, e.g. CF-Connecting-IP behind Cloudflare. Trust it
       # only when the server is reachable solely through that proxy, since clients can set it themselves otherwise.
       STOCKUP_CLIENT_IP_HEADER: ${STOCKUP_CLIENT_IP_HEADER:-}
+      # Evidence goes to an S3-compatible bucket (AWS, Cloudflare R2, RustFS, ...) once these are set, and stays in the
+      # volume below while all are empty. Setting only some fails the boot, as does a bucket the server cannot write,
+      # read and delete in. The bucket stays private: members read evidence through the server. Region defaults to
+      # us-east-1 (R2 takes auto); set PATH_STYLE=true for servers that do not route buckets by subdomain, e.g. RustFS.
+      STOCKUP_S3_ENDPOINT: ${STOCKUP_S3_ENDPOINT:-}
+      STOCKUP_S3_REGION: ${STOCKUP_S3_REGION:-}
+      STOCKUP_S3_BUCKET: ${STOCKUP_S3_BUCKET:-}
+      STOCKUP_S3_ACCESS_KEY_ID: ${STOCKUP_S3_ACCESS_KEY_ID:-}
+      STOCKUP_S3_SECRET_ACCESS_KEY: ${STOCKUP_S3_SECRET_ACCESS_KEY:-}
+      STOCKUP_S3_PATH_STYLE: ${STOCKUP_S3_PATH_STYLE:-}
     volumes:
       - ${STOCKUP_EVIDENCE_PATH:-./data/evidence}:/data/evidence
     healthcheck:
