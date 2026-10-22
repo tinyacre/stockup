@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { describeError } from '@/components/editing';
+import { turnstileErrors, type TurnstileChallenge } from '@/components/turnstile';
 import { api, ApiError, type EmailCodePurpose } from '@/lib/api';
 
 const RESEND_SECONDS = 60;
@@ -15,23 +16,21 @@ export const codeErrors = {
 };
 
 // The email and code inputs of a form, named `email` and `code`, with a button that mails the code and then
-// counts down until another may be sent. The surrounding form reads both values on submit.
+// counts down until another may be sent. The surrounding form reads both values on submit, and renders the
+// Turnstile widget whose token the send spends.
 export function EmailCodeField({
   purpose,
   invitationId,
   emailLabel = '邮箱',
   messages,
-  turnstileToken,
-  onSendSettled,
+  turnstile,
 }: {
   purpose: EmailCodePurpose;
   invitationId?: string;
   emailLabel?: string;
   // Wording for errors specific to the purpose, keyed by error code.
   messages?: Record<string, string>;
-  turnstileToken?: string;
-  // Called after every send attempt, since a Turnstile token is spent either way.
-  onSendSettled?(): void;
+  turnstile: TurnstileChallenge;
 }) {
   const id = useId();
   const emailRef = useRef<HTMLInputElement>(null);
@@ -52,7 +51,7 @@ export function EmailCodeField({
     setSending(true);
     setError(undefined);
     try {
-      await api.sendEmailCode({ email: input.value, purpose, invitationId }, turnstileToken);
+      await api.sendEmailCode({ email: input.value, purpose, invitationId }, turnstile.token);
       setSent(true);
       setWait(RESEND_SECONDS);
     } catch (error) {
@@ -65,14 +64,14 @@ export function EmailCodeField({
           describeError(error, {
             signup_closed: '注册未开放',
             email_unavailable: '暂不支持发送邮件',
-            turnstile_failed: '人机验证失败，请重试',
+            ...turnstileErrors,
             ...messages,
           }),
         );
       }
     } finally {
       setSending(false);
-      onSendSettled?.();
+      turnstile.spend();
     }
   }
 
@@ -89,7 +88,7 @@ export function EmailCodeField({
             required
             onChange={() => setError(undefined)}
           />
-          <Button type="button" variant="outline" disabled={sending || wait > 0} onClick={send}>
+          <Button type="button" variant="outline" disabled={sending || wait > 0 || !turnstile.ready} onClick={send}>
             {wait > 0 ? `${wait} 秒后重发` : sent ? '重新发送' : '发送验证码'}
           </Button>
         </div>

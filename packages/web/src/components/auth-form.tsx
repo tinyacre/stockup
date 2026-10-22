@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Field as FormField } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Panel } from '@/components/ui/panel';
+import type { TurnstileChallenge } from '@/components/turnstile';
 
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -55,7 +56,8 @@ export interface Field {
 }
 
 // A card with labelled inputs; `onSubmit` receives the values of every named input, `children`'s included,
-// and returns an error message or nothing.
+// and returns an error message or nothing. With `turnstile`, the form waits for the challenge and asks for a
+// fresh one after every submit.
 export function AuthForm({
   title,
   description,
@@ -63,6 +65,7 @@ export function AuthForm({
   submitLabel,
   onSubmit,
   children,
+  turnstile,
 }: {
   title: string;
   description?: string;
@@ -71,6 +74,7 @@ export function AuthForm({
   onSubmit(values: Record<string, string>): Promise<string | void>;
   // Inputs placed above `fields`.
   children?: ReactNode;
+  turnstile?: TurnstileChallenge;
 }) {
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
@@ -87,6 +91,7 @@ export function AuthForm({
       setError('操作失败');
     } finally {
       setPending(false);
+      turnstile?.spend();
     }
   }
 
@@ -99,12 +104,13 @@ export function AuthForm({
             <Input id={f.name} name={f.name} type={f.type ?? 'text'} autoComplete={f.autoComplete} required />
           </FormField>
         ))}
+        {turnstile?.widget}
         {error && (
           <p role="alert" className="text-destructive text-sm">
             {error}
           </p>
         )}
-        <Button type="submit" size="lg" disabled={pending}>
+        <Button type="submit" size="lg" disabled={pending || (turnstile && !turnstile.ready)}>
           {submitLabel}
         </Button>
       </form>

@@ -26,7 +26,7 @@ import { promotionRoutes } from './routes/promotions';
 import { recognitionRoutes } from './routes/recognitions';
 import { setupRoutes } from './routes/setup';
 import { signupRoutes } from './routes/signup';
-import type { TurnstileVerifier } from './turnstile';
+import { requireTurnstile, type TurnstileVerifier } from './turnstile';
 
 export interface AppOptions {
   db: Database;
@@ -41,17 +41,38 @@ export interface AppOptions {
   signupOpen?: boolean;
   // Requests pass unchallenged without one.
   turnstile?: TurnstileVerifier;
+  // Where the client address that Turnstile checks tokens against comes from; see Config.clientIpHeader.
+  clientIpHeader?: string;
 }
 
-export function createApp({ db, auth, evidence, recognizer, webDir, mailer, signupOpen = false, turnstile }: AppOptions) {
+export function createApp({
+  db,
+  auth,
+  evidence,
+  recognizer,
+  webDir,
+  mailer,
+  signupOpen = false,
+  turnstile,
+  clientIpHeader,
+}: AppOptions) {
   if (signupOpen && !mailer) throw new Error('Open signup requires a mailer');
   const codes = mailer && createEmailCodes({ db, mailer, secret: auth.options.secret! });
 
-  const app = new OpenAPIHono()
+  const app = new OpenAPIHono();
+  // Every way into an account is challenged, the MCP authorization sign-in included, because any unchallenged
+  // entry is the one scripts would use. Code sending is challenged inside its handler, after the address is
+  // validated, so a typo does not spend the token.
+  app.on(
+    'POST',
+    ['/api/signup', '/api/password-reset', '/api/join/:id', '/api/auth/sign-in/*'],
+    requireTurnstile(turnstile, clientIpHeader),
+  );
+  app
     .route('/api', healthRoutes(db))
     .route('/api', capabilityRoutes({ signupOpen, mailer, turnstile }))
     .route('/api', setupRoutes(db, auth))
-    .route('/api', signupRoutes(db, auth, { codes, signupOpen }))
+    .route('/api', signupRoutes(db, auth, { codes, signupOpen, turnstile, clientIpHeader }))
     .route('/api', passwordResetRoutes(auth, { codes }))
     .route('/api', meRoutes(db, auth, codes))
     .route('/api', memberRoutes(db, auth))

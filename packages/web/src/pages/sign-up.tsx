@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { AuthCard, AuthLayout, AuthNotice } from '@/components/auth-form';
 import { codeErrors, EmailCodeField } from '@/components/email-code-field';
+import { turnstileErrors, useTurnstile } from '@/components/turnstile';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import { useCapabilities } from '@/lib/capabilities';
 
 const signUpErrors = {
   ...codeErrors,
+  ...turnstileErrors,
   username_taken: '用户名已被使用',
   email_taken: '邮箱已被使用',
   signup_closed: '注册未开放',
@@ -19,6 +21,7 @@ const signUpErrors = {
 // Registering also creates the member's own household, named after the username until they rename it.
 export function SignUpPage({ onDone }: { onDone(): void }) {
   const capabilities = useCapabilities();
+  const turnstile = useTurnstile();
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
 
@@ -29,17 +32,22 @@ export function SignUpPage({ onDone }: { onDone(): void }) {
     setPending(true);
     setError(undefined);
     try {
-      await api.signUp({
-        email: value('email'),
-        code: value('code'),
-        name: value('name'),
-        username: value('username'),
-        password: value('password'),
-      });
+      await api.signUp(
+        {
+          email: value('email'),
+          code: value('code'),
+          name: value('name'),
+          username: value('username'),
+          password: value('password'),
+        },
+        turnstile.token,
+      );
     } catch (error) {
       setError(describeError(error, signUpErrors));
       setPending(false);
       return;
+    } finally {
+      turnstile.spend();
     }
     window.history.replaceState(null, '', '/');
     onDone();
@@ -71,7 +79,7 @@ export function SignUpPage({ onDone }: { onDone(): void }) {
     <AuthLayout>
       <AuthCard title="注册 StockUp" description="注册后会为你创建一个家庭，可以邀请家人加入">
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <EmailCodeField purpose="register" />
+          <EmailCodeField purpose="register" turnstile={turnstile} />
           <Field label="显示名称" htmlFor="name">
             <Input id="name" name="name" maxLength={50} required />
           </Field>
@@ -81,12 +89,13 @@ export function SignUpPage({ onDone }: { onDone(): void }) {
           <Field label="密码" htmlFor="password" hint="至少 8 位">
             <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
           </Field>
+          {turnstile.widget}
           {error && (
             <p role="alert" className="text-destructive text-sm">
               {error}
             </p>
           )}
-          <Button type="submit" size="lg" disabled={pending}>
+          <Button type="submit" size="lg" disabled={pending || !turnstile.ready}>
             注册
           </Button>
         </form>

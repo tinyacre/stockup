@@ -18,7 +18,7 @@ import {
 import { requireMember } from '../members';
 import { respondToInvitationError as respondToError, unusableInvitationCode as unusableCode } from './invitation-errors';
 import { accountSchema } from './setup';
-import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode } from './signup';
+import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode, turnstileFailure } from './signup';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 const idParams = z.object({ id: z.string() });
@@ -130,6 +130,7 @@ export function invitationRoutes(db: Database, auth: Auth, { codes }: { codes?: 
         description: 'The member was created',
         content: { 'application/json': { schema: z.object({ userId: z.string(), householdId: z.string() }) } },
       },
+      ...turnstileFailure,
       ...notFound,
       409: { description: 'The username (username_taken) or email (email_taken) is in use', content: errorContent },
       ...unusable,

@@ -1,15 +1,19 @@
 import { AuthForm, AuthLayout } from '@/components/auth-form';
+import { turnstileErrors, useTurnstile } from '@/components/turnstile';
 import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
 import { useCapabilities } from '@/lib/capabilities';
 
 export function SignInPage({ onDone, oauthQuery }: { onDone(): void; oauthQuery?: string }) {
   const capabilities = useCapabilities();
+  // The MCP authorization page is this same form, so it is challenged too.
+  const turnstile = useTurnstile();
   return (
     <AuthLayout>
       <AuthForm
         title="登录 StockUp"
         submitLabel="登录"
+        turnstile={turnstile}
         fields={[
           { name: 'username', label: '用户名或邮箱', autoComplete: 'username' },
           { name: 'password', label: '密码', type: 'password', autoComplete: 'current-password' },
@@ -17,9 +21,13 @@ export function SignInPage({ onDone, oauthQuery }: { onDone(): void; oauthQuery?
         onSubmit={async (values) => {
           let next: string | undefined;
           try {
-            ({ url: next } = await api.signIn({ username: values.username!, password: values.password!, oauthQuery }));
+            ({ url: next } = await api.signIn(
+              { username: values.username!, password: values.password!, oauthQuery },
+              turnstile.token,
+            ));
           } catch (error) {
             if (error instanceof ApiError && error.status === 401) return '用户名或密码错误';
+            if (error instanceof ApiError && error.code === 'turnstile_failed') return turnstileErrors.turnstile_failed;
             throw error;
           }
           // An authorization request continues at the page the response names; without one, the app opens.

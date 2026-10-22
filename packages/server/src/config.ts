@@ -16,6 +16,13 @@ export interface Config {
   signup: 'open' | 'closed';
   // Email-based flows (signup, password reset, changing email) are unavailable without one.
   smtp: SmtpConfig | undefined;
+  // Signup, code sending, sign-in, password reset and joining go unchallenged without one.
+  turnstile: TurnstileConfig | undefined;
+}
+
+export interface TurnstileConfig {
+  siteKey: string;
+  secretKey: string;
 }
 
 export interface SmtpConfig {
@@ -133,6 +140,15 @@ function loadSmtpConfig(env: Env): SmtpConfig | undefined {
   };
 }
 
+const turnstileVars = ['STOCKUP_TURNSTILE_SITE_KEY', 'STOCKUP_TURNSTILE_SECRET_KEY'];
+
+function loadTurnstileConfig(env: Env): TurnstileConfig | undefined {
+  const missing = missingVars(env, turnstileVars);
+  if (missing.length === turnstileVars.length) return undefined;
+  if (missing.length > 0) throw new Error(`Turnstile is configured but ${missing.join(', ')} not set`);
+  return { siteKey: env.STOCKUP_TURNSTILE_SITE_KEY!, secretKey: env.STOCKUP_TURNSTILE_SECRET_KEY! };
+}
+
 // Signup stays closed unless asked for, so a public instance never opens to everyone by accident; it also
 // needs SMTP, since the emailed code is what proves a new account's address.
 function loadSignup(env: Env, smtp: SmtpConfig | undefined): Config['signup'] {
@@ -182,5 +198,6 @@ export function loadConfig(env: Env): Config {
     s3: loadS3Config(env),
     signup: loadSignup(env, smtp),
     smtp,
+    turnstile: loadTurnstileConfig(env),
   };
 }

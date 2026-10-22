@@ -8,6 +8,7 @@ import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Alert, attempt, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
 import { codeErrors, EmailCodeField } from '@/components/email-code-field';
+import { useTurnstile } from '@/components/turnstile';
 import { api, type AuthorizedClient, type Me } from '@/lib/api';
 import { useCapabilities } from '@/lib/capabilities';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
@@ -58,23 +59,7 @@ export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
           hint="至少 8 位"
         />
       </SettingsForm>
-      {capabilities?.email && (
-        <SettingsForm
-          title="邮箱"
-          description={me.user.email ?? '未设置邮箱'}
-          submitLabel="更换邮箱"
-          onSubmit={async (data) => {
-            const message = await attempt(
-              () => api.changeEmail({ email: String(data.get('email')), code: String(data.get('code')) }),
-              { ...codeErrors, email_taken: '邮箱已被其他账号使用' },
-            );
-            if (!message) onRenamed();
-            return message ? { error: message } : { done: '邮箱已更新', reset: true };
-          }}
-        >
-          <EmailCodeField purpose="change-email" emailLabel="新邮箱" />
-        </SettingsForm>
-      )}
+      {capabilities?.email && <EmailSetting email={me.user.email} onChanged={onRenamed} />}
       <SettingsForm
         title="登出所有设备"
         submitLabel="登出其他设备"
@@ -85,6 +70,29 @@ export function SettingsPage({ me, onRenamed }: { me: Me; onRenamed(): void }) {
       />
       <AuthorizedClients />
     </PageContent>
+  );
+}
+
+// Only sending the code is challenged: the change itself needs the session and that code.
+function EmailSetting({ email, onChanged }: { email: string | null; onChanged(): void }) {
+  const turnstile = useTurnstile();
+  return (
+    <SettingsForm
+      title="邮箱"
+      description={email ?? '未设置邮箱'}
+      submitLabel="更换邮箱"
+      onSubmit={async (data) => {
+        const message = await attempt(
+          () => api.changeEmail({ email: String(data.get('email')), code: String(data.get('code')) }),
+          { ...codeErrors, email_taken: '邮箱已被其他账号使用' },
+        );
+        if (!message) onChanged();
+        return message ? { error: message } : { done: '邮箱已更新', reset: true };
+      }}
+    >
+      <EmailCodeField purpose="change-email" emailLabel="新邮箱" turnstile={turnstile} />
+      {turnstile.widget}
+    </SettingsForm>
   );
 }
 

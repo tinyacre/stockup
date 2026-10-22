@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AuthForm, AuthLayout, AuthNotice } from '@/components/auth-form';
 import { codeErrors, EmailCodeField } from '@/components/email-code-field';
+import { turnstileErrors, useTurnstile } from '@/components/turnstile';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { describeError } from '@/components/editing';
@@ -32,6 +33,7 @@ export function JoinPage({
   onSignIn?(): void;
 }) {
   const capabilities = useCapabilities();
+  const turnstile = useTurnstile();
   const [invitation, setInvitation] = useState<Invitation>({ state: 'loading' });
   useEffect(() => {
     api.describeInvitation(invitationId).then(
@@ -83,6 +85,7 @@ export function JoinPage({
         title={title}
         description={`${invitation.invitedBy} 邀请`}
         submitLabel="注册并加入"
+        turnstile={turnstile}
         fields={[
           { name: 'name', label: '显示名称' },
           { name: 'username', label: '用户名', autoComplete: 'username', hint: '3–30 位字母、数字、下划线或点' },
@@ -91,9 +94,14 @@ export function JoinPage({
         onSubmit={async (values) => {
           try {
             const { name, username, password, email, code } = values;
-            await api.join(invitationId, { name: name!, username: username!, password: password!, email, code });
+            await api.join(
+              invitationId,
+              { name: name!, username: username!, password: password!, email, code },
+              turnstile.token,
+            );
           } catch (error) {
             if (error instanceof ApiError && error.code === 'username_taken') return '用户名已被使用';
+            if (error instanceof ApiError && error.code === 'turnstile_failed') return turnstileErrors.turnstile_failed;
             if (error instanceof ApiError && error.status === 400) {
               return '填写有误';
             }
@@ -103,7 +111,7 @@ export function JoinPage({
         }}
       >
         {/* Only an instance that can mail asks for an email, so members can recover their password with it. */}
-        {capabilities.email && <EmailCodeField purpose="join" invitationId={invitationId} messages={unusable} />}
+        {capabilities.email && <EmailCodeField purpose="join" invitationId={invitationId} messages={unusable} turnstile={turnstile} />}
       </AuthForm>
       {onSignIn && (
         <Button variant="link" className="mt-4 self-center" onClick={onSignIn}>

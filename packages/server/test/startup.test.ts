@@ -46,6 +46,7 @@ describe('loadConfig', () => {
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
+      turnstile: undefined,
     });
   });
 
@@ -72,6 +73,7 @@ describe('loadConfig', () => {
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
+      turnstile: undefined,
     });
   });
 
@@ -241,6 +243,30 @@ describe('loadConfig for SMTP and signup', () => {
   });
 });
 
+describe('loadConfig for Turnstile', () => {
+  test('stays off without keys', () => {
+    expect(loadConfig(required).turnstile).toBeUndefined();
+  });
+
+  test('turns on with both keys', () => {
+    expect(
+      loadConfig({ ...required, STOCKUP_TURNSTILE_SITE_KEY: 'site', STOCKUP_TURNSTILE_SECRET_KEY: 'secret' }).turnstile,
+    ).toEqual({ siteKey: 'site', secretKey: 'secret' });
+  });
+
+  test('refuses to start with only one key', () => {
+    expect(() => loadConfig({ ...required, STOCKUP_TURNSTILE_SITE_KEY: 'site' })).toThrow(
+      'Turnstile is configured but STOCKUP_TURNSTILE_SECRET_KEY not set',
+    );
+    expect(() => loadConfig({ ...required, STOCKUP_TURNSTILE_SECRET_KEY: 'secret' })).toThrow(
+      'Turnstile is configured but STOCKUP_TURNSTILE_SITE_KEY not set',
+    );
+    expect(() =>
+      loadConfig({ ...required, STOCKUP_TURNSTILE_SITE_KEY: 'site', STOCKUP_TURNSTILE_SECRET_KEY: '' }),
+    ).toThrow('Turnstile is configured but STOCKUP_TURNSTILE_SECRET_KEY not set');
+  });
+});
+
 describe('bootstrap', () => {
   const cleanups: Array<() => Promise<void>> = [];
   afterAll(async () => {
@@ -267,6 +293,7 @@ describe('bootstrap', () => {
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
+      turnstile: undefined,
     };
 
     const first = await bootstrap(config);
@@ -293,6 +320,7 @@ describe('bootstrap', () => {
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
+      turnstile: undefined,
     };
     const without = await bootstrap(config);
     cleanups.push(without.close);
@@ -329,6 +357,7 @@ describe('bootstrap', () => {
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
+      turnstile: undefined,
     };
     const stuck = { recognize: () => new Promise<never>(() => {}) };
     const first = await bootstrap(config, { recognizer: stuck });
@@ -373,6 +402,25 @@ describe('bootstrap', () => {
     });
   });
 
+  test('challenges sign-in with the configured Turnstile keys', async () => {
+    const { app, close } = await bootstrap(
+      loadConfig({
+        STOCKUP_DATABASE_URL: await emptyDatabaseUrl(),
+        STOCKUP_AUTH_SECRET: testAuthSecret,
+        STOCKUP_BASE_URL: 'http://localhost',
+        STOCKUP_EVIDENCE_DIR: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
+        STOCKUP_TURNSTILE_SITE_KEY: 'site-key',
+        STOCKUP_TURNSTILE_SECRET_KEY: 'secret-key',
+      }),
+    );
+    cleanups.push(close);
+    expect(await (await app.request('/api/capabilities')).json()).toMatchObject({ turnstileSiteKey: 'site-key' });
+    // Without a token the verifier refuses before calling Cloudflare.
+    const res = await app.request('/api/auth/sign-in/username', jsonRequest('POST', { username: 'someone', password: 'password' }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'turnstile_failed' });
+  });
+
   test('serves without MCP when the base URL is plain HTTP off loopback', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
     const { app, close } = await bootstrap({
@@ -387,6 +435,7 @@ describe('bootstrap', () => {
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
+      turnstile: undefined,
     });
     cleanups.push(close);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('MCP'));
@@ -411,6 +460,7 @@ describe('bootstrap', () => {
       s3: testS3Config(),
       signup: 'closed' as const,
       smtp: undefined,
+      turnstile: undefined,
     });
     cleanups.push(close);
     expect(existsSync(evidenceDir)).toBe(false);
@@ -483,6 +533,7 @@ describe('bootstrap', () => {
       s3: testS3Config({ bucket: `stockup-missing-${crypto.randomUUID().slice(0, 8)}` }),
       signup: 'closed' as const,
       smtp: undefined,
+      turnstile: undefined,
     };
     await expect(bootstrap(config)).rejects.toThrow(`S3 bucket ${config.s3.bucket} at ${config.s3.endpoint} cannot be written`);
   });
