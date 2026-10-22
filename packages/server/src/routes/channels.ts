@@ -7,7 +7,7 @@ import { NameTakenError, NotEmptyError } from '../db/errors';
 import { requireMember } from '../members';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
-const name = z.string().trim().min(1).max(50);
+export const name = z.string().trim().min(1).max(50);
 const idParams = z.object({ id: z.string() });
 
 export const channelSchema = z
@@ -18,7 +18,7 @@ export const channelSchema = z
   })
   .openapi('Channel');
 
-const channelChangesSchema = z
+export const channelChangesSchema = z
   .object({ name: name.optional(), archived: z.boolean().optional() })
   .refine((value) => Object.values(value).some((v) => v !== undefined), {
     message: 'Provide at least one field to change',
