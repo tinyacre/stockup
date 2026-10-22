@@ -18,6 +18,7 @@ import { householdRoutes } from './routes/households';
 import { invitationRoutes } from './routes/invitations';
 import { judgmentRoutes } from './routes/judgments';
 import { mcpClientRoutes } from './routes/mcp-clients';
+import { passwordResetRoutes } from './routes/password-reset';
 import { meRoutes } from './routes/me';
 import { memberRoutes } from './routes/members';
 import { priceRecordRoutes } from './routes/price-records';
@@ -34,7 +35,7 @@ export interface AppOptions {
   // Recognition is unavailable without one.
   recognizer?: ScreenshotRecognizer;
   webDir?: string;
-  // Email-based flows (code sending, signup) are unavailable without one.
+  // Email-based flows (code sending, signup, password reset) are unavailable without one.
   mailer?: Mailer;
   // Open signup; requires a mailer.
   signupOpen?: boolean;
@@ -51,6 +52,7 @@ export function createApp({ db, auth, evidence, recognizer, webDir, mailer, sign
     .route('/api', capabilityRoutes({ signupOpen, mailer, turnstile }))
     .route('/api', setupRoutes(db, auth))
     .route('/api', signupRoutes(db, auth, { codes, signupOpen }))
+    .route('/api', passwordResetRoutes(auth, { codes }))
     .route('/api', meRoutes(db, auth))
     .route('/api', memberRoutes(db, auth))
     .route('/api', householdRoutes(db, auth))
@@ -72,6 +74,10 @@ export function createApp({ db, auth, evidence, recognizer, webDir, mailer, sign
   // Addresses are verified with StockUp's own codes, which accounts are created or changed together with.
   app.all('/api/auth/send-verification-email', (c) => c.json({ error: 'not_found' }, 404));
   app.all('/api/auth/verify-email', (c) => c.json({ error: 'not_found' }, 404));
+  // Passwords are reset with StockUp's emailed codes through POST /api/password-reset, which also ends every session.
+  app.all('/api/auth/request-password-reset', (c) => c.json({ error: 'not_found' }, 404));
+  app.all('/api/auth/reset-password/*', (c) => c.json({ error: 'not_found' }, 404));
+  app.all('/api/auth/forget-password/*', (c) => c.json({ error: 'not_found' }, 404));
   // One field takes a username or an email, but the username endpoint rejects anything shaped like an email.
   app.post('/api/auth/sign-in/username', async (c) => {
     const body = (await c.req.raw.clone().json().catch(() => null)) as Record<string, unknown> | null;
