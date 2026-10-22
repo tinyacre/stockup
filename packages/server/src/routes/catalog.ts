@@ -27,13 +27,13 @@ import { lowestUnitPrice, summarizePrices } from '../price-records';
 
 const errorSchema = z.object({ error: z.string() });
 const errorContent = { 'application/json': { schema: errorSchema } };
-const name = z.string().trim().min(1).max(50);
+export const name = z.string().trim().min(1).max(50);
 const idParams = z.object({ id: z.string() });
 
 const atLeastOne = (value: object) => Object.values(value).some((v) => v !== undefined);
 const nothingToChange = { message: 'Provide at least one field to change' };
 
-const categoryGroupSchema = z.object({ id: z.string(), name: z.string() }).openapi('CategoryGroup');
+export const categoryGroupSchema = z.object({ id: z.string(), name: z.string() }).openapi('CategoryGroup');
 
 export const catalogSchema = z
   .array(
@@ -44,7 +44,7 @@ export const catalogSchema = z
   )
   .openapi('Catalog');
 
-const categorySchema = z
+export const categorySchema = z
   .object({ id: z.string(), name: z.string(), categoryGroupId: z.string() })
   .openapi('Category');
 
@@ -125,6 +125,10 @@ export const newProductSchema = z
     note: note.optional(),
   })
   .refine((value) => (value.categoryId === undefined) !== (value.categoryGroupId === undefined), twoPlacements);
+
+export const categoryChangesSchema = z
+  .object({ name: name.optional(), categoryGroupId: z.string().optional() })
+  .refine(atLeastOne, nothingToChange);
 
 const productChangesSchema = z
   .object({
@@ -257,9 +261,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
     middleware,
     request: {
       params: idParams,
-      body: json(
-        z.object({ name: name.optional(), categoryGroupId: z.string().optional() }).refine(atLeastOne, nothingToChange),
-      ),
+      body: json(categoryChangesSchema),
     },
     responses: {
       200: { description: 'Updated', content: { 'application/json': { schema: categorySchema } } },
