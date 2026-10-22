@@ -302,10 +302,14 @@ export const api = {
     }
   },
   // With the signed query of an authorization request, the response names the page that continues it.
-  signIn: async ({ oauthQuery, ...credentials }: { username: string; password: string; oauthQuery?: string }) => {
+  signIn: async (
+    { oauthQuery, ...credentials }: { username: string; password: string; oauthQuery?: string },
+    turnstileToken?: string,
+  ) => {
     const signedIn = await request<{ url?: string }>('/api/auth/sign-in/username', {
       method: 'POST',
       body: { ...credentials, oauth_query: oauthQuery },
+      headers: turnstileHeaders(turnstileToken),
     });
     await clearCachedData();
     return signedIn;
@@ -353,8 +357,12 @@ export const api = {
     request<{ householdName: string; invitedBy: string }>(`/api/join/${encodeURIComponent(id)}`),
   rejoin: (id: string) => request(`/api/join/${encodeURIComponent(id)}/rejoin`, { method: 'POST' }),
   // `email` and its join code are required when the instance can mail, and ignored otherwise.
-  join: async (id: string, body: NewAccount & { email?: string; code?: string }) => {
-    await request(`/api/join/${encodeURIComponent(id)}`, { method: 'POST', body });
+  join: async (id: string, body: NewAccount & { email?: string; code?: string }, turnstileToken?: string) => {
+    await request(`/api/join/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      body,
+      headers: turnstileHeaders(turnstileToken),
+    });
     await clearCachedData();
   },
 
