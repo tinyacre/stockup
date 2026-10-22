@@ -1,6 +1,7 @@
 import { count, desc, eq } from 'drizzle-orm';
 import type { Auth } from './auth';
 import type { Database } from './db';
+import type { CurrentMember } from './members';
 import { translate } from './db/errors';
 import { account, member, organization, promotion, user } from './db/schema';
 
@@ -116,6 +117,15 @@ export async function createHousehold(db: Executor, auth: Auth, input: NewHouseh
 export async function emailInUse(db: Executor, email: string) {
   const [taken] = await db.select({ id: user.id }).from(user).where(eq(user.email, email.toLowerCase()));
   return taken !== undefined;
+}
+
+export async function renameHousehold(db: Database, scope: CurrentMember, name: string) {
+  const [renamed] = await db
+    .update(organization)
+    .set({ name })
+    .where(eq(organization.id, scope.householdId))
+    .returning({ id: organization.id, name: organization.name });
+  return renamed!;
 }
 
 export async function listHouseholds(db: Database) {

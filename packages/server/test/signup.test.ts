@@ -287,4 +287,23 @@ describe('open signup', () => {
     expect(JSON.stringify(rows)).not.toContain(code);
   });
 
+  test('the household admin renames the household', async () => {
+    const admin = await signUpWithEmail(ctx, mailer);
+    const res = await admin.request('/api/household', jsonRequest('PATCH', { name: ' 我们家 ' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: admin.householdId, name: '我们家' });
+    expect(await (await admin.request('/api/me')).json()).toMatchObject({ household: { name: '我们家' } });
+
+    expect((await admin.request('/api/household', jsonRequest('PATCH', { name: ' ' }))).status).toBe(400);
+  });
+
+  test('ordinary members cannot rename the household', async () => {
+    const admin = await signUpWithEmail(ctx, mailer);
+    const invited = await admin.request('/api/invitations', jsonRequest('POST', { expiresInDays: 1 }));
+    const { id } = (await invited.json()) as { id: string };
+    const account = { username: `member_${crypto.randomUUID().slice(0, 8)}`, password: 'member-password', name: '家人' };
+    const joined = await ctx.app.request(`/api/join/${id}`, jsonRequest('POST', account));
+    const res = await requestAs(ctx, sessionCookie(joined), '/api/household', jsonRequest('PATCH', { name: '他们家' }));
+    expect(res.status).toBe(403);
+  });
 });

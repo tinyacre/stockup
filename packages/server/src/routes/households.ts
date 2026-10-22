@@ -2,8 +2,8 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Auth } from '../auth';
 import type { Database } from '../db';
 import { NameTakenError } from '../db/errors';
-import { createHousehold, listHouseholds } from '../households';
-import { requireInstanceAdmin } from '../members';
+import { createHousehold, listHouseholds, renameHousehold } from '../households';
+import { requireInstanceAdmin, requireMember } from '../members';
 import { accountSchema, householdNameSchema } from './setup';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
@@ -55,7 +55,27 @@ export function householdRoutes(db: Database, auth: Auth) {
     },
   });
 
+  const renameRoute = createRoute({
+    method: 'patch',
+    path: '/household',
+    tags: ['households'],
+    summary: "Rename the signed-in member's household",
+    middleware: requireMember(auth, db, { householdAdmin: true }),
+    request: {
+      body: { required: true, content: { 'application/json': { schema: z.object({ name: householdNameSchema }) } } },
+    },
+    responses: {
+      200: {
+        description: 'The renamed household',
+        content: { 'application/json': { schema: z.object({ id: z.string(), name: z.string() }) } },
+      },
+      401: { description: 'Not signed in' },
+      403: { description: 'Only the household admin renames the household', content: errorContent },
+    },
+  });
+
   return new OpenAPIHono()
+    .openapi(renameRoute, async (c) => c.json(await renameHousehold(db, c.var.member, c.req.valid('json').name), 200))
     .openapi(listRoute, async (c) => c.json(await listHouseholds(db), 200))
     .openapi(createHouseholdRoute, async (c) => {
       try {
