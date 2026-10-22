@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, type Capabilities } from '@/lib/api';
 
-// Unreachable or not, the instance then offers nothing optional, which leaves the pages as they were before.
+// Used when the server cannot be asked: sign-in offers neither signup nor password reset, joining and settings
+// ask for no email, and no form shows a Turnstile challenge.
 const none: Capabilities = { signup: false, email: false, turnstileSiteKey: null };
 
 let loaded: Promise<Capabilities> | undefined;
