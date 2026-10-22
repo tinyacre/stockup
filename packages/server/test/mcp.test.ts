@@ -43,7 +43,19 @@ async function searchProducts(client: McpClient, args: Record<string, unknown>) 
 }
 
 const readTools = ['search_products', 'get_product', 'judge_price', 'list_channels', 'list_categories'];
-const writeTools = ['create_product', 'create_price_record'];
+const writeTools = [
+  'create_product',
+  'create_price_record',
+  'create_channel',
+  'update_channel',
+  'delete_channel',
+  'create_category_group',
+  'update_category_group',
+  'delete_category_group',
+  'create_category',
+  'update_category',
+  'delete_category',
+];
 
 const mcpUrl = () => new URL('/mcp', ctx.baseUrl);
 const listTools = (headers: Record<string, string> = {}) =>
@@ -266,17 +278,19 @@ async function callFails(client: McpClient, name: string, args: Record<string, u
 const allScopes = 'stockup:read stockup:write offline_access';
 
 describe('MCP tool set', () => {
-  test('offers nothing that deletes, merges, sets a stock line or manages members', async () => {
+  test('offers nothing that merges, sets a stock line or manages members, and marks deletes destructive', async () => {
     const m = await signUpHousehold(ctx);
     const { client } = await connectAsClaude(ctx.baseUrl, m);
     const { tools } = await client.listTools();
 
     for (const tool of tools) {
-      expect(tool.name).not.toMatch(/delete|remove|merge|update|replace|archive|member|invit|household|stock/);
+      expect(tool.name).not.toMatch(/merge|member|invit|household|stock/);
       expect(Object.keys(tool.inputSchema.properties ?? {})).not.toContain('stockLine');
-    }
-    for (const tool of tools.filter((t) => readTools.includes(t.name))) {
-      expect(tool.annotations?.readOnlyHint).toBe(true);
+      if (readTools.includes(tool.name)) {
+        expect(tool.annotations?.readOnlyHint).toBe(true);
+      } else {
+        expect(tool.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: tool.name.startsWith('delete_') });
+      }
     }
   });
 
@@ -508,6 +522,175 @@ describe('create_price_record', () => {
       const records = (await (await member.request(`/api/price-records?productId=${productId}`)).json()) as unknown[];
       expect(records).toEqual([]);
     }
+  });
+});
+
+interface Channel {
+  id: string;
+  name: string;
+  archived: boolean;
+}
+
+describe('channel tools', () => {
+  test('create, rename, archive and restore a channel; archived channels leave the default list', async () => {
+    const m = await signUpHousehold(ctx);
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+
+    const { channel } = await call<{ channel: Channel }>(client, 'create_channel', { name: '  山姆  ' });
+    expect(channel).toEqual({ id: expect.any(String), name: '山姆', archived: false });
+    const renamed = await call<{ channel: Channel }>(client, 'update_channel', { channelId: channel.id, name: '山姆会员店' });
+    expect(renamed.channel).toEqual({ ...channel, name: '山姆会员店' });
+
+    const archived = await call<{ channel: Channel }>(client, 'update_channel', { channelId: channel.id, archived: true });
+    expect(archived.channel.archived).toBe(true);
+    expect((await call<{ channels: Channel[] }>(client, 'list_channels', {})).channels).toEqual([]);
+    expect((await call<{ channels: Channel[] }>(client, 'list_channels', { includeArchived: true })).channels).toEqual([
+      { id: channel.id, name: '山姆会员店', archived: true },
+    ]);
+
+    await call(client, 'update_channel', { channelId: channel.id, archived: false });
+    const stored = await m.request(`/api/channels/${channel.id}`);
+    expect(await stored.json()).toEqual({ id: channel.id, name: '山姆会员店', archived: false });
+
+    expect(await callFails(client, 'update_channel', { channelId: channel.id })).toBeTruthy();
+  });
+
+  test('a taken name or a channel in use fails with a sentence saying what to do instead', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    await recordPrice(m, s, '2026-03-01', 7000);
+    const other = await post<Channel>(m, '/api/channels', { name: '盒马' });
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+    const { channels } = await call<{ channels: Channel[] }>(client, 'list_channels', {});
+    const used = channels.find((c) => c.id === s.channelId)!;
+
+    expect(await callFails(client, 'create_channel', { name: used.name })).toContain('同名');
+    expect(await callFails(client, 'update_channel', { channelId: other.id, name: used.name })).toContain('同名');
+    expect(await callFails(client, 'delete_channel', { channelId: s.channelId })).toContain('归档');
+    expect((await m.request(`/api/channels/${s.channelId}`)).status).toBe(200);
+
+    expect(await call(client, 'delete_channel', { channelId: other.id })).toEqual({ deletedId: other.id });
+    expect((await m.request(`/api/channels/${other.id}`)).status).toBe(404);
+  });
+
+  test("another household's channel is not found and stays as it was", async () => {
+    const alice = await signUpHousehold(ctx);
+    const bob = await signUpHousehold(ctx);
+    const bobs = await post<Channel>(bob, '/api/channels', { name: '拼多多' });
+    const { client } = await connectAsClaude(ctx.baseUrl, alice);
+
+    expect(await callFails(client, 'update_channel', { channelId: bobs.id, archived: true })).toContain('渠道');
+    expect(await callFails(client, 'delete_channel', { channelId: bobs.id })).toContain('渠道');
+    expect(await (await bob.request(`/api/channels/${bobs.id}`)).json()).toEqual(bobs);
+
+    await call(client, 'create_channel', { name: '拼多多' });
+    expect((await (await bob.request('/api/channels')).json()) as Channel[]).toEqual([bobs]);
+  });
+});
+
+interface CategoryGroup {
+  id: string;
+  name: string;
+}
+
+interface Category extends CategoryGroup {
+  categoryGroupId: string;
+}
+
+describe('category tools', () => {
+  test('create and rename groups, create categories in them, and move a category to another group', async () => {
+    const m = await signUpHousehold(ctx);
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+
+    const { categoryGroup: food } = await call<{ categoryGroup: CategoryGroup }>(client, 'create_category_group', {
+      name: '食品',
+    });
+    const { categoryGroup: home } = await call<{ categoryGroup: CategoryGroup }>(client, 'create_category_group', {
+      name: '日用',
+    });
+    expect((await call<{ categoryGroup: CategoryGroup }>(client, 'update_category_group', {
+      categoryGroupId: home.id,
+      name: '生活用品',
+    })).categoryGroup).toEqual({ id: home.id, name: '生活用品' });
+
+    const { category } = await call<{ category: Category }>(client, 'create_category', {
+      categoryGroupId: food.id,
+      name: '纸品',
+    });
+    expect(category).toEqual({ id: expect.any(String), name: '纸品', categoryGroupId: food.id });
+    const moved = await call<{ category: Category }>(client, 'update_category', {
+      categoryId: category.id,
+      categoryGroupId: home.id,
+      name: '抽纸',
+    });
+    expect(moved.category).toEqual({ id: category.id, name: '抽纸', categoryGroupId: home.id });
+
+    const { categoryGroups } = await call<{ categoryGroups: (CategoryGroup & { categories: CategoryGroup[] })[] }>(
+      client,
+      'list_categories',
+      {},
+    );
+    expect(categoryGroups.map((g) => [g.name, g.categories.map((c) => c.name)])).toEqual([
+      ['生活用品', ['抽纸']],
+      ['食品', []],
+    ]);
+    expect(await callFails(client, 'update_category', { categoryId: category.id })).toBeTruthy();
+  });
+
+  test('taken names and groups or categories still holding something fail with a sentence saying why', async () => {
+    const m = await signUpHousehold(ctx);
+    const s = await seedHousehold(m);
+    const { client } = await connectAsClaude(ctx.baseUrl, m);
+    const [group] = (await call<{ categoryGroups: (CategoryGroup & { categories: CategoryGroup[] })[] }>(
+      client,
+      'list_categories',
+      {},
+    )).categoryGroups;
+    const seeded = group!.categories[0]!;
+
+    expect(await callFails(client, 'create_category_group', { name: group!.name })).toContain('同名');
+    expect(await callFails(client, 'create_category', { categoryGroupId: group!.id, name: seeded.name })).toContain('同名');
+    expect(await callFails(client, 'delete_category', { categoryId: s.categoryId })).toContain('商品');
+    expect(await callFails(client, 'delete_category_group', { categoryGroupId: group!.id })).toContain('品类');
+
+    const { categoryGroup: spare } = await call<{ categoryGroup: CategoryGroup }>(client, 'create_category_group', {
+      name: '杂项',
+    });
+    const { category: empty } = await call<{ category: Category }>(client, 'create_category', {
+      categoryGroupId: spare.id,
+      name: '待分类',
+    });
+    expect(await callFails(client, 'update_category_group', { categoryGroupId: spare.id, name: group!.name })).toContain(
+      '同名',
+    );
+    expect(await call(client, 'delete_category', { categoryId: empty.id })).toEqual({ deletedId: empty.id });
+    expect(await call(client, 'delete_category_group', { categoryGroupId: spare.id })).toEqual({ deletedId: spare.id });
+    expect(((await (await m.request('/api/category-groups')).json()) as CategoryGroup[]).map((g) => g.id)).toEqual([
+      group!.id,
+    ]);
+  });
+
+  test("another household's groups and categories are not found and stay as they were", async () => {
+    const alice = await signUpHousehold(ctx);
+    const bob = await signUpHousehold(ctx);
+    const own = await seedHousehold(alice);
+    const others = await seedHousehold(bob);
+    const bobsCatalog = await (await bob.request('/api/category-groups')).json();
+    const bobsGroupId = (bobsCatalog as CategoryGroup[])[0]!.id;
+    const { client } = await connectAsClaude(ctx.baseUrl, alice);
+
+    expect(await callFails(client, 'update_category_group', { categoryGroupId: bobsGroupId, name: '改名' })).toContain(
+      '大类',
+    );
+    expect(await callFails(client, 'delete_category_group', { categoryGroupId: bobsGroupId })).toContain('大类');
+    expect(await callFails(client, 'create_category', { categoryGroupId: bobsGroupId, name: '偷放' })).toContain('大类');
+    expect(await callFails(client, 'update_category', { categoryId: others.categoryId, name: '改名' })).toContain('品类');
+    expect(await callFails(client, 'delete_category', { categoryId: others.categoryId })).toContain('品类');
+    expect(
+      await callFails(client, 'update_category', { categoryId: own.categoryId, categoryGroupId: bobsGroupId }),
+    ).toContain('大类');
+
+    expect(await (await bob.request('/api/category-groups')).json()).toEqual(bobsCatalog);
   });
 });
 
