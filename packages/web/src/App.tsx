@@ -21,6 +21,7 @@ import { RecognitionPage, RecognitionUploadPage } from '@/pages/recognition';
 import { SettingsPage } from '@/pages/settings';
 import { SetupPage } from '@/pages/setup';
 import { SignInPage } from '@/pages/sign-in';
+import { ResetPasswordPage } from '@/pages/reset-password';
 import { SignUpPage } from '@/pages/sign-up';
 
 type Session =
@@ -87,6 +88,7 @@ export function App() {
         return <JoinPage invitationId={invitationId} onDone={leaveInvitation} onSignIn={() => setSigningInToJoin(true)} />;
       }
       if (window.location.pathname === '/sign-up') return <SignUpPage onDone={refresh} />;
+      if (window.location.pathname === '/reset-password') return <ResetPasswordPage />;
       return <SignInPage onDone={refresh} />;
     case 'signed-in':
       if (invitationId) {

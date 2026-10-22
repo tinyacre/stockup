@@ -27,7 +27,12 @@ export function SignInPage({ onDone, oauthQuery }: { onDone(): void; oauthQuery?
           else onDone();
         }}
       />
-      {/* Registering would drop an MCP client's authorization request, so it is offered only on the app's own page. */}
+      {/* Resetting and registering would drop an MCP client's authorization request, so both are offered only on the app's own page. */}
+      {capabilities?.email && oauthQuery === undefined && (
+        <Button variant="link" className="self-center" asChild>
+          <a href="/reset-password">忘记密码？</a>
+        </Button>
+      )}
       {capabilities?.signup && oauthQuery === undefined && (
         <Button variant="link" className="self-center" asChild>
           <a href="/sign-up">没有账号？注册</a>
