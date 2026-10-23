@@ -6,6 +6,7 @@ const ctx = useTestApp();
 interface CategoryGroup {
   id: string;
   name: string;
+  icon: string | null;
   productCount: number;
   categories: { id: string; name: string; productCount: number }[];
 }
@@ -76,9 +77,32 @@ describe('category groups', () => {
 
     const renamed = await m.request(`/api/category-groups/${group.id}`, jsonRequest('PATCH', { name: '宠物用品' }));
     expect(renamed.status).toBe(200);
-    expect(await renamed.json()).toEqual({ id: group.id, name: '宠物用品' });
+    expect(await renamed.json()).toEqual({ id: group.id, name: '宠物用品', icon: null });
 
-    expect(await catalogOf(m)).toEqual([{ id: group.id, name: '宠物用品', productCount: 0, categories: [] }]);
+    expect(await catalogOf(m)).toEqual([
+      { id: group.id, name: '宠物用品', icon: null, productCount: 0, categories: [] },
+    ]);
+  });
+
+  test('take a preset icon or a single emoji, and clear it with null', async () => {
+    const m = await signUpHousehold(ctx);
+    const group = await created<CategoryGroup>(
+      await m.request('/api/category-groups', jsonRequest('POST', { name: '宠物', icon: 'paw-print' })),
+    );
+    expect(group.icon).toBe('paw-print');
+
+    const iconOf = async () => (await catalogOf(m)).find((g) => g.id === group.id)!.icon;
+    const change = (icon: unknown) => m.request(`/api/category-groups/${group.id}`, jsonRequest('PATCH', { icon }));
+
+    expect((await change('🐱')).status).toBe(200);
+    expect(await iconOf()).toBe('🐱');
+
+    expect((await change('folder')).status).toBe(400);
+    expect((await change('🐱🐶')).status).toBe(400);
+    expect(await iconOf()).toBe('🐱');
+
+    expect((await change(null)).status).toBe(200);
+    expect(await iconOf()).toBeNull();
   });
 
   test('names are trimmed and must be unique within the household', async () => {

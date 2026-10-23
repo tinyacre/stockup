@@ -623,9 +623,12 @@ describe('channel tools', () => {
 interface CategoryGroup {
   id: string;
   name: string;
+  icon: string | null;
 }
 
-interface Category extends CategoryGroup {
+interface Category {
+  id: string;
+  name: string;
   categoryGroupId: string;
 }
 
@@ -647,7 +650,7 @@ describe('category tools', () => {
           name: '生活用品',
         })
       ).categoryGroup,
-    ).toEqual({ id: home.id, name: '生活用品' });
+    ).toEqual({ id: home.id, name: '生活用品', icon: null });
 
     const { category } = await call<{ category: Category }>(client, 'create_category', {
       categoryGroupId: food.id,

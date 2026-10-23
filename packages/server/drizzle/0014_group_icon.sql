@@ -1,0 +1,1 @@
+ALTER TABLE "category_group" ADD COLUMN "icon" text;

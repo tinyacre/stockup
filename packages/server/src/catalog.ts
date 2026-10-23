@@ -6,7 +6,7 @@ import { category, categoryGroup, priceRecord, product, recognitionDraft } from 
 import { NotEmptyError, ParentNotFoundError, translate } from './db/errors';
 import type { CurrentMember } from './members';
 
-const groupColumns = { id: categoryGroup.id, name: categoryGroup.name };
+const groupColumns = { id: categoryGroup.id, name: categoryGroup.name, icon: categoryGroup.icon };
 const categoryColumns = { id: category.id, name: category.name, categoryGroupId: category.categoryGroupId };
 
 export async function listCatalog(db: Database, scope: CurrentMember) {
@@ -52,17 +52,22 @@ export async function listCatalog(db: Database, scope: CurrentMember) {
   }));
 }
 
-export function createCategoryGroup(db: Database, scope: CurrentMember, input: { name: string }) {
+export function createCategoryGroup(db: Database, scope: CurrentMember, input: { name: string; icon?: string | null }) {
   return translate(async () => {
     const [created] = await db
       .insert(categoryGroup)
-      .values({ householdId: scope.householdId, name: input.name })
+      .values({ householdId: scope.householdId, ...input })
       .returning(groupColumns);
     return created!;
   });
 }
 
-export function updateCategoryGroup(db: Database, scope: CurrentMember, id: string, input: { name?: string }) {
+export function updateCategoryGroup(
+  db: Database,
+  scope: CurrentMember,
+  id: string,
+  input: { name?: string; icon?: string | null },
+) {
   return translate(async () => {
     const [updated] = await db
       .update(categoryGroup)

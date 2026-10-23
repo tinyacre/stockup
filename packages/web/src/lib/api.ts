@@ -56,6 +56,8 @@ export interface NewAccount {
 export interface CategoryGroup {
   id: string;
   name: string;
+  // A preset icon name or a single emoji.
+  icon: string | null;
   // Products placed in the group outside any category.
   productCount: number;
   categories: { id: string; name: string; productCount: number }[];
@@ -367,9 +369,9 @@ export const api = {
   },
 
   catalog: () => request<CategoryGroup[]>('/api/category-groups'),
-  createCategoryGroup: (body: { name: string }) =>
+  createCategoryGroup: (body: { name: string; icon?: string | null }) =>
     request<Omit<CategoryGroup, 'categories'>>('/api/category-groups', { method: 'POST', body }),
-  updateCategoryGroup: (id: string, body: { name: string }) =>
+  updateCategoryGroup: (id: string, body: { name?: string; icon?: string | null }) =>
     request(`/api/category-groups/${id}`, { method: 'PATCH', body }),
   deleteCategoryGroup: (id: string) => request(`/api/category-groups/${id}`, { method: 'DELETE' }),
 

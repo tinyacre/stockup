@@ -5,3 +5,4 @@ export * from './promotion';
 export * from './allocation';
 export * from './quantity';
 export * from './size';
+export * from './group-icon';

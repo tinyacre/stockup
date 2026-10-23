@@ -57,6 +57,7 @@ export const categoryGroup = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    icon: text('icon'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [

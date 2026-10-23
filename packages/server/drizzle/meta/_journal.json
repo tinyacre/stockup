@@ -99,6 +99,13 @@
       "when": 1792683532632,
       "tag": "0013_email_code",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792746022787,
+      "tag": "0014_group_icon",
+      "breakpoints": true
     }
   ]
 }

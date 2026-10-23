@@ -1,5 +1,12 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
-import { IncompatibleUnitsError, isUnit, volumeUnits, weightUnits } from '@stockup/domain';
+import {
+  groupIconPresets,
+  IncompatibleUnitsError,
+  isGroupIcon,
+  isUnit,
+  volumeUnits,
+  weightUnits,
+} from '@stockup/domain';
 import type { Context } from 'hono';
 import type { Auth } from '../auth';
 import {
@@ -31,7 +38,24 @@ const errorContent = { 'application/json': { schema: errorSchema } };
 export const catalogNameSchema = z.string().trim().min(1).max(50);
 const idParams = z.object({ id: z.string() });
 
-export const categoryGroupSchema = z.object({ id: z.string(), name: z.string() }).openapi('CategoryGroup');
+export const groupIconSchema = z
+  .string()
+  .refine(isGroupIcon, { message: 'Not a preset icon or a single emoji' })
+  .openapi('GroupIcon', {
+    description: `One of the preset icons (${groupIconPresets.join(', ')}) or a single emoji`,
+    example: 'paw-print',
+  });
+
+export const categoryGroupSchema = z
+  .object({ id: z.string(), name: z.string(), icon: groupIconSchema.nullable() })
+  .openapi('CategoryGroup');
+
+export const categoryGroupChangesSchema = z
+  .object({
+    name: catalogNameSchema.optional(),
+    icon: groupIconSchema.nullable().optional().openapi({ description: 'Null clears the icon' }),
+  })
+  .refine(hasChanges, nothingToChange);
 
 export const catalogSchema = z
   .array(
@@ -198,7 +222,7 @@ export function catalogRoutes(db: Database, auth: Auth) {
     tags: ['catalog'],
     summary: 'Create a category group',
     middleware,
-    request: { body: json(z.object({ name: catalogNameSchema })) },
+    request: { body: json(z.object({ name: catalogNameSchema, icon: groupIconSchema.nullable().optional() })) },
     responses: {
       201: { description: 'Created', content: { 'application/json': { schema: categoryGroupSchema } } },
       ...unauthenticated,
@@ -210,9 +234,9 @@ export function catalogRoutes(db: Database, auth: Auth) {
     method: 'patch',
     path: '/category-groups/{id}',
     tags: ['catalog'],
-    summary: 'Rename a category group',
+    summary: 'Rename a category group or change its icon',
     middleware,
-    request: { params: idParams, body: json(z.object({ name: catalogNameSchema })) },
+    request: { params: idParams, body: json(categoryGroupChangesSchema) },
     responses: {
       200: { description: 'Updated', content: { 'application/json': { schema: categoryGroupSchema } } },
       ...unauthenticated,
