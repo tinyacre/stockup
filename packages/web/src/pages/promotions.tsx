@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { List, ListRow } from '@/components/ui/list';
+import { List, ListCell, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { Alert, attempt, EditableTitle, ListSkeleton, nameTaken, RetryAlert } from '@/components/editing';
@@ -34,7 +34,7 @@ export function PromotionsPage() {
   const [creating, setCreating] = useState(false);
 
   return (
-    <PageContent>
+    <PageContent width="narrow">
       <PageHeader
         title="大促"
         actions={
@@ -194,18 +194,20 @@ function PromotionItem({ promotion, onChange }: { promotion: Promotion; onChange
         actions={
           !editing && (
             <>
-              <span className="numeric mx-2 text-sm text-ink-3 wide:mx-0 wide:w-48">{formatRange(promotion)}</span>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => {
-                  setRange(rangeOf(promotion));
-                  setError(undefined);
-                  setEditing(true);
-                }}
-              >
-                修改范围
-              </Button>
+              <span className="numeric text-sm text-ink-3">{formatRange(promotion)}</span>
+              <ListCell trail>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => {
+                    setRange(rangeOf(promotion));
+                    setError(undefined);
+                    setEditing(true);
+                  }}
+                >
+                  修改范围
+                </Button>
+              </ListCell>
             </>
           )
         }

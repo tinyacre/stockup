@@ -139,10 +139,16 @@ export function EditableTitle({
   }
 
   return (
-    <div className="flex w-full flex-wrap items-center gap-1">
+    <div className="group/title flex w-full flex-wrap items-center gap-1">
       <ListCell lead className="flex items-center gap-1">
         <Heading className={cn('min-w-0 truncate text-sm font-medium', className)}>{name}</Heading>
-        <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${name}`} onClick={() => setEditing(true)}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`重命名 ${name}`}
+          className="wide:opacity-0 wide:group-focus-within/title:opacity-100 wide:group-hover/title:opacity-100"
+          onClick={() => setEditing(true)}
+        >
           <Pencil />
         </Button>
       </ListCell>

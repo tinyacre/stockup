@@ -67,13 +67,15 @@ function ListHeader({ className, ...props }: React.ComponentProps<"li">) {
 // A column of a `ruled` list. Figure columns line up on their right edge in the price-tag theme.
 // The `lead` column holds the row's name: on phones it fills the row and pushes the rest to the right edge;
 // on wide screens it keeps a fixed width so the cells after it line up across rows next to the name.
+// The `trail` column holds the row's actions at its right edge.
 function ListCell({
   className,
   asChild,
   figure,
   lead,
+  trail,
   ...props
-}: React.ComponentProps<"div"> & { asChild?: boolean; figure?: boolean; lead?: boolean }) {
+}: React.ComponentProps<"div"> & { asChild?: boolean; figure?: boolean; lead?: boolean; trail?: boolean }) {
   const Comp = asChild ? Slot.Root : "div"
   return (
     <Comp
@@ -82,6 +84,7 @@ function ListCell({
         "min-w-0",
         figure && "flex flex-col items-start price-tag:items-end price-tag:text-right",
         lead && "max-wide:flex-1 wide:w-60 wide:shrink-0",
+        trail && "ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1",
         className
       )}
       {...props}

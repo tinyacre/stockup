@@ -263,7 +263,7 @@ export function QuickPricePage() {
       <div
         className={
           wide
-            ? cn(stickyColumn, 'flex flex-col gap-3 border-r border-line bg-surface p-3')
+            ? cn(stickyColumn, 'flex flex-col gap-3 border-r border-line bg-surface p-3 *:shrink-0')
             : '-mx-4 sticky top-0 z-10 flex flex-col gap-2 bg-background px-4 pt-1 pb-2'
         }
       >
@@ -410,7 +410,7 @@ function ProductRow({ product, selected, onPick }: { product: ProductSummary; se
   const { latestPrice } = product;
   const verdict = latestPrice?.verdict;
   return (
-    <ListRow asChild aria-current={selected || undefined} className="w-full items-center">
+    <ListRow asChild aria-current={selected || undefined} className="min-h-13 w-full items-center">
       <button type="button" onClick={onPick}>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-sm font-medium text-ink wide:text-[13px]">{product.name}</span>

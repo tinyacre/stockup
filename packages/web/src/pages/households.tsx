@@ -27,7 +27,7 @@ export function HouseholdsPage() {
   const [creating, setCreating] = useState(false);
 
   return (
-    <PageContent>
+    <PageContent width="narrow">
       <PageHeader
         title="家庭"
         actions={
@@ -61,7 +61,9 @@ export function HouseholdsPage() {
                   <ListCell lead className="font-medium">
                     {household.name}
                   </ListCell>
-                  <span className="text-ink-3">{household.memberCount} 位成员</span>
+                  <ListCell trail className="text-ink-3">
+                    {household.memberCount} 位成员
+                  </ListCell>
                 </li>
               </ListRow>
             ))}

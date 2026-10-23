@@ -188,8 +188,8 @@ function AuthorizedClientItem({ client, onRevoked }: { client: AuthorizedClient;
   const scopes = client.scopes.filter((scope) => scope.startsWith('stockup:'));
 
   return (
-    <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1">
-      <ListCell lead className="flex flex-col">
+    <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1">
+      <ListCell className="flex flex-1 flex-col">
         <span className="text-sm font-medium">{client.name ? `${client.name}（${host}）` : host}</span>
         <span className="text-xs text-ink-3">{new Date(client.authorizedAt).toLocaleDateString('zh-CN')} 授权</span>
         {scopes.length > 0 && (
@@ -198,23 +198,25 @@ function AuthorizedClientItem({ client, onRevoked }: { client: AuthorizedClient;
           </span>
         )}
       </ListCell>
-      <Button
-        variant="outline"
-        size="xs"
-        disabled={pending}
-        aria-label={`撤销 ${client.name ?? host}`}
-        onClick={async () => {
-          setPending(true);
-          const message = await attempt(() => api.revokeClient(client.clientId), {
-            not_found: '授权已撤销',
-          });
-          setError(message ?? undefined);
-          if (!message) await onRevoked();
-          setPending(false);
-        }}
-      >
-        撤销
-      </Button>
+      <ListCell trail>
+        <Button
+          variant="outline"
+          size="xs"
+          disabled={pending}
+          aria-label={`撤销 ${client.name ?? host}`}
+          onClick={async () => {
+            setPending(true);
+            const message = await attempt(() => api.revokeClient(client.clientId), {
+              not_found: '授权已撤销',
+            });
+            setError(message ?? undefined);
+            if (!message) await onRevoked();
+            setPending(false);
+          }}
+        >
+          撤销
+        </Button>
+      </ListCell>
       {error && <Alert className="basis-full">{error}</Alert>}
     </div>
   );

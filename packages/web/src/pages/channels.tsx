@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { List, ListRow } from '@/components/ui/list';
+import { List, ListCell, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { Alert, attempt, DeleteButton, EditableTitle, ListSkeleton, NameForm, RetryAlert } from '@/components/editing';
@@ -26,7 +26,7 @@ export function ChannelsPage() {
   const archived = channels?.filter((c) => c.archived) ?? [];
 
   return (
-    <PageContent>
+    <PageContent width="narrow">
       <PageHeader
         title="渠道"
         actions={
@@ -128,23 +128,25 @@ function ChannelItem({ channel, onChange }: { channel: Channel; onChange(): Prom
       }
       actions={
         <>
-          <Button variant="ghost" size="xs" disabled={pending} onClick={() => setArchived(!channel.archived)}>
-            {channel.archived ? '恢复' : '归档'}
-          </Button>
-          <DeleteButton
-            label={`删除渠道 ${channel.name}`}
-            title={`删除渠道「${channel.name}」？`}
-            onDelete={() =>
-              attempt(
-                async () => {
-                  await api.deleteChannel(channel.id);
-                  await onChange();
-                  toast.success(`已删除渠道「${channel.name}」`);
-                },
-                { in_use: '渠道已有价格记录，只能归档' },
-              )
-            }
-          />
+          <ListCell trail>
+            <Button variant="ghost" size="xs" disabled={pending} onClick={() => setArchived(!channel.archived)}>
+              {channel.archived ? '恢复' : '归档'}
+            </Button>
+            <DeleteButton
+              label={`删除渠道 ${channel.name}`}
+              title={`删除渠道「${channel.name}」？`}
+              onDelete={() =>
+                attempt(
+                  async () => {
+                    await api.deleteChannel(channel.id);
+                    await onChange();
+                    toast.success(`已删除渠道「${channel.name}」`);
+                  },
+                  { in_use: '渠道已有价格记录，只能归档' },
+                )
+              }
+            />
+          </ListCell>
           {error && <Alert className="basis-full">{error}</Alert>}
         </>
       }

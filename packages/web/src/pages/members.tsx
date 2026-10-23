@@ -27,7 +27,7 @@ export function MembersPage({
   const reload = useRefresh();
 
   return (
-    <PageContent>
+    <PageContent width="narrow">
       <PageHeader title="成员" />
       <Panel asChild>
         <section aria-label="家庭名称">
@@ -65,7 +65,7 @@ export function MembersPage({
                     <p className="text-xs text-ink-3">{member.username}</p>
                   </ListCell>
                   {member.id !== meId && (
-                    <>
+                    <ListCell trail>
                       <ConfirmButton
                         ariaLabel={`把管理员转交给 ${member.name}`}
                         title={`把管理员转交给「${member.name}」？`}
@@ -92,7 +92,7 @@ export function MembersPage({
                       >
                         移除
                       </ConfirmButton>
-                    </>
+                    </ListCell>
                   )}
                 </li>
               </ListRow>
