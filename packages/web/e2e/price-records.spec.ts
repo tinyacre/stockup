@@ -86,7 +86,8 @@ test('a member records, edits and deletes prices on a product page', async ({ pa
   await page.reload();
   await expect(record).toContainText('到手价 ¥449.00');
   await record.getByRole('button', { name: `删除 2026-06-18 ${channelName} 的价格记录` }).click();
-  await record.getByRole('button', { name: `确认删除 2026-06-18 ${channelName} 的价格记录` }).click();
+  await page.getByRole('button', { name: `确认删除 2026-06-18 ${channelName} 的价格记录` }).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(record).toHaveCount(0);
   await expect(records).toHaveCount(1);
 });

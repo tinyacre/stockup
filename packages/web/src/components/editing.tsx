@@ -1,6 +1,15 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type ComponentProps, type FormEvent, type ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { ListCell } from '@/components/ui/list';
 import { controlClass, Input } from '@/components/ui/input';
@@ -142,46 +151,119 @@ export function EditableTitle({
   );
 }
 
-// Destructive actions take a second click on the same button instead of a browser dialog.
+export interface Blocked {
+  title: string;
+  reason: string;
+  // What the member can do instead, such as archiving what cannot be deleted.
+  alternative?: { label: string; run(): Promise<void> };
+}
+
+// Asks before an action that cannot be taken back. `blocked` explains up front why the action is unavailable,
+// when the page already knows. A refusal from the server stays in the dialog beside the choice that caused it.
 export function ConfirmButton({
-  label,
+  children,
+  ariaLabel,
+  variant = 'ghost',
+  size = 'xs',
+  title,
+  description,
   confirmLabel,
-  ariaLabel = label,
+  blocked,
   onConfirm,
 }: {
-  label: string;
-  confirmLabel: string;
+  children: ReactNode;
   ariaLabel?: string;
+  variant?: ComponentProps<typeof Button>['variant'];
+  size?: ComponentProps<typeof Button>['size'];
+  title: string;
+  description?: ReactNode;
+  confirmLabel: string;
+  blocked?: Blocked;
   onConfirm: Action;
 }) {
-  const [confirming, setConfirming] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
 
+  async function run(action: () => Promise<string | void>) {
+    setPending(true);
+    const message = await action();
+    setPending(false);
+    setError(message ?? undefined);
+    if (!message) setOpen(false);
+  }
+
   return (
-    <>
-      <Button
-        variant={confirming ? 'destructive' : 'ghost'}
-        size="xs"
-        aria-label={confirming ? `确认${ariaLabel}` : ariaLabel}
-        onBlur={() => setConfirming(false)}
-        onClick={async () => {
-          if (!confirming) {
-            setError(undefined);
-            return setConfirming(true);
-          }
-          setConfirming(false);
-          setError((await onConfirm()) ?? undefined);
-        }}
-      >
-        {confirming ? confirmLabel : label}
-      </Button>
-      {error && <Alert className="basis-full">{error}</Alert>}
-    </>
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        setError(undefined);
+      }}
+    >
+      <AlertDialogTrigger asChild>
+        <Button variant={variant} size={size} aria-label={ariaLabel}>
+          {children}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <div className="flex flex-col gap-1.5">
+          <AlertDialogTitle>{blocked ? blocked.title : title}</AlertDialogTitle>
+          <AlertDialogDescription>{blocked ? blocked.reason : description}</AlertDialogDescription>
+        </div>
+        {error && <Alert>{error}</Alert>}
+        <AlertDialogFooter>
+          <AlertDialogCancel asChild>
+            <Button variant="outline">{blocked ? '知道了' : '取消'}</Button>
+          </AlertDialogCancel>
+          {blocked?.alternative && (
+            <Button disabled={pending} onClick={() => run(blocked.alternative!.run)}>
+              {blocked.alternative.label}
+            </Button>
+          )}
+          {!blocked && (
+            <Button
+              variant="destructive"
+              disabled={pending}
+              aria-label={ariaLabel && `确认${ariaLabel}`}
+              onClick={() => run(onConfirm)}
+            >
+              {confirmLabel}
+            </Button>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
-export function DeleteButton({ label, onDelete }: { label: string; onDelete: Action }) {
-  return <ConfirmButton label="删除" confirmLabel="确认删除" ariaLabel={label} onConfirm={onDelete} />;
+export function DeleteButton({
+  label,
+  name,
+  title = `删除「${name}」？`,
+  description = '删除后无法恢复。',
+  blocked,
+  onDelete,
+}: {
+  label: string;
+  name?: string;
+  title?: string;
+  description?: ReactNode;
+  blocked?: Blocked;
+  onDelete: Action;
+}) {
+  return (
+    <ConfirmButton
+      ariaLabel={label}
+      title={title}
+      description={description}
+      confirmLabel="删除"
+      blocked={blocked}
+      onConfirm={onDelete}
+    >
+      删除
+    </ConfirmButton>
+  );
 }
 
 export function RetryAlert({ message, onRetry }: { message: string; onRetry(): void }) {

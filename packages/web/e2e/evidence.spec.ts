@@ -70,6 +70,7 @@ test('a member attaches screenshots to a price record, views and deletes them', 
 
   await page.reload();
   await record.getByRole('button', { name: `删除 ${label} 的凭证 2` }).click();
-  await record.getByRole('button', { name: `确认删除 ${label} 的凭证 2` }).click();
+  await page.getByRole('button', { name: `确认删除 ${label} 的凭证 2` }).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(record.getByRole('img')).toHaveCount(1);
 });

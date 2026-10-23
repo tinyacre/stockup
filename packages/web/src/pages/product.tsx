@@ -684,7 +684,12 @@ function PriceRecordItem({
           <Button variant="ghost" size="icon-xs" aria-label={`编辑 ${label} 的价格记录`} onClick={onEdit}>
             <Pencil />
           </Button>
-          <DeleteButton label={`删除 ${label} 的价格记录`} onDelete={onDelete} />
+          <DeleteButton
+            label={`删除 ${label} 的价格记录`}
+            title="删除这条价格记录？"
+            description={`${label} 的记录及其凭证将被删除，无法恢复。`}
+            onDelete={onDelete}
+          />
         </div>
       </div>
     </div>
@@ -735,6 +740,7 @@ function EvidenceList({ record, label, onChanged }: { record: PriceRecord; label
                 </a>
                 <DeleteButton
                   label={`删除 ${label} 的凭证 ${i + 1}`}
+                  title="删除这张凭证？"
                   onDelete={() =>
                     attempt(async () => {
                       await api.deleteEvidence(e.id);

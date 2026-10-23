@@ -137,7 +137,8 @@ test('deleting a draft shares the order discount over the rest', async ({ page, 
 
   const catFood = drafts.getByRole('listitem', { name: '皇家猫粮' });
   await catFood.getByRole('button', { name: '删除 皇家猫粮' }).click();
-  await catFood.getByRole('button', { name: '确认删除 皇家猫粮' }).click();
+  await page.getByRole('button', { name: '确认删除 皇家猫粮' }).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(drafts.getByRole('heading')).toHaveText(/^识别草稿\s*1$/);
   await expect(drafts.getByRole('listitem', { name: '得宝抽纸 M码' })).toContainText('整单优惠分摊 -¥20.00');
 });

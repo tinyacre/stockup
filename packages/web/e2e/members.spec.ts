@@ -93,6 +93,7 @@ test('a removed member is signed out at once and rejoins later with the same acc
   await expect(list).toContainText(member.name);
   await page.getByRole('button', { name: `移除 ${member.name}` }).click();
   await page.getByRole('button', { name: `确认移除 ${member.name}` }).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(list).not.toContainText(member.name);
 
   await member.page.reload();
@@ -117,6 +118,7 @@ test('a signed-out invitee with an account signs in and joins with it', async ({
   await openSection(page, '成员');
   await page.getByRole('button', { name: `移除 ${member.name}` }).click();
   await page.getByRole('button', { name: `确认移除 ${member.name}` }).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(page.getByRole('list', { name: '家庭成员' })).not.toContainText(member.name);
 
   const link = await generateLink(page);
@@ -150,6 +152,7 @@ test('a household admin hands the admin role to another member', async ({ page, 
   await openSection(page, '成员');
   await page.getByRole('button', { name: `把管理员转交给 ${member.name}` }).click();
   await page.getByRole('button', { name: `确认把管理员转交给 ${member.name}` }).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '成员' })).toHaveCount(0);
 
   await member.page.reload();

@@ -388,6 +388,8 @@ function DraftItem({
             </Button>
             <DeleteButton
               label={`删除 ${draft.name}`}
+              title={`删除草稿「${draft.name}」？`}
+              description="这条识别结果不会入库。"
               onDelete={() =>
                 attempt(async () => onChange(await api.deleteDraft(recognition.id, draft.id)), editErrors)
               }

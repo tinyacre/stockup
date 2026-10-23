@@ -36,8 +36,10 @@ test('a member builds and browses the catalog', async ({ page, household }) => {
   await expect(product).toContainText('原味和绿茶味都算');
 
   await page.getByRole('button', { name: `删除品类 ${categoryName}` }).click();
-  await page.getByRole('button', { name: `确认删除品类 ${categoryName}` }).click();
-  await expect(page.getByText('品类下还有商品，无法删除')).toBeVisible();
+  const blocked = page.getByRole('alertdialog');
+  await expect(blocked).toContainText('品类下还有 1 个商品');
+  await blocked.getByRole('button', { name: '知道了' }).click();
+  await expect(blocked).toBeHidden();
 
   await product.getByRole('button', { name: '编辑' }).click();
   await product.getByLabel('商品名称').fill(`${productName} 加大`);
@@ -78,6 +80,5 @@ test('a product goes straight into a group that has no categories', async ({ pag
   const back = page.getByRole('button', { name: groupName, exact: true });
   if (await back.isVisible()) await back.click();
   await page.getByRole('button', { name: `删除大类 ${groupName}` }).click();
-  await page.getByRole('button', { name: `确认删除大类 ${groupName}` }).click();
-  await expect(page.getByText('大类下还有品类或商品，无法删除')).toBeVisible();
+  await expect(page.getByRole('alertdialog')).toContainText('大类下还有品类或商品');
 });

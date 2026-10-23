@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Folder, Package, Pencil, Plus, Search, Tags, Trash2 } from 'lucide-react';
@@ -15,7 +15,7 @@ import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel } from '@/components/ui/panel';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, attempt, NameForm, nameTaken, report, RetryAlert } from '@/components/editing';
+import { Alert, attempt, ConfirmButton, NameForm, nameTaken, report, RetryAlert, type Action } from '@/components/editing';
 import { NewProductForm, NoteField, PlacementSelect } from '@/components/product-form';
 import { api, type CategoryGroup, type Placement, type Product, type ProductSummary } from '@/lib/api';
 import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
@@ -255,39 +255,6 @@ function ProductLink({ product }: { product: Product }) {
   );
 }
 
-// Destructive actions take a second click on the same control instead of a browser dialog.
-function ConfirmDelete({ label, children, onDelete }: { label: string; children?: ReactNode; onDelete(): Promise<void> }) {
-  const [confirming, setConfirming] = useState(false);
-  if (confirming) {
-    return (
-      <Button
-        variant="destructive"
-        size="xs"
-        autoFocus
-        aria-label={`确认${label}`}
-        onBlur={() => setConfirming(false)}
-        onClick={async () => {
-          setConfirming(false);
-          await onDelete();
-        }}
-      >
-        确认删除
-      </Button>
-    );
-  }
-  return (
-    <Button
-      variant="ghost"
-      size={children ? 'sm' : 'icon-xs'}
-      aria-label={label}
-      onClick={() => setConfirming(true)}
-    >
-      <Trash2 />
-      {children}
-    </Button>
-  );
-}
-
 function CategoryTree({
   groups,
   selectedKey,
@@ -375,21 +342,30 @@ function GroupItem({
                 <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${group.name}`} onClick={() => setRenaming(true)}>
                   <Pencil />
                 </Button>
-                <ConfirmDelete
-                  label={`删除大类 ${group.name}`}
-                  onDelete={() =>
-                    report(
-                      attempt(
-                        async () => {
-                          await api.deleteCategoryGroup(group.id);
-                          await onChange();
-                        },
-                        { not_empty: '大类下还有品类或商品，无法删除' },
-                      ),
-                      `已删除大类「${group.name}」`,
+                <ConfirmButton
+                  ariaLabel={`删除大类 ${group.name}`}
+                  size="icon-xs"
+                  title={`删除大类「${group.name}」？`}
+                  description="删除后无法恢复。"
+                  confirmLabel="删除"
+                  blocked={
+                    group.categories.length > 0 || group.productCount > 0
+                      ? { title: `无法删除「${group.name}」`, reason: '大类下还有品类或商品，先把它们移走或删除。' }
+                      : undefined
+                  }
+                  onConfirm={() =>
+                    attempt(
+                      async () => {
+                        await api.deleteCategoryGroup(group.id);
+                        await onChange();
+                        toast.success(`已删除大类「${group.name}」`);
+                      },
+                      { not_empty: '大类下还有品类或商品，无法删除' },
                     )
                   }
-                />
+                >
+                  <Trash2 />
+                </ConfirmButton>
               </span>
               <span className="numeric w-6 text-right text-xs">{total}</span>
             </ListRow>
@@ -540,23 +516,34 @@ function ShelfPanel({
                 <Pencil />
                 重命名
               </Button>
-              <ConfirmDelete
-                label={`删除品类 ${category.name}`}
-                onDelete={() =>
-                  report(
-                    attempt(
-                      async () => {
-                        await api.deleteCategory(category.id);
-                        await onDeleted();
-                      },
-                      { not_empty: '品类下还有商品，无法删除' },
-                    ),
-                    `已删除品类「${category.name}」`,
+              <ConfirmButton
+                ariaLabel={`删除品类 ${category.name}`}
+                size="sm"
+                title={`删除品类「${category.name}」？`}
+                description="删除后无法恢复。"
+                confirmLabel="删除"
+                blocked={
+                  category.productCount > 0
+                    ? {
+                        title: `无法删除「${category.name}」`,
+                        reason: `品类下还有 ${category.productCount} 个商品，先把它们移到其他品类或删除。`,
+                      }
+                    : undefined
+                }
+                onConfirm={() =>
+                  attempt(
+                    async () => {
+                      await api.deleteCategory(category.id);
+                      await onDeleted();
+                      toast.success(`已删除品类「${category.name}」`);
+                    },
+                    { not_empty: '品类下还有商品，无法删除' },
                   )
                 }
               >
+                <Trash2 />
                 删除
-              </ConfirmDelete>
+              </ConfirmButton>
             </div>
           )}
         </div>
@@ -624,17 +611,38 @@ function ShelfPanel({
                     product={product}
                     onEdit={() => setEditingId(product.id)}
                     onDelete={() =>
-                      report(
-                        attempt(
-                          async () => {
-                            await api.deleteProduct(product.id);
-                            await onChange();
-                          },
-                          { not_empty: '商品还有价格记录，无法删除' },
-                        ),
-                        `已删除「${product.name}」`,
+                      attempt(
+                        async () => {
+                          await api.deleteProduct(product.id);
+                          await onChange();
+                          toast.success(`已删除「${product.name}」`);
+                        },
+                        { not_empty: '商品已有价格记录，无法删除' },
                       )
                     }
+                    onArchive={async () => {
+                      const message = await attempt(async () => {
+                        await api.updateProduct(product.id, { archived: true });
+                        await onChange();
+                      });
+                      if (message) {
+                        toast.error(message);
+                        return;
+                      }
+                      toast.success(`已归档「${product.name}」`, {
+                        action: {
+                          label: '撤销',
+                          onClick: () =>
+                            report(
+                              attempt(async () => {
+                                await api.updateProduct(product.id, { archived: false });
+                                await onChange();
+                              }),
+                              `已恢复「${product.name}」`,
+                            ),
+                        },
+                      });
+                    }}
                   />
                 )}
               </li>
@@ -651,10 +659,12 @@ function ProductRow({
   product,
   onEdit,
   onDelete,
+  onArchive,
 }: {
   product: ProductSummary;
   onEdit(): void;
-  onDelete(): Promise<void>;
+  onDelete: Action;
+  onArchive(): Promise<void>;
 }) {
   return (
     <ListRow className={cn('group/row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 py-3', rowGrid)}>
@@ -672,7 +682,25 @@ function ProductRow({
         <Button variant="ghost" size="icon-xs" aria-label="编辑" onClick={onEdit}>
           <Pencil />
         </Button>
-        <ConfirmDelete label={`删除 ${product.name}`} onDelete={onDelete} />
+        <ConfirmButton
+          ariaLabel={`删除 ${product.name}`}
+          size="icon-xs"
+          title={`删除「${product.name}」？`}
+          description="删除后无法恢复。"
+          confirmLabel="删除"
+          blocked={
+            product.latestPrice
+              ? {
+                  title: `无法删除「${product.name}」`,
+                  reason: '商品已有价格记录，删除会丢掉这些历史。不再买的商品可以归档：历史保留，录入时不再列出。',
+                  alternative: { label: '归档', run: onArchive },
+                }
+              : undefined
+          }
+          onConfirm={onDelete}
+        >
+          <Trash2 />
+        </ConfirmButton>
       </div>
     </ListRow>
   );

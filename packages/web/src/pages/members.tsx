@@ -67,25 +67,31 @@ export function MembersPage({
                   {member.id !== meId && (
                     <>
                       <ConfirmButton
-                        label="设为管理员"
-                        confirmLabel="确认转交"
                         ariaLabel={`把管理员转交给 ${member.name}`}
+                        title={`把管理员转交给「${member.name}」？`}
+                        description="转交后你将成为普通成员，不能再管理成员和邀请。"
+                        confirmLabel="转交"
                         onConfirm={async () => {
                           const message = await attempt(() => api.makeAdmin(member.id), gone);
                           if (message) return message;
                           onSessionChange();
                         }}
-                      />
+                      >
+                        设为管理员
+                      </ConfirmButton>
                       <ConfirmButton
-                        label="移除"
-                        confirmLabel="确认移除"
                         ariaLabel={`移除 ${member.name}`}
+                        title={`把「${member.name}」移出家庭？`}
+                        description="对方将无法再查看和记录这个家庭的价格。"
+                        confirmLabel="移除"
                         onConfirm={async () => {
                           const message = await attempt(() => api.removeMember(member.id), gone);
                           await reload();
                           return message;
                         }}
-                      />
+                      >
+                        移除
+                      </ConfirmButton>
                     </>
                   )}
                 </li>

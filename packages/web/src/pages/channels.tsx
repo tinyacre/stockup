@@ -141,6 +141,7 @@ function ChannelItem({ channel, onChange }: { channel: Channel; onChange(): Prom
           </Button>
           <DeleteButton
             label={`删除渠道 ${channel.name}`}
+            title={`删除渠道「${channel.name}」？`}
             onDelete={() =>
               attempt(
                 async () => {
