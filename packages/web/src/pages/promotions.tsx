@@ -10,14 +10,7 @@ import { Input } from '@/components/ui/input';
 import { List, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
-import {
-  Alert,
-  attempt,
-  EditableTitle,
-  ListSkeleton,
-  nameTaken,
-  RetryAlert,
-} from '@/components/editing';
+import { Alert, attempt, EditableTitle, ListSkeleton, nameTaken, RetryAlert } from '@/components/editing';
 import { api, type Promotion } from '@/lib/api';
 import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 

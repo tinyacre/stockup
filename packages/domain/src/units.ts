@@ -56,11 +56,7 @@ export function isUnit(unit: { dimension: string; name: string }): unit is Unit 
     case 'volume':
       return Object.hasOwn(millilitresPer, unit.name);
     case 'count':
-      return (
-        unit.name.length > 0 &&
-        unit.name.trim() === unit.name &&
-        !reservedNames.has(unit.name.toLowerCase())
-      );
+      return unit.name.length > 0 && unit.name.trim() === unit.name && !reservedNames.has(unit.name.toLowerCase());
     default:
       return false;
   }

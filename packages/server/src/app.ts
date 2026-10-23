@@ -104,7 +104,10 @@ export function createApp({
   app.all('/api/auth/forget-password/*', (c) => c.json({ error: 'not_found' }, 404));
   // One field takes a username or an email, but the username endpoint rejects anything shaped like an email.
   app.post('/api/auth/sign-in/username', async (c) => {
-    const body = (await c.req.raw.clone().json().catch(() => null)) as Record<string, unknown> | null;
+    const body = (await c.req.raw
+      .clone()
+      .json()
+      .catch(() => null)) as Record<string, unknown> | null;
     if (typeof body?.username !== 'string' || !body.username.includes('@')) return auth.handler(c.req.raw);
     const { username, password, rememberMe, callbackURL, oauth_query } = body;
     const headers = new Headers(c.req.raw.headers);

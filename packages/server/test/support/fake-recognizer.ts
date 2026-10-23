@@ -2,7 +2,13 @@ import type { RecognitionResult, Screenshot, ScreenshotRecognizer } from '../../
 
 export const fixedRecognition: RecognitionResult = {
   items: [
-    { name: '得宝抽纸 M码', sizeText: '100抽', quantity: 18, listPrice: 9900, discounts: [{ amount: 1000, name: 'plus 券' }] },
+    {
+      name: '得宝抽纸 M码',
+      sizeText: '100抽',
+      quantity: 18,
+      listPrice: 9900,
+      discounts: [{ amount: 1000, name: 'plus 券' }],
+    },
     { name: '皇家猫粮', sizeText: '2kg', quantity: 1, listPrice: 25900, discounts: [] },
   ],
   orderDiscounts: [{ amount: 2000, name: '满 199 减 20' }],

@@ -291,7 +291,10 @@ describe('judgments', () => {
     expect(free.status).toBe(422);
     expect(await free.json()).toEqual({ error: 'invalid_price' });
 
-    const wrongUnit = await judge(m, judgmentBody(product.id, { size: { amount: 1, unit: { dimension: 'weight', name: 'kg' } } }));
+    const wrongUnit = await judge(
+      m,
+      judgmentBody(product.id, { size: { amount: 1, unit: { dimension: 'weight', name: 'kg' } } }),
+    );
     expect(wrongUnit.status).toBe(422);
     expect(await wrongUnit.json()).toEqual({ error: 'incompatible_unit' });
 

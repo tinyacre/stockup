@@ -1,5 +1,12 @@
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { allocateDiscount, IncompatibleUnitsError, parseSize, type Discount, type Size, type Unit } from '@stockup/domain';
+import {
+  allocateDiscount,
+  IncompatibleUnitsError,
+  parseSize,
+  type Discount,
+  type Size,
+  type Unit,
+} from '@stockup/domain';
 import { searchByName } from '@stockup/domain/search';
 import type { Database } from './db';
 import { ParentNotFoundError, translate } from './db/errors';
@@ -290,7 +297,13 @@ export interface DraftChanges {
 
 // A new List Price shares the order discounts out again, and a share given in the same changes is applied after.
 // Returns false when the recognition or the draft is not in the household.
-export function editDraft(db: Database, scope: CurrentMember, recognitionId: string, draftId: string, changes: DraftChanges) {
+export function editDraft(
+  db: Database,
+  scope: CurrentMember,
+  recognitionId: string,
+  draftId: string,
+  changes: DraftChanges,
+) {
   const { size, ...rest } = changes;
   return translate(
     () =>
@@ -395,7 +408,8 @@ function recordOf(draft: Draft, orderDiscounts: readonly Discount[], input: Conf
     throw new DraftRejectedError(draft.id, 'draft_incomplete');
   }
   const name = orderDiscounts.flatMap((d) => (d.name ? [d.name] : [])).join('、');
-  const share: Discount[] = orderDiscount === 0 ? [] : [name ? { amount: orderDiscount, name } : { amount: orderDiscount }];
+  const share: Discount[] =
+    orderDiscount === 0 ? [] : [name ? { amount: orderDiscount, name } : { amount: orderDiscount }];
   return {
     ...input,
     productId,
@@ -423,7 +437,10 @@ export async function confirmRecognition(
     .from(recognition)
     .leftJoin(
       recognitionDraft,
-      and(eq(recognitionDraft.householdId, recognition.householdId), eq(recognitionDraft.recognitionId, recognition.id)),
+      and(
+        eq(recognitionDraft.householdId, recognition.householdId),
+        eq(recognitionDraft.recognitionId, recognition.id),
+      ),
     )
     .where(and(eq(recognition.householdId, scope.householdId), eq(recognition.id, id)))
     .groupBy(recognition.id);

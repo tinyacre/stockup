@@ -22,14 +22,19 @@ const answerFormat = z.object({
           .nullable()
           .describe('The pack size as written, such as "500g", "100抽×18包" or "2L"; null when the page shows none'),
         quantity: z.number().nullable().describe('How many were bought, a whole number; null when not shown'),
-        listPrice: yuan.nullable().describe('The total price in yuan for this line before any discount; null when not shown'),
-        discounts: z.array(discount).describe("Discounts the page ties to this line alone"),
+        listPrice: yuan
+          .nullable()
+          .describe('The total price in yuan for this line before any discount; null when not shown'),
+        discounts: z.array(discount).describe('Discounts the page ties to this line alone'),
       }),
     )
     .describe('Every line of goods, in the order the page lists them'),
   orderDiscounts: z.array(discount).describe('Discounts on the whole order rather than any one line'),
   date: z.string().nullable().describe('The order or page date as YYYY-MM-DD; null when the page shows none'),
-  channel: z.string().nullable().describe('The shop or platform the page belongs to, such as 京东 or 盒马; null when unclear'),
+  channel: z
+    .string()
+    .nullable()
+    .describe('The shop or platform the page belongs to, such as 京东 or 盒马; null when unclear'),
 });
 
 const instructions = `You read screenshots of Chinese shopping order pages and product pages and transcribe what was bought.

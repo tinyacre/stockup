@@ -4,11 +4,7 @@ import { cn } from "@/lib/utils"
 
 // `item` lists are selectable rows (product pickers, trees); `ruled` lists are table-like records.
 // The price-tag theme rules both.
-function List({
-  variant = "item",
-  className,
-  ...props
-}: React.ComponentProps<"ul"> & { variant?: "item" | "ruled" }) {
+function List({ variant = "item", className, ...props }: React.ComponentProps<"ul"> & { variant?: "item" | "ruled" }) {
   return (
     <ul
       data-slot="list"

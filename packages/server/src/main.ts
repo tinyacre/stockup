@@ -44,7 +44,13 @@ export async function bootstrap(
   if (!mcpAvailable(config.baseUrl)) {
     console.warn(`MCP is disabled: STOCKUP_BASE_URL (${config.baseUrl}) must use HTTPS for MCP clients to connect.`);
   }
-  const auth = createAuth({ db, secret: config.authSecret, baseURL: config.baseUrl, clientIpHeader: config.clientIpHeader, fetchClientMetadataResource });
+  const auth = createAuth({
+    db,
+    secret: config.authSecret,
+    baseURL: config.baseUrl,
+    clientIpHeader: config.clientIpHeader,
+    fetchClientMetadataResource,
+  });
   // Plugin init seeds the MCP resource row, so the database must stay open until it finishes.
   await auth.$context;
   const app = createApp({

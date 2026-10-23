@@ -13,7 +13,11 @@ const tissue = { dimension: 'count', name: '抽' };
 // and then shows the theme the account chose.
 test.use({ serviceWorkers: 'allow' });
 
-test('offline, a member prices a cached product as online and saves once back online', async ({ page, context, household }) => {
+test('offline, a member prices a cached product as online and saves once back online', async ({
+  page,
+  context,
+  household,
+}) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `得宝抽纸 ${suffix}`;
 

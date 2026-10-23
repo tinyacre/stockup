@@ -28,7 +28,8 @@ export function respondToInvalidCode(c: Context, error: unknown) {
 
 export const codeFailures = {
   422: {
-    description: 'The code is wrong or superseded (code_invalid), expired (code_expired), or out of attempts (code_attempts_exceeded)',
+    description:
+      'The code is wrong or superseded (code_invalid), expired (code_expired), or out of attempts (code_attempts_exceeded)',
     content: errorContent,
   },
 };
@@ -69,10 +70,14 @@ const sendCodeRoute = createRoute({
     },
     404: { description: 'join: no such invitation (not_found)', content: errorContent },
     410: {
-      description: 'join: the invitation was used, revoked or has expired (invitation_used, invitation_revoked, invitation_expired)',
+      description:
+        'join: the invitation was used, revoked or has expired (invitation_used, invitation_revoked, invitation_expired)',
       content: errorContent,
     },
-    400: { description: 'The address is malformed, or the Turnstile token failed (turnstile_failed)', content: errorContent },
+    400: {
+      description: 'The address is malformed, or the Turnstile token failed (turnstile_failed)',
+      content: errorContent,
+    },
     429: {
       description: 'Sent too recently: code_rate_limited, with retryAfter seconds (also in Retry-After)',
       content: { 'application/json': { schema: z.object({ error: z.string(), retryAfter: z.number().int() }) } },
@@ -90,48 +95,47 @@ export function emailCodeRoutes(
     clientIpHeader,
   }: { codes?: EmailCodes; signupOpen: boolean; turnstile?: TurnstileVerifier; clientIpHeader?: string },
 ) {
-  return new OpenAPIHono()
-    .openapi(sendCodeRoute, async (c) => {
-      const { email, purpose, invitationId } = c.req.valid('json');
-      if (!codes) return c.json({ error: 'email_unavailable' }, 403);
-      // Checked before the purpose's own checks, so scripts cannot probe invitations or signup without solving it.
-      if (!(await passesTurnstile(c, turnstile, clientIpHeader))) return c.json({ error: 'turnstile_failed' }, 400);
-      let deliver: boolean;
-      switch (purpose) {
-        case 'register':
-          if (!signupOpen) return c.json({ error: 'signup_closed' }, 403);
-          // A registered address is rate-limited all the same but mailed nothing, so it looks like any other.
-          deliver = !(await emailInUse(db, email));
-          break;
-        case 'change-email':
-          if (!(await auth.api.getSession({ headers: c.req.raw.headers }))) {
-            return c.json({ error: 'unauthenticated' }, 401);
-          }
-          // Whether another account has the address is reported only after its code is redeemed.
-          deliver = true;
-          break;
-        case 'password-reset':
-          // Unknown addresses are rate-limited and answered alike, so the answer does not reveal who is registered.
-          deliver = !isPlaceholderEmail(email) && (await emailInUse(db, email));
-          break;
-        case 'join':
-          // Only the holder of a usable link gets this far, and a taken address is refused once its code verifies.
-          if (invitationId === undefined) return c.json({ error: 'not_found' }, 404);
-          try {
-            await describeInvitation(db, invitationId);
-          } catch (error) {
-            return respondToInvitationError(c, error);
-          }
-          deliver = true;
-          break;
-      }
-      try {
-        await codes.send(email, purpose, { deliver });
-      } catch (error) {
-        if (!(error instanceof EmailCodeThrottledError)) throw error;
-        c.header('Retry-After', String(error.retryAfterSeconds));
-        return c.json({ error: 'code_rate_limited', retryAfter: error.retryAfterSeconds }, 429);
-      }
-      return c.body(null, 204);
-    });
+  return new OpenAPIHono().openapi(sendCodeRoute, async (c) => {
+    const { email, purpose, invitationId } = c.req.valid('json');
+    if (!codes) return c.json({ error: 'email_unavailable' }, 403);
+    // Checked before the purpose's own checks, so scripts cannot probe invitations or signup without solving it.
+    if (!(await passesTurnstile(c, turnstile, clientIpHeader))) return c.json({ error: 'turnstile_failed' }, 400);
+    let deliver: boolean;
+    switch (purpose) {
+      case 'register':
+        if (!signupOpen) return c.json({ error: 'signup_closed' }, 403);
+        // A registered address is rate-limited all the same but mailed nothing, so it looks like any other.
+        deliver = !(await emailInUse(db, email));
+        break;
+      case 'change-email':
+        if (!(await auth.api.getSession({ headers: c.req.raw.headers }))) {
+          return c.json({ error: 'unauthenticated' }, 401);
+        }
+        // Whether another account has the address is reported only after its code is redeemed.
+        deliver = true;
+        break;
+      case 'password-reset':
+        // Unknown addresses are rate-limited and answered alike, so the answer does not reveal who is registered.
+        deliver = !isPlaceholderEmail(email) && (await emailInUse(db, email));
+        break;
+      case 'join':
+        // Only the holder of a usable link gets this far, and a taken address is refused once its code verifies.
+        if (invitationId === undefined) return c.json({ error: 'not_found' }, 404);
+        try {
+          await describeInvitation(db, invitationId);
+        } catch (error) {
+          return respondToInvitationError(c, error);
+        }
+        deliver = true;
+        break;
+    }
+    try {
+      await codes.send(email, purpose, { deliver });
+    } catch (error) {
+      if (!(error instanceof EmailCodeThrottledError)) throw error;
+      c.header('Retry-After', String(error.retryAfterSeconds));
+      return c.json({ error: 'code_rate_limited', retryAfter: error.retryAfterSeconds }, 429);
+    }
+    return c.body(null, 204);
+  });
 }

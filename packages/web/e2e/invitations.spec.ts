@@ -68,9 +68,18 @@ test('an invited family member verifies an email, registers and joins the househ
 
 test('an email another account has is refused with a message', async ({ page, household }) => {
   const id = crypto.randomUUID().slice(0, 8);
-  const taken = { email: `taken_${id}@example.com`, username: `taken_${id}`, password: `password-${id}`, name: '已注册' };
-  expect((await page.request.post('/api/email-codes', { data: { email: taken.email, purpose: 'register' } })).status()).toBe(204);
-  const signedUp = await page.request.post('/api/signup', { data: { ...taken, code: await latestCode(page.request, taken.email) } });
+  const taken = {
+    email: `taken_${id}@example.com`,
+    username: `taken_${id}`,
+    password: `password-${id}`,
+    name: '已注册',
+  };
+  expect(
+    (await page.request.post('/api/email-codes', { data: { email: taken.email, purpose: 'register' } })).status(),
+  ).toBe(204);
+  const signedUp = await page.request.post('/api/signup', {
+    data: { ...taken, code: await latestCode(page.request, taken.email) },
+  });
   expect(signedUp.status()).toBe(201);
   await page.context().clearCookies();
 

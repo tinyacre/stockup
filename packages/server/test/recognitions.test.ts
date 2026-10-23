@@ -404,10 +404,7 @@ describe('reviewing and confirming drafts', () => {
 
     const cleared = await edited(m, recognition, second!.id, { productId: null, size: null, quantity: null });
     expect(cleared.drafts[1]).toMatchObject({ suggestedProduct: null, size: null, quantity: null });
-    expect((await read(m, recognition.id)).drafts.map((d) => d.suggestedProduct?.id ?? null)).toEqual([
-      other.id,
-      null,
-    ]);
+    expect((await read(m, recognition.id)).drafts.map((d) => d.suggestedProduct?.id ?? null)).toEqual([other.id, null]);
   });
 
   test('a draft with no match gets a newly created product', async () => {
@@ -475,7 +472,10 @@ describe('reviewing and confirming drafts', () => {
       purchased: true,
       promotion: { name: '618' },
       listPrice: 9900,
-      discounts: [{ amount: 1000, name: 'plus 券' }, { amount: 553, name: '满 199 减 20' }],
+      discounts: [
+        { amount: 1000, name: 'plus 券' },
+        { amount: 553, name: '满 199 减 20' },
+      ],
       quantity: 18,
       enteredSize: { amount: 100, unit: tissue },
       source: 'recognition',
@@ -493,7 +493,12 @@ describe('reviewing and confirming drafts', () => {
 
     for (const record of [tissueRecord!, catFoodRecord!]) {
       expect(record.evidence).toEqual([
-        { id: expect.any(String), contentType: 'image/png', size: screenshot(9, 9).length, createdAt: expect.any(String) },
+        {
+          id: expect.any(String),
+          contentType: 'image/png',
+          size: screenshot(9, 9).length,
+          createdAt: expect.any(String),
+        },
       ]);
       const file = await m.request(`/api/evidence/${record.evidence[0]!.id}`);
       expect(new Uint8Array(await file.arrayBuffer())).toEqual(screenshot(9, 9));
@@ -550,7 +555,12 @@ describe('reviewing and confirming drafts', () => {
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: 'channel_not_found' });
 
-    res = await confirm(m, recognition, { date: '2026-06-18', channelId: channel.id, purchased: true, promotionId: 'x' });
+    res = await confirm(m, recognition, {
+      date: '2026-06-18',
+      channelId: channel.id,
+      purchased: true,
+      promotionId: 'x',
+    });
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: 'promotion_not_found' });
 
@@ -612,9 +622,9 @@ describe('reviewing and confirming drafts', () => {
 
     expect((await editDraft(other, recognition, draftId, { quantity: 1 })).status).toBe(404);
     expect((await deleteDraft(other, recognition, draftId)).status).toBe(404);
-    expect((await confirm(other, recognition, { date: '2026-06-18', channelId: channel.id, purchased: true })).status).toBe(
-      404,
-    );
+    expect(
+      (await confirm(other, recognition, { date: '2026-06-18', channelId: channel.id, purchased: true })).status,
+    ).toBe(404);
     expect(await read(m, recognition.id)).toEqual(recognition);
   });
 
@@ -637,7 +647,9 @@ describe('reviewing and confirming drafts', () => {
     expect((await confirm(m, recognition, { date: '2026-06-18', channelId: channel.id, purchased: true })).status).toBe(
       201,
     );
-    expect(await recordsOf(m, kept.id)).toMatchObject([{ listPrice: 9900, enteredSize: { amount: 100, unit: tissue } }]);
+    expect(await recordsOf(m, kept.id)).toMatchObject([
+      { listPrice: 9900, enteredSize: { amount: 100, unit: tissue } },
+    ]);
   });
 });
 

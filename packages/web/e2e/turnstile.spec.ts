@@ -92,7 +92,9 @@ test.describe('with Turnstile', () => {
     await admin.post('/api/auth/sign-in/username', {
       data: { username: household.admin.username, password: household.admin.password },
     });
-    const { id } = (await (await admin.post('/api/invitations', { data: { expiresInDays: 1 } })).json()) as { id: string };
+    const { id } = (await (await admin.post('/api/invitations', { data: { expiresInDays: 1 } })).json()) as {
+      id: string;
+    };
     await admin.dispose();
 
     await challenge(page);

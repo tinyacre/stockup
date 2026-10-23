@@ -48,9 +48,7 @@ import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 // Recharts is most of the bundle's weight, so only the product page loads it.
-const UnitPriceChart = lazy(() =>
-  import('@/components/unit-price-chart').then((m) => ({ default: m.UnitPriceChart })),
-);
+const UnitPriceChart = lazy(() => import('@/components/unit-price-chart').then((m) => ({ default: m.UnitPriceChart })));
 
 export function ProductPage({ productId, onBack }: { productId: string; onBack(placement?: string): void }) {
   const productQuery = useQuery(queries.product(productId));
@@ -131,7 +129,12 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(p
           crumbs={[
             { label: '商品', onClick: () => onBack() },
             ...(group
-              ? [{ label: group.name, onClick: category ? undefined : () => onBack(placementKey(placementOf(product))) }]
+              ? [
+                  {
+                    label: group.name,
+                    onClick: category ? undefined : () => onBack(placementKey(placementOf(product))),
+                  },
+                ]
               : []),
             ...(category ? [{ label: category.name, onClick: () => onBack(placementKey(placementOf(product))) }] : []),
           ]}
@@ -701,7 +704,15 @@ const evidenceErrors = {
   evidence_too_large: '单张凭证不超过 10 MB',
 };
 
-function EvidenceList({ record, label, onChanged }: { record: PriceRecord; label: string; onChanged(): Promise<void> }) {
+function EvidenceList({
+  record,
+  label,
+  onChanged,
+}: {
+  record: PriceRecord;
+  label: string;
+  onChanged(): Promise<void>;
+}) {
   const inputId = useId();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
@@ -827,7 +838,11 @@ function PriceRecordForm({
   const lowest = lowestOf(records.filter((r) => r.id !== record?.id));
   const datePromotion = matchDate(date, promotions);
   const lastYearLowest = datePromotion
-    ? lastYearPromotionLowest(date, datePromotion, records.filter((r) => r.id !== record?.id))
+    ? lastYearPromotionLowest(
+        date,
+        datePromotion,
+        records.filter((r) => r.id !== record?.id),
+      )
     : null;
   const judgment =
     price !== null && typeof price === 'object'
@@ -1022,13 +1037,7 @@ function PriceRecordForm({
         </fieldset>
 
         <Field label="备注" htmlFor={`${id}-note`}>
-          <Textarea
-            id={`${id}-note`}
-            rows={2}
-            maxLength={500}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
+          <Textarea id={`${id}-note`} rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
 
         <output

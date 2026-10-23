@@ -110,7 +110,12 @@ const draftChangesSchema = z
   })
   .refine(hasChanges, nothingToChange);
 
-const confirmationSchema = priceRecordInputSchema.pick({ date: true, channelId: true, purchased: true, promotionId: true });
+const confirmationSchema = priceRecordInputSchema.pick({
+  date: true,
+  channelId: true,
+  purchased: true,
+  promotionId: true,
+});
 
 type Found = NonNullable<Awaited<ReturnType<typeof findRecognition>>>;
 
@@ -245,7 +250,7 @@ export function recognitionRoutes(
     tags: ['recognitions'],
     summary: 'Write every draft as a price record',
     description:
-      "Each draft becomes a price record with source recognition: its own discounts plus its share of the order discounts, and a copy of the screenshot as evidence. The drafts are then removed. Either every draft is written or none is.",
+      'Each draft becomes a price record with source recognition: its own discounts plus its share of the order discounts, and a copy of the screenshot as evidence. The drafts are then removed. Either every draft is written or none is.',
     middleware,
     request: { params: idParams, body: json(confirmationSchema) },
     responses: {

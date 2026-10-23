@@ -83,11 +83,7 @@ export function deleteCategoryGroup(db: Database, scope: CurrentMember, id: stri
   }, NotEmptyError);
 }
 
-export function createCategory(
-  db: Database,
-  scope: CurrentMember,
-  input: { name: string; categoryGroupId: string },
-) {
+export function createCategory(db: Database, scope: CurrentMember, input: { name: string; categoryGroupId: string }) {
   return translate(async () => {
     const [created] = await db
       .insert(category)
@@ -156,7 +152,9 @@ type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 async function place(tx: Database | Transaction, scope: CurrentMember, placement: Placement) {
   if (placement.categoryId === undefined) {
-    return placement.categoryGroupId === undefined ? undefined : { categoryGroupId: placement.categoryGroupId, categoryId: null };
+    return placement.categoryGroupId === undefined
+      ? undefined
+      : { categoryGroupId: placement.categoryGroupId, categoryId: null };
   }
   const [found] = await tx
     .select({ categoryGroupId: category.categoryGroupId })
@@ -306,7 +304,8 @@ export function updateProduct(db: Database, scope: CurrentMember, id: string, in
             ...placed,
             pricingUnitName: unit.name,
             baseSize: newBase,
-            stockLine: stockLine === undefined ? rescaleStockLine(current.stockLine, newBase / convertedBase) : stockLine,
+            stockLine:
+              stockLine === undefined ? rescaleStockLine(current.stockLine, newBase / convertedBase) : stockLine,
             // Archiving an archived product keeps the time it was first archived.
             archivedAt:
               archived === undefined ? undefined : archived ? sql`coalesce(${product.archivedAt}, now())` : null,

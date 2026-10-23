@@ -3,7 +3,12 @@ import { expect, test } from './test';
 
 test('a member resets a forgotten password with an emailed code', async ({ page, playwright, baseURL }) => {
   const id = crypto.randomUUID().slice(0, 8);
-  const member = { email: `reset_${id}@example.com`, username: `reset_${id}`, password: `password-${id}`, name: '小忘' };
+  const member = {
+    email: `reset_${id}@example.com`,
+    username: `reset_${id}`,
+    password: `password-${id}`,
+    name: '小忘',
+  };
 
   // Registering in a context of its own leaves that context signed in, standing in for another device.
   const otherDevice = await playwright.request.newContext({ baseURL });

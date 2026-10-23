@@ -15,7 +15,16 @@ import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel } from '@/components/ui/panel';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, attempt, ConfirmButton, NameForm, nameTaken, report, RetryAlert, type Action } from '@/components/editing';
+import {
+  Alert,
+  attempt,
+  ConfirmButton,
+  NameForm,
+  nameTaken,
+  report,
+  RetryAlert,
+  type Action,
+} from '@/components/editing';
 import { NewProductForm, NoteField, PlacementSelect } from '@/components/product-form';
 import { api, type CategoryGroup, type Placement, type Product, type ProductSummary } from '@/lib/api';
 import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
@@ -231,8 +240,7 @@ function SearchResults({ query, groups }: { query: string; groups: CategoryGroup
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <ProductLink product={product} />
                   <span className="text-xs text-ink-3">
-                    {placement && `${placement} · `}基准规格{' '}
-                    {formatSize(product.baseSize, product.pricingUnit)}
+                    {placement && `${placement} · `}基准规格 {formatSize(product.baseSize, product.pricingUnit)}
                   </span>
                 </div>
               </ListRow>
@@ -336,10 +344,20 @@ function GroupItem({
               <Folder className="size-4 shrink-0" />
               <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{group.name}</h2>
               <span className="flex items-center wide:opacity-0 wide:group-focus-within/row:opacity-100 wide:group-hover/row:opacity-100">
-                <Button variant="ghost" size="icon-xs" aria-label={`在 ${group.name} 下新建品类`} onClick={() => setAdding(true)}>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`在 ${group.name} 下新建品类`}
+                  onClick={() => setAdding(true)}
+                >
                   <Plus />
                 </Button>
-                <Button variant="ghost" size="icon-xs" aria-label={`重命名 ${group.name}`} onClick={() => setRenaming(true)}>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`重命名 ${group.name}`}
+                  onClick={() => setRenaming(true)}
+                >
                   <Pencil />
                 </Button>
                 <ConfirmButton
@@ -423,8 +441,7 @@ function GroupItem({
 
 const priceColumns = 'grid grid-cols-3 gap-3';
 
-const rowGrid =
-  'wide:grid-cols-[minmax(0,1fr)_6rem_minmax(0,26rem)_4.5rem] wide:items-center wide:gap-x-4';
+const rowGrid = 'wide:grid-cols-[minmax(0,1fr)_6rem_minmax(0,26rem)_4.5rem] wide:items-center wide:gap-x-4';
 
 function ShelfPanel({
   shelf,
@@ -482,9 +499,7 @@ function ShelfPanel({
             </p>
             <h2 className="flex items-baseline gap-2.5 text-xl font-semibold text-ink">
               {shelf.name}
-              <small className="text-[13px] font-normal tracking-normal text-ink-3">
-                {shelf.productCount} 个商品
-              </small>
+              <small className="text-[13px] font-normal tracking-normal text-ink-3">{shelf.productCount} 个商品</small>
             </h2>
           </div>
           {category && (

@@ -9,7 +9,9 @@ const probeTimeoutMs = 30_000;
 function s3Failure(operation: string, key: string, error: unknown) {
   const code = (error as { code?: unknown } | null)?.code;
   const message = error instanceof Error ? error.message : String(error);
-  return new Error(`S3 ${operation} ${key}: ${typeof code === 'string' ? `${code}: ` : ''}${message}`, { cause: error });
+  return new Error(`S3 ${operation} ${key}: ${typeof code === 'string' ? `${code}: ` : ''}${message}`, {
+    cause: error,
+  });
 }
 
 const dnsLabel = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
@@ -18,7 +20,9 @@ const dnsLabel = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 // wildcard TLS certificate does not cover, so it only goes into the host over plain http.
 function bucketFitsHost(bucket: string, protocol: string) {
   const labels = protocol === 'https:' ? [bucket] : bucket.split('.');
-  return bucket.length >= 3 && bucket.length <= 63 && isIP(bucket) === 0 && labels.every((label) => dnsLabel.test(label));
+  return (
+    bucket.length >= 3 && bucket.length <= 63 && isIP(bucket) === 0 && labels.every((label) => dnsLabel.test(label))
+  );
 }
 
 export function s3EvidenceStore(config: S3Config): S3EvidenceStore {
@@ -77,7 +81,10 @@ export async function openS3EvidenceStore(config: S3Config): Promise<S3EvidenceS
   const name = `S3 bucket ${config.bucket} at ${config.endpoint}`;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${name} did not answer within ${probeTimeoutMs / 1000} s`)), probeTimeoutMs);
+    timer = setTimeout(
+      () => reject(new Error(`${name} did not answer within ${probeTimeoutMs / 1000} s`)),
+      probeTimeoutMs,
+    );
   });
   try {
     await Promise.race([probeEvidenceStore(store, name), timeout]);

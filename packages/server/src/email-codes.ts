@@ -126,7 +126,8 @@ export function createEmailCodes({ db, mailer, secret }: { db: Database; mailer:
       if (written.length === 0) throw new EmailCodeThrottledError(RESEND_COOLDOWN_MS / 1000);
 
       // The response goes out before the mail, so it takes as long whether or not anything is mailed.
-      if (code) void mailer.send(codeMessage(email, purpose, code)).catch((e) => console.error('Could not send email code', e));
+      if (code)
+        void mailer.send(codeMessage(email, purpose, code)).catch((e) => console.error('Could not send email code', e));
     },
 
     async redeem(rawEmail, purpose, code, work) {
@@ -152,7 +153,8 @@ export function createEmailCodes({ db, mailer, secret }: { db: Database; mailer:
       // so the answers do not tell a registered address from a fresh one.
       const { codeHash } = row;
       const given = Buffer.from(hash(email, purpose, code), 'hex');
-      if (!codeHash || !timingSafeEqual(Buffer.from(codeHash, 'hex'), given)) throw new EmailCodeInvalidError('invalid');
+      if (!codeHash || !timingSafeEqual(Buffer.from(codeHash, 'hex'), given))
+        throw new EmailCodeInvalidError('invalid');
 
       return db.transaction(async (tx) => {
         // The send history stays, so redeeming a code does not reset the hourly limit.

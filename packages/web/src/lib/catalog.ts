@@ -6,7 +6,9 @@ export const outsideCategories = '未分品类';
 type Placed = { categoryGroupId: string; categoryId: string | null };
 
 export function placementOf(product: Placed): Placement {
-  return product.categoryId === null ? { categoryGroupId: product.categoryGroupId } : { categoryId: product.categoryId };
+  return product.categoryId === null
+    ? { categoryGroupId: product.categoryGroupId }
+    : { categoryId: product.categoryId };
 }
 
 // One string per placement, for a <select> value or a history entry.

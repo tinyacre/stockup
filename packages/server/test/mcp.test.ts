@@ -245,7 +245,10 @@ const sheet = { dimension: 'count', name: '抽' };
 async function seedHousehold(m: SignedInMember, pricingUnit: object = sheet, baseSize = 130): Promise<Setup> {
   const suffix = crypto.randomUUID().slice(0, 8);
   const group = await post<{ id: string }>(m, '/api/category-groups', { name: `生活用品 ${suffix}` });
-  const category = await post<{ id: string }>(m, '/api/categories', { categoryGroupId: group.id, name: `纸品 ${suffix}` });
+  const category = await post<{ id: string }>(m, '/api/categories', {
+    categoryGroupId: group.id,
+    name: `纸品 ${suffix}`,
+  });
   const product = await post<Setup['product']>(m, '/api/products', {
     categoryId: category.id,
     name: `京东抽纸 ${suffix}`,
@@ -321,7 +324,9 @@ describe('get_product', () => {
   test('describes the price history, stock line, lowest unit price and promotion lowests', async () => {
     const m = await signUpHousehold(ctx);
     const s = await seedHousehold(m);
-    expect((await m.request(`/api/products/${s.product.id}`, jsonRequest('PATCH', { stockLine: 600 }))).status).toBe(200);
+    expect((await m.request(`/api/products/${s.product.id}`, jsonRequest('PATCH', { stockLine: 600 }))).status).toBe(
+      200,
+    );
     const promotion = await post<{ id: string }>(m, '/api/promotions', {
       name: `双11 ${crypto.randomUUID().slice(0, 4)}`,
       startsOn: '11-01',
@@ -383,7 +388,9 @@ describe('judge_price', () => {
   test('judges a quote the same way the web does and stores nothing', async () => {
     const m = await signUpHousehold(ctx);
     const s = await seedHousehold(m);
-    expect((await m.request(`/api/products/${s.product.id}`, jsonRequest('PATCH', { stockLine: 600 }))).status).toBe(200);
+    expect((await m.request(`/api/products/${s.product.id}`, jsonRequest('PATCH', { stockLine: 600 }))).status).toBe(
+      200,
+    );
     await recordPrice(m, s, '2026-03-01', 7000, 10);
     const { client } = await connectAsClaude(ctx.baseUrl, m);
 
@@ -428,7 +435,9 @@ describe('list_channels and list_categories', () => {
     const own = await seedHousehold(alice);
     await seedHousehold(bob);
     const archived = await post<{ id: string; name: string }>(alice, '/api/channels', { name: '淘宝 旧店' });
-    expect((await alice.request(`/api/channels/${archived.id}`, jsonRequest('PATCH', { archived: true }))).status).toBe(200);
+    expect((await alice.request(`/api/channels/${archived.id}`, jsonRequest('PATCH', { archived: true }))).status).toBe(
+      200,
+    );
     const { client } = await connectAsClaude(ctx.baseUrl, alice);
 
     const { channels } = await call<{ channels: { id: string; archived: boolean }[] }>(client, 'list_channels', {});
@@ -519,8 +528,16 @@ describe('create_price_record', () => {
     };
 
     const messages = [
-      await callFails(client, 'create_price_record', { ...input, productId: others.product.id, channelId: own.channelId }),
-      await callFails(client, 'create_price_record', { ...input, productId: own.product.id, channelId: others.channelId }),
+      await callFails(client, 'create_price_record', {
+        ...input,
+        productId: others.product.id,
+        channelId: own.channelId,
+      }),
+      await callFails(client, 'create_price_record', {
+        ...input,
+        productId: own.product.id,
+        channelId: others.channelId,
+      }),
     ];
     expect(messages[0]).toContain('商品');
     expect(messages[1]).toContain('渠道');
@@ -547,10 +564,16 @@ describe('channel tools', () => {
 
     const { channel } = await call<{ channel: Channel }>(client, 'create_channel', { name: '  山姆  ' });
     expect(channel).toEqual({ id: expect.any(String), name: '山姆', archived: false });
-    const renamed = await call<{ channel: Channel }>(client, 'update_channel', { channelId: channel.id, name: '山姆会员店' });
+    const renamed = await call<{ channel: Channel }>(client, 'update_channel', {
+      channelId: channel.id,
+      name: '山姆会员店',
+    });
     expect(renamed.channel).toEqual({ ...channel, name: '山姆会员店' });
 
-    const archived = await call<{ channel: Channel }>(client, 'update_channel', { channelId: channel.id, archived: true });
+    const archived = await call<{ channel: Channel }>(client, 'update_channel', {
+      channelId: channel.id,
+      archived: true,
+    });
     expect(archived.channel.archived).toBe(true);
     expect((await call<{ channels: Channel[] }>(client, 'list_channels', {})).channels).toEqual([]);
     expect((await call<{ channels: Channel[] }>(client, 'list_channels', { includeArchived: true })).channels).toEqual([
@@ -617,10 +640,14 @@ describe('category tools', () => {
     const { categoryGroup: home } = await call<{ categoryGroup: CategoryGroup }>(client, 'create_category_group', {
       name: '日用',
     });
-    expect((await call<{ categoryGroup: CategoryGroup }>(client, 'update_category_group', {
-      categoryGroupId: home.id,
-      name: '生活用品',
-    })).categoryGroup).toEqual({ id: home.id, name: '生活用品' });
+    expect(
+      (
+        await call<{ categoryGroup: CategoryGroup }>(client, 'update_category_group', {
+          categoryGroupId: home.id,
+          name: '生活用品',
+        })
+      ).categoryGroup,
+    ).toEqual({ id: home.id, name: '生活用品' });
 
     const { category } = await call<{ category: Category }>(client, 'create_category', {
       categoryGroupId: food.id,
@@ -650,15 +677,15 @@ describe('category tools', () => {
     const m = await signUpHousehold(ctx);
     const s = await seedHousehold(m);
     const { client } = await connectAsClaude(ctx.baseUrl, m);
-    const [group] = (await call<{ categoryGroups: (CategoryGroup & { categories: CategoryGroup[] })[] }>(
-      client,
-      'list_categories',
-      {},
-    )).categoryGroups;
+    const [group] = (
+      await call<{ categoryGroups: (CategoryGroup & { categories: CategoryGroup[] })[] }>(client, 'list_categories', {})
+    ).categoryGroups;
     const seeded = group!.categories[0]!;
 
     expect(await callFails(client, 'create_category_group', { name: group!.name })).toContain('同名');
-    expect(await callFails(client, 'create_category', { categoryGroupId: group!.id, name: seeded.name })).toContain('同名');
+    expect(await callFails(client, 'create_category', { categoryGroupId: group!.id, name: seeded.name })).toContain(
+      '同名',
+    );
     expect(await callFails(client, 'delete_category', { categoryId: s.categoryId })).toContain('商品');
     expect(await callFails(client, 'delete_category_group', { categoryGroupId: group!.id })).toContain('品类');
 
@@ -669,9 +696,9 @@ describe('category tools', () => {
       categoryGroupId: spare.id,
       name: '待分类',
     });
-    expect(await callFails(client, 'update_category_group', { categoryGroupId: spare.id, name: group!.name })).toContain(
-      '同名',
-    );
+    expect(
+      await callFails(client, 'update_category_group', { categoryGroupId: spare.id, name: group!.name }),
+    ).toContain('同名');
     expect(await call(client, 'delete_category', { categoryId: empty.id })).toEqual({ deletedId: empty.id });
     expect(await call(client, 'delete_category_group', { categoryGroupId: spare.id })).toEqual({ deletedId: spare.id });
     expect(((await (await m.request('/api/category-groups')).json()) as CategoryGroup[]).map((g) => g.id)).toEqual([
@@ -692,8 +719,12 @@ describe('category tools', () => {
       '大类',
     );
     expect(await callFails(client, 'delete_category_group', { categoryGroupId: bobsGroupId })).toContain('大类');
-    expect(await callFails(client, 'create_category', { categoryGroupId: bobsGroupId, name: '偷放' })).toContain('大类');
-    expect(await callFails(client, 'update_category', { categoryId: others.categoryId, name: '改名' })).toContain('品类');
+    expect(await callFails(client, 'create_category', { categoryGroupId: bobsGroupId, name: '偷放' })).toContain(
+      '大类',
+    );
+    expect(await callFails(client, 'update_category', { categoryId: others.categoryId, name: '改名' })).toContain(
+      '品类',
+    );
     expect(await callFails(client, 'delete_category', { categoryId: others.categoryId })).toContain('品类');
     expect(
       await callFails(client, 'update_category', { categoryId: own.categoryId, categoryGroupId: bobsGroupId }),
@@ -790,7 +821,10 @@ describe('product tools', () => {
       }),
     ).toContain('新建');
     expect(
-      await callFails(client, 'update_product', { productId: s.product.id, pricingUnit: { dimension: 'count', name: '包' } }),
+      await callFails(client, 'update_product', {
+        productId: s.product.id,
+        pricingUnit: { dimension: 'count', name: '包' },
+      }),
     ).toContain('新建');
     expect(await callFails(client, 'update_product', { productId: s.product.id, baseSize: 0 })).toBeTruthy();
     expect(await (await m.request(`/api/products/${s.product.id}`)).json()).toEqual(before);
@@ -871,7 +905,9 @@ describe('product tools', () => {
     const bobsRecords = await listRecords(bob, others.product.id);
     const { client } = await connectAsClaude(ctx.baseUrl, alice);
 
-    expect(await callFails(client, 'update_product', { productId: others.product.id, archived: true })).toContain('商品');
+    expect(await callFails(client, 'update_product', { productId: others.product.id, archived: true })).toContain(
+      '商品',
+    );
     expect(
       await callFails(client, 'update_product', { productId: own.product.id, categoryId: others.categoryId }),
     ).toContain('品类');
@@ -1030,9 +1066,14 @@ describe('price record tools', () => {
     };
 
     expect(
-      await callFails(client, 'update_price_record', { ...input, size: { amount: 1, unit: { dimension: 'weight', name: 'kg' } } }),
+      await callFails(client, 'update_price_record', {
+        ...input,
+        size: { amount: 1, unit: { dimension: 'weight', name: 'kg' } },
+      }),
     ).toContain('单位');
-    expect(await callFails(client, 'update_price_record', { ...input, discounts: [{ amount: 7000 }] })).toContain('优惠');
+    expect(await callFails(client, 'update_price_record', { ...input, discounts: [{ amount: 7000 }] })).toContain(
+      '优惠',
+    );
     expect(await readRecord(m, record.id)).toEqual(before);
   });
 
@@ -1076,10 +1117,18 @@ describe('price record tools', () => {
     };
 
     expect(
-      await callFails(client, 'update_price_record', { ...input, priceRecordId: bobsRecord.id, channelId: own.channelId }),
+      await callFails(client, 'update_price_record', {
+        ...input,
+        priceRecordId: bobsRecord.id,
+        channelId: own.channelId,
+      }),
     ).toContain('价格记录');
     expect(
-      await callFails(client, 'update_price_record', { ...input, priceRecordId: ownRecord.id, channelId: others.channelId }),
+      await callFails(client, 'update_price_record', {
+        ...input,
+        priceRecordId: ownRecord.id,
+        channelId: others.channelId,
+      }),
     ).toContain('渠道');
     expect(await callFails(client, 'delete_price_record', { priceRecordId: bobsRecord.id })).toContain('价格记录');
 
@@ -1141,7 +1190,11 @@ describe('authorized MCP clients', () => {
     const refreshed = await fetch(new URL('/api/auth/oauth2/token', ctx.baseUrl), {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken!, client_id: CLAUDE_CLIENT_ID }),
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken!,
+        client_id: CLAUDE_CLIENT_ID,
+      }),
     });
     expect(refreshed.ok).toBe(false);
   });
@@ -1168,7 +1221,10 @@ describe('authorized MCP clients', () => {
       new URL('/api/auth/sign-in/username', ctx.baseUrl),
       jsonRequest('POST', { username: member.username, password: member.password }),
     );
-    const cookie = signedIn.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+    const cookie = signedIn.headers
+      .getSetCookie()
+      .map((c) => c.split(';')[0])
+      .join('; ');
     const res = await fetch(new URL(`/api/mcp-clients/${encodeURIComponent(CLAUDE_CLIENT_ID)}`, ctx.baseUrl), {
       method: 'DELETE',
       headers: { cookie },

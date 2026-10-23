@@ -18,7 +18,9 @@ export const mcpResource = (baseURL: string) => new URL('/mcp', baseURL).toStrin
 export function mcpAvailable(baseURL: string) {
   const { protocol, hostname } = new URL(baseURL);
   if (protocol === 'https:') return true;
-  return protocol === 'http:' && (hostname === 'localhost' || hostname === '[::1]' || /^127(\.\d{1,3}){3}$/.test(hostname));
+  return (
+    protocol === 'http:' && (hostname === 'localhost' || hostname === '[::1]' || /^127(\.\d{1,3}){3}$/.test(hostname))
+  );
 }
 
 export interface AuthOptions {

@@ -128,15 +128,7 @@ function TaskPanel({
   );
 }
 
-function UnitsForm({
-  product,
-  onCancel,
-  onSaved,
-}: {
-  product: Product;
-  onCancel(): void;
-  onSaved(): Promise<void>;
-}) {
+function UnitsForm({ product, onCancel, onSaved }: { product: Product; onCancel(): void; onSaved(): Promise<void> }) {
   const id = useId();
   const [unitName, setUnitName] = useState(product.pricingUnit.name);
   const units = unitsLike(product.pricingUnit);
@@ -225,15 +217,7 @@ function UnitsForm({
   );
 }
 
-function MergeForm({
-  product,
-  onCancel,
-  onMerged,
-}: {
-  product: Product;
-  onCancel(): void;
-  onMerged(): Promise<void>;
-}) {
+function MergeForm({ product, onCancel, onMerged }: { product: Product; onCancel(): void; onMerged(): Promise<void> }) {
   const id = useId();
   const all = useQuery(queries.products(undefined, { includeArchived: true }));
   const candidates = all.data?.filter((p) => p.id !== product.id);
@@ -251,10 +235,13 @@ function MergeForm({
     if (!merged) return;
     if (!confirming) return setConfirming(true);
     setPending(true);
-    const message = await attempt(async () => {
-      await api.mergeProduct(product.id, merged.id);
-      await onMerged();
-    }, { ...incompatibleUnit, product_not_found: '要合并的商品已不存在' });
+    const message = await attempt(
+      async () => {
+        await api.mergeProduct(product.id, merged.id);
+        await onMerged();
+      },
+      { ...incompatibleUnit, product_not_found: '要合并的商品已不存在' },
+    );
     setError(message ?? undefined);
     setConfirming(false);
     setPending(false);

@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { jsonRequest, recordersOf, recordPrice, requestAs, signIn, signUpHousehold, useTestApp } from './support/harness';
+import {
+  jsonRequest,
+  recordersOf,
+  recordPrice,
+  requestAs,
+  signIn,
+  signUpHousehold,
+  useTestApp,
+} from './support/harness';
 
 const ctx = useTestApp();
 

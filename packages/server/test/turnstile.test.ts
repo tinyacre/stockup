@@ -21,8 +21,17 @@ function withToken(init: RequestInit, token: string | undefined): RequestInit {
   return { ...init, headers };
 }
 
-function post(ctx: TestContext, path: string, body: unknown, token: string | undefined, headers?: Record<string, string>) {
-  return ctx.app.request(path, withToken({ ...jsonRequest('POST', body), headers: { 'content-type': 'application/json', ...headers } }, token));
+function post(
+  ctx: TestContext,
+  path: string,
+  body: unknown,
+  token: string | undefined,
+  headers?: Record<string, string>,
+) {
+  return ctx.app.request(
+    path,
+    withToken({ ...jsonRequest('POST', body), headers: { 'content-type': 'application/json', ...headers } }, token),
+  );
 }
 
 async function expectRefused(res: Response) {
@@ -70,13 +79,20 @@ describe('an instance with Turnstile', () => {
         await expectRefused(await post(ctx, '/api/email-codes', { ...body, email }, token, headers));
       }
       await mailer.expectNoMailTo(email, 50);
-      expect((await post(ctx, '/api/email-codes', { ...body, email }, PASSING_TURNSTILE_TOKEN, headers)).status).toBe(204);
+      expect((await post(ctx, '/api/email-codes', { ...body, email }, PASSING_TURNSTILE_TOKEN, headers)).status).toBe(
+        204,
+      );
     }
   });
 
   test('rejects a malformed email before spending the token', async () => {
     const before = turnstile.calls.length;
-    const res = await post(ctx, '/api/email-codes', { email: 'not-an-email', purpose: 'register' }, PASSING_TURNSTILE_TOKEN);
+    const res = await post(
+      ctx,
+      '/api/email-codes',
+      { email: 'not-an-email', purpose: 'register' },
+      PASSING_TURNSTILE_TOKEN,
+    );
     expect(res.status).toBe(400);
     expect(turnstile.calls.length).toBe(before);
   });
@@ -95,12 +111,21 @@ describe('an instance with Turnstile', () => {
     const member = await signUpWithEmail(ctx, mailer);
     for (const username of [member.username, member.email]) {
       for (const token of [missing, invalid]) {
-        await expectRefused(await post(ctx, '/api/auth/sign-in/username', { username, password: member.password }, token));
+        await expectRefused(
+          await post(ctx, '/api/auth/sign-in/username', { username, password: member.password }, token),
+        );
       }
-      const res = await post(ctx, '/api/auth/sign-in/username', { username, password: member.password }, PASSING_TURNSTILE_TOKEN);
+      const res = await post(
+        ctx,
+        '/api/auth/sign-in/username',
+        { username, password: member.password },
+        PASSING_TURNSTILE_TOKEN,
+      );
       expect(res.status).toBe(200);
     }
-    await expectRefused(await post(ctx, '/api/auth/sign-in/email', { email: member.email, password: member.password }, missing));
+    await expectRefused(
+      await post(ctx, '/api/auth/sign-in/email', { email: member.email, password: member.password }, missing),
+    );
   });
 
   test('challenges the sign-in that continues an MCP authorization like any other', async () => {
@@ -128,7 +153,12 @@ describe('an instance with Turnstile', () => {
     const invited = await admin.request('/api/invitations', jsonRequest('POST', { expiresInDays: 1 }));
     const { id } = (await invited.json()) as { id: string };
     const visitor = newVisitor();
-    await post(ctx, '/api/email-codes', { email: visitor.email, purpose: 'join', invitationId: id }, PASSING_TURNSTILE_TOKEN);
+    await post(
+      ctx,
+      '/api/email-codes',
+      { email: visitor.email, purpose: 'join', invitationId: id },
+      PASSING_TURNSTILE_TOKEN,
+    );
     const body = { ...visitor, code: await mailer.codeFor(visitor.email) };
     for (const token of [missing, invalid]) {
       await expectRefused(await post(ctx, `/api/join/${id}`, body, token));
@@ -162,15 +192,24 @@ describe('an instance without Turnstile', () => {
 
   test('lets every request through without a token', async () => {
     const visitor = newVisitor();
-    expect((await post(ctx, '/api/email-codes', { email: visitor.email, purpose: 'register' }, missing)).status).toBe(204);
+    expect((await post(ctx, '/api/email-codes', { email: visitor.email, purpose: 'register' }, missing)).status).toBe(
+      204,
+    );
     const code = await mailer.codeFor(visitor.email);
     expect((await post(ctx, '/api/signup', { ...visitor, code }, missing)).status).toBe(201);
-    const signedIn = await post(ctx, '/api/auth/sign-in/username', { username: visitor.email, password: visitor.password }, missing);
+    const signedIn = await post(
+      ctx,
+      '/api/auth/sign-in/username',
+      { username: visitor.email, password: visitor.password },
+      missing,
+    );
     expect(signedIn.status).toBe(200);
   });
 
   test('offers no site key', async () => {
-    expect(((await (await ctx.app.request('/api/capabilities')).json()) as { turnstileSiteKey: unknown }).turnstileSiteKey).toBeNull();
+    expect(
+      ((await (await ctx.app.request('/api/capabilities')).json()) as { turnstileSiteKey: unknown }).turnstileSiteKey,
+    ).toBeNull();
   });
 });
 
@@ -198,7 +237,11 @@ describe('cloudflareTurnstile', () => {
     expect(await verifier.verify('token', '203.0.113.7')).toBe(true);
     expect(requests).toHaveLength(1);
     expect(requests[0]!.url).toBe('https://challenges.cloudflare.com/turnstile/v0/siteverify');
-    expect(Object.fromEntries(requests[0]!.body)).toEqual({ secret: 'secret', response: 'token', remoteip: '203.0.113.7' });
+    expect(Object.fromEntries(requests[0]!.body)).toEqual({
+      secret: 'secret',
+      response: 'token',
+      remoteip: '203.0.113.7',
+    });
     expect(requests[0]!.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -235,4 +278,3 @@ describe('cloudflareTurnstile', () => {
     expect(warn).toHaveBeenCalledTimes(4);
   });
 });
-

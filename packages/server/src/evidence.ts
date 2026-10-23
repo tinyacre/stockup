@@ -106,11 +106,17 @@ export async function addEvidence(
         .returning({ ...columns, sequence: evidence.sequence });
     });
   } catch (error) {
-    await removeEvidenceFiles(store, pieces.map((p) => p.id));
+    await removeEvidenceFiles(
+      store,
+      pieces.map((p) => p.id),
+    );
     throw error;
   }
   if (!added) {
-    await removeEvidenceFiles(store, pieces.map((p) => p.id));
+    await removeEvidenceFiles(
+      store,
+      pieces.map((p) => p.id),
+    );
     return null;
   }
   return added

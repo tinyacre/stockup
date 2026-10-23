@@ -7,9 +7,7 @@ import { api, ApiError, type Me, type OAuthClient } from '@/lib/api';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
 
 type Authorization =
-  | { state: 'loading' }
-  | { state: 'ready'; client: OAuthClient; me: Me | null }
-  | { state: 'error'; message: string };
+  { state: 'loading' } | { state: 'ready'; client: OAuthClient; me: Me | null } | { state: 'error'; message: string };
 
 function failureMessage(failure: unknown) {
   if (!(failure instanceof ApiError) || failure.status >= 500) return '无法连接 StockUp';

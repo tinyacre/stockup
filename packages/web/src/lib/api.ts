@@ -91,7 +91,8 @@ export interface ProductSummary extends ProductDetail {
 }
 
 // A category brings its group along; a group alone places the product outside any category.
-export type Placement = { categoryId: string; categoryGroupId?: never } | { categoryGroupId: string; categoryId?: never };
+export type Placement =
+  { categoryId: string; categoryGroupId?: never } | { categoryGroupId: string; categoryId?: never };
 
 export interface ProductChanges {
   name?: string;
@@ -337,8 +338,7 @@ export const api = {
   signOutOthers: () => request('/api/me/sign-out-others', { method: 'POST' }),
   changeEmail: (body: { email: string; code: string }) => request<Me>('/api/me/email', { method: 'POST', body }),
   authorizedClients: () => request<AuthorizedClient[]>('/api/mcp-clients'),
-  revokeClient: (clientId: string) =>
-    request(`/api/mcp-clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
+  revokeClient: (clientId: string) => request(`/api/mcp-clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
 
   members: () => request<Member[]>('/api/members'),
   removeMember: (id: string) => request(`/api/members/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -391,8 +391,7 @@ export const api = {
     request<Product>(`/api/products/${id}`, { method: 'PATCH', body }),
   mergeProduct: (keptId: string, mergedId: string) =>
     request<Product>(`/api/products/${keptId}/merge`, { method: 'POST', body: { productId: mergedId } }),
-  searchProducts: (query: string) =>
-    request<Product[]>(`/api/products/search?q=${encodeURIComponent(query)}`),
+  searchProducts: (query: string) => request<Product[]>(`/api/products/search?q=${encodeURIComponent(query)}`),
   product: (id: string) => request<ProductDetail>(`/api/products/${id}`),
   deleteProduct: (id: string) => request(`/api/products/${id}`, { method: 'DELETE' }),
 

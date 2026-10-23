@@ -84,9 +84,7 @@ describe('anthropicRecognizer', () => {
 
   test('rounds prices to whole cents', async () => {
     const item = { name: '牛奶', sizeText: '250ml', quantity: 1, listPrice: 4.199999, discounts: [] };
-    const { client } = fakeApi(() =>
-      json(message(JSON.stringify({ ...answer, items: [item], orderDiscounts: [] }))),
-    );
+    const { client } = fakeApi(() => json(message(JSON.stringify({ ...answer, items: [item], orderDiscounts: [] }))));
     const result = await anthropicRecognizer(client, 'claude-haiku-5-5').recognize(screenshot);
     expect(result.items[0]!.listPrice).toBe(420);
   });

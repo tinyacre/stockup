@@ -89,7 +89,8 @@ function InputAddon({ className, boxed, ...props }: React.ComponentProps<"span">
       data-slot="input-addon"
       className={cn(
         "shrink-0 text-xs whitespace-nowrap text-ink-3",
-        boxed && "-mr-2.5 flex items-center self-stretch rounded-r-md border-l border-line bg-surface-subtle px-2.5 text-ink-2",
+        boxed &&
+          "-mr-2.5 flex items-center self-stretch rounded-r-md border-l border-line bg-surface-subtle px-2.5 text-ink-2",
         className
       )}
       {...props}

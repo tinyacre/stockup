@@ -15,8 +15,7 @@ import type { FakeMailer } from './fake-mailer';
 import { PASSING_TURNSTILE_TOKEN } from './fake-turnstile';
 import { testS3Config } from './s3';
 
-const adminUrl =
-  process.env.STOCKUP_TEST_DATABASE_URL ?? 'postgres://stockup:stockup@127.0.0.1:55432/postgres';
+const adminUrl = process.env.STOCKUP_TEST_DATABASE_URL ?? 'postgres://stockup:stockup@127.0.0.1:55432/postgres';
 
 export interface TestDatabase {
   url: string;
@@ -131,10 +130,16 @@ export async function signUpHousehold(ctx: TestContext, { instanceAdmin = false 
 
 // Registers through open signup with an emailed code, so the member has a verified email and a household of their own.
 // Requires an app with `signupOpen` and this mailer.
-export async function signUpWithEmail(ctx: TestContext, mailer: FakeMailer): Promise<SignedInMember & { email: string }> {
+export async function signUpWithEmail(
+  ctx: TestContext,
+  mailer: FakeMailer,
+): Promise<SignedInMember & { email: string }> {
   const suffix = crypto.randomUUID().slice(0, 8);
   const email = `member_${suffix}@example.com`;
-  const sent = await ctx.app.request('/api/email-codes', challenged(jsonRequest('POST', { email, purpose: 'register' })));
+  const sent = await ctx.app.request(
+    '/api/email-codes',
+    challenged(jsonRequest('POST', { email, purpose: 'register' })),
+  );
   if (sent.status !== 204) throw new Error(`sending a code failed with ${sent.status}: ${await sent.text()}`);
   const account = { username: `member_${suffix}`, password: `password-${suffix}`, name: `Member ${suffix}` };
   const res = await ctx.app.request(
@@ -144,7 +149,14 @@ export async function signUpWithEmail(ctx: TestContext, mailer: FakeMailer): Pro
   if (res.status !== 201) throw new Error(`signup failed with ${res.status}: ${await res.text()}`);
   const { userId, householdId } = (await res.json()) as { userId: string; householdId: string };
   const cookie = sessionCookie(res);
-  return { userId, householdId, ...account, email, cookie, request: (path, init) => requestAs(ctx, cookie, path, init) };
+  return {
+    userId,
+    householdId,
+    ...account,
+    email,
+    cookie,
+    request: (path, init) => requestAs(ctx, cookie, path, init),
+  };
 }
 
 // The household's admin invites a new member, who registers through the invitation and is signed in.
@@ -189,7 +201,10 @@ export async function joinHousehold(
 }
 
 export async function signIn(ctx: TestContext, username: string, password: string) {
-  const res = await ctx.app.request('/api/auth/sign-in/username', challenged(jsonRequest('POST', { username, password })));
+  const res = await ctx.app.request(
+    '/api/auth/sign-in/username',
+    challenged(jsonRequest('POST', { username, password })),
+  );
   if (res.status !== 200) throw new Error(`sign-in failed with ${res.status}: ${await res.text()}`);
   return sessionCookie(res);
 }

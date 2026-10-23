@@ -30,7 +30,9 @@ describe('loadConfig', () => {
   });
 
   test('accepts a plain-HTTP base URL on the local network', () => {
-    expect(loadConfig({ ...required, STOCKUP_BASE_URL: 'http://192.168.1.10:8080' }).baseUrl).toBe('http://192.168.1.10:8080');
+    expect(loadConfig({ ...required, STOCKUP_BASE_URL: 'http://192.168.1.10:8080' }).baseUrl).toBe(
+      'http://192.168.1.10:8080',
+    );
   });
 
   test('applies defaults for optional settings', () => {
@@ -93,9 +95,7 @@ describe('loadConfig', () => {
   });
 
   test('rejects a non-numeric port', () => {
-    expect(() => loadConfig({ ...required, STOCKUP_PORT: 'abc' })).toThrow(
-      'STOCKUP_PORT',
-    );
+    expect(() => loadConfig({ ...required, STOCKUP_PORT: 'abc' })).toThrow('STOCKUP_PORT');
   });
 });
 
@@ -154,7 +154,13 @@ describe('loadConfig for S3 evidence storage', () => {
     expect(loadConfig({ ...required, ...s3, STOCKUP_S3_ENDPOINT: 'http://127.0.0.1:9000/' }).s3?.endpoint).toBe(
       'http://127.0.0.1:9000',
     );
-    for (const endpoint of ['minio:9000', 'ftp://host', 'https://host/bucket', 'https://host?x=1', 'https://user:pw@host']) {
+    for (const endpoint of [
+      'minio:9000',
+      'ftp://host',
+      'https://host/bucket',
+      'https://host?x=1',
+      'https://user:pw@host',
+    ]) {
       expect(() => loadConfig({ ...required, ...s3, STOCKUP_S3_ENDPOINT: endpoint })).toThrow('STOCKUP_S3_ENDPOINT');
     }
   });
@@ -333,7 +339,10 @@ describe('bootstrap', () => {
       '/api/setup',
       jsonRequest('POST', { householdName: 'Home', username, password, name: 'Member' }),
     );
-    const signedIn = await without.app.request('/api/auth/sign-in/username', jsonRequest('POST', { username, password }));
+    const signedIn = await without.app.request(
+      '/api/auth/sign-in/username',
+      jsonRequest('POST', { username, password }),
+    );
     const cookie = sessionCookie(signedIn);
 
     expect(await (await without.app.request('/api/recognizer', { headers: { cookie } })).json()).toEqual({
@@ -416,7 +425,10 @@ describe('bootstrap', () => {
     cleanups.push(close);
     expect(await (await app.request('/api/capabilities')).json()).toMatchObject({ turnstileSiteKey: 'site-key' });
     // Without a token the verifier refuses before calling Cloudflare.
-    const res = await app.request('/api/auth/sign-in/username', jsonRequest('POST', { username: 'someone', password: 'password' }));
+    const res = await app.request(
+      '/api/auth/sign-in/username',
+      jsonRequest('POST', { username: 'someone', password: 'password' }),
+    );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'turnstile_failed' });
   });
@@ -468,7 +480,9 @@ describe('bootstrap', () => {
     const username = `member_${crypto.randomUUID().slice(0, 8)}`;
     const password = 'password-s3-evidence';
     await app.request('/api/setup', jsonRequest('POST', { householdName: 'Home', username, password, name: 'Member' }));
-    const cookie = sessionCookie(await app.request('/api/auth/sign-in/username', jsonRequest('POST', { username, password })));
+    const cookie = sessionCookie(
+      await app.request('/api/auth/sign-in/username', jsonRequest('POST', { username, password })),
+    );
     const asMember = (url: string, init: RequestInit = {}) =>
       app.request(url, { ...init, headers: { ...init.headers, cookie } });
     const created = async (res: Response) => {
@@ -482,7 +496,12 @@ describe('bootstrap', () => {
     const product = await created(
       await asMember(
         '/api/products',
-        jsonRequest('POST', { categoryId: category.id, name: '得宝抽纸', pricingUnit: { dimension: 'count', name: '抽' }, baseSize: 90 }),
+        jsonRequest('POST', {
+          categoryId: category.id,
+          name: '得宝抽纸',
+          pricingUnit: { dimension: 'count', name: '抽' },
+          baseSize: 90,
+        }),
       ),
     );
     const channel = await created(await asMember('/api/channels', jsonRequest('POST', { name: '京东' })));
@@ -535,6 +554,8 @@ describe('bootstrap', () => {
       smtp: undefined,
       turnstile: undefined,
     };
-    await expect(bootstrap(config)).rejects.toThrow(`S3 bucket ${config.s3.bucket} at ${config.s3.endpoint} cannot be written`);
+    await expect(bootstrap(config)).rejects.toThrow(
+      `S3 bucket ${config.s3.bucket} at ${config.s3.endpoint} cannot be written`,
+    );
   });
 });

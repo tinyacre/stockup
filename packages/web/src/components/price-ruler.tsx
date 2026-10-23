@@ -119,7 +119,13 @@ export function PriceRuler({
         const label = labels.current.get(m.key);
         if (!label) return [];
         const position = at(m.value);
-        return [{ key: m.key, width: label.offsetWidth, left: (position / 100) * width - anchorOf(position) * label.offsetWidth }];
+        return [
+          {
+            key: m.key,
+            width: label.offsetWidth,
+            left: (position / 100) * width - anchorOf(position) * label.offsetWidth,
+          },
+        ];
       });
       const next = labelRows(measured);
       setRows((current) =>
@@ -228,7 +234,11 @@ export function PriceRuler({
             className={cn(
               'absolute top-0 flex flex-col',
               'price-tag:top-[calc(40px+var(--extra)*18px)]',
-              overflow > 0 ? '-translate-x-full items-end' : overflow < 0 ? 'items-start' : '-translate-x-1/2 items-center',
+              overflow > 0
+                ? '-translate-x-full items-end'
+                : overflow < 0
+                  ? 'items-start'
+                  : '-translate-x-1/2 items-center',
             )}
             style={{ left: `${pinAt}%`, '--pin': verdictColor[verdict ?? 'none'] } as CSSProperties}
           >

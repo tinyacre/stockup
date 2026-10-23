@@ -98,7 +98,9 @@ describe('migrate-evidence command', () => {
   });
 
   test('exits non-zero when a file failed', () => {
-    const result = runCommand(serverEnv(evidenceDir({ [randomKey()]: new Uint8Array([1]), 'not.a.key': new Uint8Array([2]) }), testS3Config()));
+    const result = runCommand(
+      serverEnv(evidenceDir({ [randomKey()]: new Uint8Array([1]), 'not.a.key': new Uint8Array([2]) }), testS3Config()),
+    );
     expect(result.stdout).toContain('uploaded 1, skipped 0, failed 1');
     expect(result.stderr).toContain('not.a.key');
     expect(result.exitCode).toBe(1);

@@ -6,9 +6,12 @@
     "dev:db": "docker compose -f docker-compose.dev.yml up -d --wait",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
-    "build": "bun run --filter @stockup/web build"
+    "build": "bun run --filter @stockup/web build",
+    "format": "prettier --write \"packages/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"packages/**/*.{ts,tsx}\""
   },
   "devDependencies": {
+    "prettier": "^3.9.10",
     "typescript": "^7.0.2"
   }
 }

@@ -111,7 +111,9 @@ export function JoinPage({
         }}
       >
         {/* Only an instance that can mail asks for an email, so members can recover their password with it. */}
-        {capabilities.email && <EmailCodeField purpose="join" invitationId={invitationId} messages={unusable} turnstile={turnstile} />}
+        {capabilities.email && (
+          <EmailCodeField purpose="join" invitationId={invitationId} messages={unusable} turnstile={turnstile} />
+        )}
       </AuthForm>
       {onSignIn && (
         <Button variant="link" className="mt-4 self-center" onClick={onSignIn}>

@@ -55,11 +55,7 @@ export async function findCurrentMember(db: Database, userId: string): Promise<C
   };
 }
 
-export function requireMember(
-  auth: Auth,
-  db: Database,
-  options: { householdAdmin?: boolean } = {},
-) {
+export function requireMember(auth: Auth, db: Database, options: { householdAdmin?: boolean } = {}) {
   return createMiddleware<MemberEnv>(async (c, next) => {
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
     if (!session) return c.json({ error: 'unauthenticated' }, 401);
@@ -137,11 +133,7 @@ type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 // Locks the acting admin's membership so removals and handovers by the same household queue up
 // behind one another, and each sees the roles the previous one left.
 async function lockAdmin(tx: Transaction, scope: CurrentMember) {
-  const [own] = await tx
-    .select({ role: member.role })
-    .from(member)
-    .where(eq(member.id, scope.memberId))
-    .for('update');
+  const [own] = await tx.select({ role: member.role }).from(member).where(eq(member.id, scope.memberId)).for('update');
   if (own?.role !== HOUSEHOLD_ADMIN_ROLE) throw new NotHouseholdAdminError();
 }
 

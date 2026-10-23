@@ -106,13 +106,15 @@ describe('creating a household', () => {
       name: string;
       memberCount: number;
     }[];
-    expect(listed).toContainEqual(expect.objectContaining({ id: householdId, name: input.householdName, memberCount: 1 }));
+    expect(listed).toContainEqual(
+      expect.objectContaining({ id: householdId, name: input.householdName, memberCount: 1 }),
+    );
     expect(await (await instanceAdmin.request('/api/me')).json()).toMatchObject({
       household: { id: instanceAdmin.householdId },
     });
   });
 
-  test("rejects an admin username that is already taken", async () => {
+  test('rejects an admin username that is already taken', async () => {
     const instanceAdmin = await signUpHousehold(ctx, { instanceAdmin: true });
     const input = newHousehold();
     const res = await instanceAdmin.request(

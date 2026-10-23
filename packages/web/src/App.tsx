@@ -106,7 +106,9 @@ function Session() {
       return <SetupPage onDone={refresh} />;
     case 'signed-out':
       if (invitationId && !signingInToJoin) {
-        return <JoinPage invitationId={invitationId} onDone={leaveInvitation} onSignIn={() => setSigningInToJoin(true)} />;
+        return (
+          <JoinPage invitationId={invitationId} onDone={leaveInvitation} onSignIn={() => setSigningInToJoin(true)} />
+        );
       }
       if (window.location.pathname === '/sign-up') return <SignUpPage onDone={refresh} />;
       if (window.location.pathname === '/reset-password') return <ResetPasswordPage />;

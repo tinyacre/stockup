@@ -65,13 +65,26 @@ const s3Vars = [
 
 function loadS3Config(env: Env): S3Config | undefined {
   if (missingVars(env, s3Vars).length === s3Vars.length) return undefined;
-  const missing = missingVars(env, ['STOCKUP_S3_ENDPOINT', 'STOCKUP_S3_BUCKET', 'STOCKUP_S3_ACCESS_KEY_ID', 'STOCKUP_S3_SECRET_ACCESS_KEY']);
+  const missing = missingVars(env, [
+    'STOCKUP_S3_ENDPOINT',
+    'STOCKUP_S3_BUCKET',
+    'STOCKUP_S3_ACCESS_KEY_ID',
+    'STOCKUP_S3_SECRET_ACCESS_KEY',
+  ]);
   if (missing.length > 0) throw new Error(`S3 evidence storage is configured but ${missing.join(', ')} not set`);
 
   const endpoint = env.STOCKUP_S3_ENDPOINT!;
   const url = URL.canParse(endpoint) ? new URL(endpoint) : undefined;
   // The client appends the bucket and key to the endpoint, so anything beyond the origin would be lost or misread.
-  if (!url || !['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+  if (
+    !url ||
+    !['http:', 'https:'].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
     throw new Error(`STOCKUP_S3_ENDPOINT must be http(s)://host[:port] with no path, got "${endpoint}"`);
   }
 
@@ -174,7 +187,9 @@ export function loadConfig(env: Env): Config {
   // The issuer of OAuth tokens and the identifier of the MCP resource, so it cannot be derived per request.
   const baseUrl = env.STOCKUP_BASE_URL;
   if (!baseUrl || !URL.canParse(baseUrl)) {
-    throw new Error('STOCKUP_BASE_URL is required and must be the public URL members open, e.g. https://stockup.example.com');
+    throw new Error(
+      'STOCKUP_BASE_URL is required and must be the public URL members open, e.g. https://stockup.example.com',
+    );
   }
 
   const port = Number(env.STOCKUP_PORT || 8080);

@@ -58,9 +58,7 @@ import { priceRecordInputSchema, priceRecordSchema } from './routes/price-record
 
 const failure = (text: string) => ({ isError: true, content: [{ type: 'text' as const, text }] });
 
-const noHousehold = failure(
-  '你已不属于任何家庭，无法访问 StockUp 的数据。请向家庭管理员要一个邀请链接重新加入。',
-);
+const noHousehold = failure('你已不属于任何家庭，无法访问 StockUp 的数据。请向家庭管理员要一个邀请链接重新加入。');
 
 const productNotFound = '这个家庭没有这个商品，请先用 search_products 找到商品 ID。';
 const channelNotFound = '这个家庭没有这个渠道，请先用 list_channels 找到渠道 ID。';
@@ -78,10 +76,7 @@ interface FailureSentences {
 }
 
 // The assistant relays these to the member, so they say what to change rather than name the error.
-function describeFailure(
-  error: unknown,
-  { missingParent, nameTaken, notEmpty, incompatibleUnits }: FailureSentences,
-) {
+function describeFailure(error: unknown, { missingParent, nameTaken, notEmpty, incompatibleUnits }: FailureSentences) {
   if (error instanceof ProductNotFoundError) return productNotFound;
   if (error instanceof ParentNotFoundError && missingParent) return missingParent;
   if (error instanceof NameTakenError && nameTaken) return nameTaken;
@@ -92,7 +87,10 @@ function describeFailure(
     return '这个家庭没有要合并的商品，请先用 search_products 找到重复商品的 ID。';
   }
   if (error instanceof IncompatibleUnitsError) {
-    return incompatibleUnits ?? `规格的单位 ${error.from.name} 无法换算成商品的计价单位 ${error.to.name}，请用同一量纲的单位；计数单位须与计价单位同名。`;
+    return (
+      incompatibleUnits ??
+      `规格的单位 ${error.from.name} 无法换算成商品的计价单位 ${error.to.name}，请用同一量纲的单位；计数单位须与计价单位同名。`
+    );
   }
   if (error instanceof InvalidPriceError) return '优惠合计不能达到或超过原价。';
   return undefined;
@@ -300,10 +298,13 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
       annotations: write,
     },
     ({ channelId, ...changes }) =>
-      asMember(async (member) => {
-        const channel = await updateChannel(db, member, channelId, changes);
-        return channel ? { channel } : channelNotFound;
-      }, { nameTaken: channelNameTaken }),
+      asMember(
+        async (member) => {
+          const channel = await updateChannel(db, member, channelId, changes);
+          return channel ? { channel } : channelNotFound;
+        },
+        { nameTaken: channelNameTaken },
+      ),
   );
 
   server.registerTool(
@@ -351,10 +352,13 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
       annotations: write,
     },
     ({ categoryGroupId, name }) =>
-      asMember(async (member) => {
-        const categoryGroup = await updateCategoryGroup(db, member, categoryGroupId, { name });
-        return categoryGroup ? { categoryGroup } : categoryGroupNotFound;
-      }, { nameTaken: categoryGroupNameTaken }),
+      asMember(
+        async (member) => {
+          const categoryGroup = await updateCategoryGroup(db, member, categoryGroupId, { name });
+          return categoryGroup ? { categoryGroup } : categoryGroupNotFound;
+        },
+        { nameTaken: categoryGroupNameTaken },
+      ),
   );
 
   server.registerTool(
@@ -425,7 +429,8 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
     },
     ({ categoryId }) =>
       asMember(
-        async (member) => ((await deleteCategory(db, member, categoryId)) ? { deletedId: categoryId } : categoryNotFound),
+        async (member) =>
+          (await deleteCategory(db, member, categoryId)) ? { deletedId: categoryId } : categoryNotFound,
         { notEmpty: '这个品类里还有商品，无法删除；请先把商品移到其他品类或删除。' },
       ),
   );
@@ -535,7 +540,9 @@ function stockupServer(db: Database, store: EvidenceStore, userId: string, scope
     },
     ({ priceRecordId }) =>
       asMember(async (member) =>
-        (await deletePriceRecord(db, store, member, priceRecordId)) ? { deletedId: priceRecordId } : priceRecordNotFound,
+        (await deletePriceRecord(db, store, member, priceRecordId))
+          ? { deletedId: priceRecordId }
+          : priceRecordNotFound,
       ),
   );
 

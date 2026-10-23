@@ -55,7 +55,8 @@ export function EmailCodeField({
       setSent(true);
       setWait(RESEND_SECONDS);
     } catch (error) {
-      const retryAfter = error instanceof ApiError ? (error.payload as { retryAfter?: number } | null)?.retryAfter : undefined;
+      const retryAfter =
+        error instanceof ApiError ? (error.payload as { retryAfter?: number } | null)?.retryAfter : undefined;
       if (retryAfter) {
         setWait(retryAfter);
         setError(`发送太频繁，请 ${retryAfter} 秒后再试`);

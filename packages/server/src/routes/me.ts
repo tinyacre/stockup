@@ -68,7 +68,12 @@ export function meRoutes(db: Database, auth: Auth, codes?: EmailCodes) {
       'Price records show the new name of the member who entered them. The theme follows the account to every device.',
     middleware,
     request: {
-      body: json(accountSchema.pick({ name: true }).partial().extend({ theme: z.enum(themes).optional() })),
+      body: json(
+        accountSchema
+          .pick({ name: true })
+          .partial()
+          .extend({ theme: z.enum(themes).optional() }),
+      ),
     },
     responses: {
       200: { description: 'The updated member', content: { 'application/json': { schema: meSchema } } },

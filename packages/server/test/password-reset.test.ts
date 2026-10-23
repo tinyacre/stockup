@@ -112,15 +112,13 @@ describe('password reset', () => {
     };
     await sendAll();
     const wrong = (await mailer.codeFor(member.email)) === '000000' ? '111111' : '000000';
-    const errorFor = async (email: string) => (await reset(ctx, { email, code: wrong, newPassword: newPassword() })).json();
+    const errorFor = async (email: string) =>
+      (await reset(ctx, { email, code: wrong, newPassword: newPassword() })).json();
 
     for (const email of addresses) {
       const errors = [];
       for (let i = 0; i < 6; i++) errors.push(await errorFor(email));
-      expect(errors).toEqual([
-        ...Array(5).fill({ error: 'code_invalid' }),
-        { error: 'code_attempts_exceeded' },
-      ]);
+      expect(errors).toEqual([...Array(5).fill({ error: 'code_invalid' }), { error: 'code_attempts_exceeded' }]);
     }
 
     advance(start, minutes(1));
@@ -246,7 +244,11 @@ describe('password reset and MCP clients', () => {
     const refreshed = await fetch(new URL('/api/auth/oauth2/token', ctx.baseUrl), {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken!, client_id: CLAUDE_CLIENT_ID }),
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken!,
+        client_id: CLAUDE_CLIENT_ID,
+      }),
     });
     expect(refreshed.ok).toBe(false);
 

@@ -38,7 +38,9 @@ test('a screenshot that is not an image is refused', async ({ page, household })
   await page.getByRole('button', { name: '登录' }).click();
 
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '识别' }).click();
-  await page.getByLabel('上传截图').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
+  await page
+    .getByLabel('上传截图')
+    .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
   await expect(page.getByRole('alert')).toHaveText('截图仅支持 PNG、JPEG、WebP、GIF');
 });
 

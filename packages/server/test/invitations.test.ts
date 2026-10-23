@@ -279,7 +279,7 @@ describe('rejoining with an existing account', () => {
     expect(used?.status).toBe('accepted');
   });
 
-  test("a removed member may join another household", async () => {
+  test('a removed member may join another household', async () => {
     const member = await removed(await signUpHousehold(ctx));
     const other = await signUpHousehold(ctx);
     const { id } = await invite(other);

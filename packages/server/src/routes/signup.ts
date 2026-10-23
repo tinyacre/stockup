@@ -33,24 +33,23 @@ const signUpRoute = createRoute({
 });
 
 export function signupRoutes(auth: Auth, { codes, signupOpen }: { codes?: EmailCodes; signupOpen: boolean }) {
-  return new OpenAPIHono()
-    .openapi(signUpRoute, async (c) => {
-      if (!codes || !signupOpen) return c.json({ error: 'signup_closed' }, 403);
-      const input = c.req.valid('json');
-      let created;
-      try {
-        created = await signUp(auth, codes, input);
-      } catch (error) {
-        if (error instanceof NameTakenError) return c.json({ error: 'username_taken' }, 409);
-        if (error instanceof EmailTakenError) return c.json({ error: 'email_taken' }, 409);
-        return respondToInvalidCode(c, error);
-      }
+  return new OpenAPIHono().openapi(signUpRoute, async (c) => {
+    if (!codes || !signupOpen) return c.json({ error: 'signup_closed' }, 403);
+    const input = c.req.valid('json');
+    let created;
+    try {
+      created = await signUp(auth, codes, input);
+    } catch (error) {
+      if (error instanceof NameTakenError) return c.json({ error: 'username_taken' }, 409);
+      if (error instanceof EmailTakenError) return c.json({ error: 'email_taken' }, 409);
+      return respondToInvalidCode(c, error);
+    }
 
-      const { headers } = await auth.api.signInUsername({
-        body: { username: input.username, password: input.password },
-        returnHeaders: true,
-      });
-      for (const cookie of headers.getSetCookie()) c.header('set-cookie', cookie, { append: true });
-      return c.json(created, 201);
+    const { headers } = await auth.api.signInUsername({
+      body: { username: input.username, password: input.password },
+      returnHeaders: true,
     });
+    for (const cookie of headers.getSetCookie()) c.header('set-cookie', cookie, { append: true });
+    return c.json(created, 201);
+  });
 }

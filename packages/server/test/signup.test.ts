@@ -33,7 +33,6 @@ function submit(ctx: TestContext, visitor: ReturnType<typeof newVisitor>, code: 
   return ctx.app.request('/api/signup', jsonRequest('POST', { ...visitor, code }));
 }
 
-
 afterEach(() => {
   setSystemTime();
 });
@@ -182,10 +181,7 @@ describe('open signup', () => {
     for (const email of addresses) {
       const errors = [];
       for (let i = 0; i < 6; i++) errors.push(await errorFor(email));
-      expect(errors).toEqual([
-        ...Array(5).fill({ error: 'code_invalid' }),
-        { error: 'code_attempts_exceeded' },
-      ]);
+      expect(errors).toEqual([...Array(5).fill({ error: 'code_invalid' }), { error: 'code_attempts_exceeded' }]);
     }
 
     advance(start, minutes(2));
@@ -228,10 +224,16 @@ describe('open signup', () => {
 
     const other = await signUpWithEmail(ctx, mailer);
     advance(start, minutes(1));
-    const sent = await other.request('/api/email-codes', jsonRequest('POST', { email: visitor.email, purpose: 'change-email' }));
+    const sent = await other.request(
+      '/api/email-codes',
+      jsonRequest('POST', { email: visitor.email, purpose: 'change-email' }),
+    );
     expect(sent.status).toBe(204);
     const changeCode = await mailer.codeFor(visitor.email);
-    const changed = await other.request('/api/me/email', jsonRequest('POST', { email: visitor.email, code: changeCode }));
+    const changed = await other.request(
+      '/api/me/email',
+      jsonRequest('POST', { email: visitor.email, code: changeCode }),
+    );
     expect(changed.status).toBe(200);
 
     const res = await submit(ctx, visitor, code);

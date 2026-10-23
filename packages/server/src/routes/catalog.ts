@@ -31,7 +31,6 @@ const errorContent = { 'application/json': { schema: errorSchema } };
 export const catalogNameSchema = z.string().trim().min(1).max(50);
 const idParams = z.object({ id: z.string() });
 
-
 export const categoryGroupSchema = z.object({ id: z.string(), name: z.string() }).openapi('CategoryGroup');
 
 export const catalogSchema = z
@@ -60,7 +59,10 @@ export const productSchema = z
     id: z.string(),
     name: z.string(),
     categoryGroupId: z.string(),
-    categoryId: z.string().nullable().openapi({ description: 'Null for a product placed in its group outside any category' }),
+    categoryId: z
+      .string()
+      .nullable()
+      .openapi({ description: 'Null for a product placed in its group outside any category' }),
     pricingUnit: pricingUnitSchema,
     baseSize: z.number().openapi({ description: 'Base Size in the pricing unit', example: 90 }),
     stockLine: z
@@ -88,13 +90,10 @@ const productSummarySchema = productDetailSchema
       .object({
         date: z.string(),
         unitPrice: z.number(),
-        verdict: z
-          .enum(['recordLow', 'stockUp', 'skip', 'noReference'])
-          .nullable()
-          .openapi({
-            description:
-              "The newest record's verdict against the current stock line and the lowest unit price among its other records",
-          }),
+        verdict: z.enum(['recordLow', 'stockUp', 'skip', 'noReference']).nullable().openapi({
+          description:
+            "The newest record's verdict against the current stock line and the lowest unit price among its other records",
+        }),
       })
       .nullable()
       .openapi({ description: 'Date, unit price and verdict of its newest price record, null without any' }),
@@ -362,7 +361,8 @@ export function catalogRoutes(db: Database, auth: Auth) {
       201: { description: 'Created', content: { 'application/json': { schema: productSchema } } },
       ...unauthenticated,
       422: {
-        description: 'No such category (category_not_found) or category group (category_group_not_found) in this household',
+        description:
+          'No such category (category_not_found) or category group (category_group_not_found) in this household',
         content: errorContent,
       },
     },
@@ -478,7 +478,10 @@ export function catalogRoutes(db: Database, auth: Auth) {
     .openapi(listProductsRoute, async (c) => {
       const products = await listProducts(db, c.var.member, c.req.valid('query'));
       const summaries = await summarizePrices(db, c.var.member, products);
-      return c.json(products.map((p) => ({ ...p, ...summaries.get(p.id)! })), 200);
+      return c.json(
+        products.map((p) => ({ ...p, ...summaries.get(p.id)! })),
+        200,
+      );
     })
     .openapi(searchProductsRoute, async (c) => {
       const { q, includeArchived, limit } = c.req.valid('query');

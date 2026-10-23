@@ -32,15 +32,16 @@ export const judgmentSchema = z
     lastYearPromotionLowest: z.number().nullable().openapi({
       description: "Lowest unit price among last year's price records tagged with the promotion the date falls in",
     }),
-    verdict: z
-      .enum(['recordLow', 'stockUp', 'skip', 'noReference'])
-      .nullable()
-      .openapi({
-        description:
-          'recordLow below the lowest unit price, stockUp at or below the stock line, skip above it, noReference with neither; null without a stock line when the price is not a record low',
-      }),
-    stockLineGap: unitPriceGap.openapi({ description: 'Percentage above (positive) or below (negative) the stock line' }),
-    lowestGap: unitPriceGap.openapi({ description: 'Cents above (positive) or below (negative) the lowest unit price' }),
+    verdict: z.enum(['recordLow', 'stockUp', 'skip', 'noReference']).nullable().openapi({
+      description:
+        'recordLow below the lowest unit price, stockUp at or below the stock line, skip above it, noReference with neither; null without a stock line when the price is not a record low',
+    }),
+    stockLineGap: unitPriceGap.openapi({
+      description: 'Percentage above (positive) or below (negative) the stock line',
+    }),
+    lowestGap: unitPriceGap.openapi({
+      description: 'Cents above (positive) or below (negative) the lowest unit price',
+    }),
     lastYearPromotionGap: unitPriceGap.openapi({ description: "Cents above or below last year's promotion lowest" }),
   })
   .openapi('Judgment');

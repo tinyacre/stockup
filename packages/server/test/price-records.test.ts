@@ -103,7 +103,10 @@ describe('price records', () => {
           date: '2026-11-11',
           purchased: false,
           listPrice: 19900,
-          discounts: [{ amount: 10000, name: '满 199 减 100' }, { amount: 500, name: ' plus 券 ' }],
+          discounts: [
+            { amount: 10000, name: '满 199 减 100' },
+            { amount: 500, name: ' plus 券 ' },
+          ],
           quantity: 3,
           size: { amount: 100, unit: { dimension: 'count', name: '抽' } },
           note: '凑单买的',
@@ -119,7 +122,10 @@ describe('price records', () => {
       purchased: false,
       promotion: { id: expect.any(String), name: '双 11' },
       listPrice: 19900,
-      discounts: [{ amount: 10000, name: '满 199 减 100' }, { amount: 500, name: 'plus 券' }],
+      discounts: [
+        { amount: 10000, name: '满 199 减 100' },
+        { amount: 500, name: 'plus 券' },
+      ],
       quantity: 3,
       size: { amount: 100, unit: { dimension: 'count', name: '抽' } },
       enteredSize: { amount: 100, unit: { dimension: 'count', name: '抽' } },
@@ -186,7 +192,10 @@ describe('price records', () => {
     const m = await signUpHousehold(ctx);
     const { product, channel } = await seed(m);
 
-    const res = await createRecord(m, recordBody(product.id, channel.id, { listPrice: 1000, discounts: [{ amount: 1000 }] }));
+    const res = await createRecord(
+      m,
+      recordBody(product.id, channel.id, { listPrice: 1000, discounts: [{ amount: 1000 }] }),
+    );
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: 'invalid_price' });
   });

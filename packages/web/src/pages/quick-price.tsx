@@ -105,7 +105,11 @@ function combineHousehold(
 export function QuickPricePage() {
   const wide = useWideScreen();
   const online = useOnline();
-  const { data: household, error, retry } = useQueries({
+  const {
+    data: household,
+    error,
+    retry,
+  } = useQueries({
     queries: [
       queries.catalog(),
       queries.products(),
@@ -200,13 +204,7 @@ export function QuickPricePage() {
     </InputGroup>
   );
   const results = trimmed && household && found && (
-    <SearchResults
-      query={trimmed}
-      products={found}
-      groups={household.groups}
-      onPick={pick}
-      onCreate={create}
-    />
+    <SearchResults query={trimmed} products={found} groups={household.groups} onPick={pick} onCreate={create} />
   );
   const list = household ? (
     <ProductList groups={household.groups} products={household.products} selectedId={product?.id} onPick={pick} />
@@ -247,9 +245,7 @@ export function QuickPricePage() {
   return (
     <div
       className={cn(
-        wide
-          ? 'grid grid-cols-[320px_minmax(0,1fr)_376px] items-start'
-          : 'flex flex-col gap-3 px-4 pt-3',
+        wide ? 'grid grid-cols-[320px_minmax(0,1fr)_376px] items-start' : 'flex flex-col gap-3 px-4 pt-3',
         !wide && (product && !newProduct ? 'pb-40' : 'pb-8'),
       )}
     >
@@ -368,26 +364,23 @@ function ProductList({
 
   return (
     <section aria-label="商品列表" className="-mx-3 flex flex-col max-wide:-mx-4">
-      <div
-        role="tablist"
-        aria-label="大类"
-        className="flex shrink-0 gap-4 overflow-x-auto border-b border-line px-4"
-      >
-        {[{ id: undefined, name: '全部', count: active.length }, ...groups.map((g) => ({ ...g, count: inGroup(g) }))].map(
-          (g) => (
-            <button
-              key={g.id ?? ''}
-              type="button"
-              role="tab"
-              aria-selected={groupId === g.id}
-              className="-mb-px flex h-9 shrink-0 items-baseline gap-1 border-b-2 border-transparent pt-2.5 text-[13px] text-ink-3 hover:text-ink aria-selected:border-ink aria-selected:font-semibold aria-selected:text-ink"
-              onClick={() => setGroupId(g.id)}
-            >
-              {g.name}
-              <span className="numeric text-xs font-normal text-ink-4">{g.count}</span>
-            </button>
-          ),
-        )}
+      <div role="tablist" aria-label="大类" className="flex shrink-0 gap-4 overflow-x-auto border-b border-line px-4">
+        {[
+          { id: undefined, name: '全部', count: active.length },
+          ...groups.map((g) => ({ ...g, count: inGroup(g) })),
+        ].map((g) => (
+          <button
+            key={g.id ?? ''}
+            type="button"
+            role="tab"
+            aria-selected={groupId === g.id}
+            className="-mb-px flex h-9 shrink-0 items-baseline gap-1 border-b-2 border-transparent pt-2.5 text-[13px] text-ink-3 hover:text-ink aria-selected:border-ink aria-selected:font-semibold aria-selected:text-ink"
+            onClick={() => setGroupId(g.id)}
+          >
+            {g.name}
+            <span className="numeric text-xs font-normal text-ink-4">{g.count}</span>
+          </button>
+        ))}
       </div>
       <div className="flex flex-col gap-1 py-2">
         {shownGroups.flatMap((g) =>
@@ -502,22 +495,22 @@ function QuickPrice({
     stockLine: product.stockLine,
     lastYear: datePromotion && lastYearLowest !== null ? { name: datePromotion.name, lowest: lastYearLowest } : null,
   };
-  const judgment: Judgment | null =
-    priced
-      ? judge({
-          unitPrice: priced.unitPrice,
-          stockLine: product.stockLine,
-          lowestUnitPrice: references.lowest,
-          lastYearPromotionLowest: lastYearLowest,
-        })
-      : null;
+  const judgment: Judgment | null = priced
+    ? judge({
+        unitPrice: priced.unitPrice,
+        stockLine: product.stockLine,
+        lowestUnitPrice: references.lowest,
+        lastYearPromotionLowest: lastYearLowest,
+      })
+    : null;
 
   // Sizes this product was recorded in, newest first, so a repeat purchase is one tap away.
   const sizeChoices = [
     ...new Map(
-      [...(productReferences?.recentSizes ?? []), { amount: product.baseSize, unit: product.pricingUnit }].map(
-        (s) => [formatSize(s.amount, s.unit), { amount: String(Number(s.amount.toFixed(3))), unitName: s.unit.name }],
-      ),
+      [...(productReferences?.recentSizes ?? []), { amount: product.baseSize, unit: product.pricingUnit }].map((s) => [
+        formatSize(s.amount, s.unit),
+        { amount: String(Number(s.amount.toFixed(3))), unitName: s.unit.name },
+      ]),
     ),
   ].slice(0, 5);
 
@@ -568,7 +561,10 @@ function QuickPrice({
         <p className="flex items-center gap-1.5 text-xs text-ink-3">
           每 {perBase(product)}
           <span aria-hidden>·</span>
-          <Link href={productPath(product.id)} className="flex items-center text-ink-2 underline-offset-4 hover:underline">
+          <Link
+            href={productPath(product.id)}
+            className="flex items-center text-ink-2 underline-offset-4 hover:underline"
+          >
             详情
             <ChevronRight className="size-3.5" />
           </Link>
@@ -750,7 +746,8 @@ function QuickPrice({
                 </Button>
                 {discountTotal > 0 && (
                   <span className="text-xs text-ink-3">
-                    优惠合计 <span className="numeric text-[15px] font-semibold text-ink">{formatYuan(discountTotal)}</span>
+                    优惠合计{' '}
+                    <span className="numeric text-[15px] font-semibold text-ink">{formatYuan(discountTotal)}</span>
                   </span>
                 )}
               </div>
@@ -838,7 +835,10 @@ function QuickPrice({
   );
 
   const savedStatus = saved && (
-    <p role="status" className="flex items-center justify-between gap-3 rounded-md bg-ink px-3 py-2 text-sm text-background">
+    <p
+      role="status"
+      className="flex items-center justify-between gap-3 rounded-md bg-ink px-3 py-2 text-sm text-background"
+    >
       {saved}
       <Button variant="link" size="sm" className="text-background" asChild>
         <Link href={productPath(product.id)}>查看记录</Link>
@@ -850,19 +850,20 @@ function QuickPrice({
       离线中：照常填写和判断，联网后才能保存。
     </p>
   );
-  const details = priced && 'input' in read && [
-    { label: '原价', value: formatYuan(read.input.listPrice) },
-    ...(discountTotal > 0 ? [{ label: '优惠', value: `−${formatYuan(discountTotal)}` }] : []),
-    {
-      label: '总量',
-      value: `${read.input.quantity} 件 × ${formatSize(read.input.size.amount, read.input.size.unit)}`,
-    },
-    {
-      label: '入手价',
-      value: product.stockLine === null ? '未设' : `${formatYuan(product.stockLine)} / ${perBase(product)}`,
-      highlight: product.stockLine !== null,
-    },
-  ];
+  const details = priced &&
+    'input' in read && [
+      { label: '原价', value: formatYuan(read.input.listPrice) },
+      ...(discountTotal > 0 ? [{ label: '优惠', value: `−${formatYuan(discountTotal)}` }] : []),
+      {
+        label: '总量',
+        value: `${read.input.quantity} 件 × ${formatSize(read.input.size.amount, read.input.size.unit)}`,
+      },
+      {
+        label: '入手价',
+        value: product.stockLine === null ? '未设' : `${formatYuan(product.stockLine)} / ${perBase(product)}`,
+        highlight: product.stockLine !== null,
+      },
+    ];
   const verdictOutput = (compact?: boolean) => (
     <VerdictDisplay
       compact={compact}
@@ -870,7 +871,9 @@ function QuickPrice({
       unitPrice={priced?.unitPrice ?? null}
       per={perBase(product)}
       gap={priced && <Gap judgment={judgment} netPrice={priced.netPrice} />}
-      placeholder={!listPrice.trim() ? '未填原价' : typeof price === 'string' ? price : 'error' in read ? read.error : ''}
+      placeholder={
+        !listPrice.trim() ? '未填原价' : typeof price === 'string' ? price : 'error' in read ? read.error : ''
+      }
       details={details || undefined}
       className={compact ? 'flex-1 px-1' : undefined}
     />
@@ -914,9 +917,7 @@ function QuickPrice({
             {ruler}
             <div className="flex flex-col gap-2">
               {saveButton('w-full')}
-              {saveMeta.length > 0 && (
-                <p className="text-center text-xs text-ink-3">{saveMeta.join(' · ')}</p>
-              )}
+              {saveMeta.length > 0 && <p className="text-center text-xs text-ink-3">{saveMeta.join(' · ')}</p>}
             </div>
             {offlineStatus}
             {savedStatus}
@@ -948,7 +949,12 @@ function QuickPrice({
 function Gap({ judgment, netPrice }: { judgment: Judgment | null; netPrice: number }) {
   const gap = judgment?.stockLineGap ?? null;
   if (gap === null) {
-    return <>到手 {formatYuan(netPrice)}{judgment?.verdict === null && '，未设入手价'}</>;
+    return (
+      <>
+        到手 {formatYuan(netPrice)}
+        {judgment?.verdict === null && '，未设入手价'}
+      </>
+    );
   }
   return (
     <>

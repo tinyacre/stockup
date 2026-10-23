@@ -28,7 +28,9 @@ const monthDay = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.source;
 export const promotion = pgTable(
   'promotion',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     householdId: text('household_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
@@ -48,7 +50,9 @@ export const promotion = pgTable(
 export const categoryGroup = pgTable(
   'category_group',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     householdId: text('household_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
@@ -66,7 +70,9 @@ export const categoryGroup = pgTable(
 export const category = pgTable(
   'category',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     householdId: text('household_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
@@ -92,7 +98,9 @@ export const unitDimensions = ['weight', 'volume', 'count'] as const;
 export const product = pgTable(
   'product',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     householdId: text('household_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
@@ -139,7 +147,9 @@ export const product = pgTable(
 export const channel = pgTable(
   'channel',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     householdId: text('household_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
@@ -160,7 +170,9 @@ export const priceRecordSources = ['manual', 'recognition', 'mcp'] as const;
 export const priceRecord = pgTable(
   'price_record',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     householdId: text('household_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
@@ -214,7 +226,9 @@ export const priceRecord = pgTable(
 export const discount = pgTable(
   'discount',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     priceRecordId: text('price_record_id')
       .notNull()
       .references(() => priceRecord.id, { onDelete: 'cascade' }),
@@ -237,7 +251,9 @@ export const evidenceContentTypes = ['image/png', 'image/jpeg', 'image/webp', 'i
 export const evidence = pgTable(
   'evidence',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     // Orders Evidence as it was uploaded; pieces uploaded together share their created_at.
     sequence: integer('sequence').generatedAlwaysAsIdentity().notNull(),
     householdId: text('household_id')
@@ -273,7 +289,9 @@ export const recognitionErrors = ['recognition_unavailable', 'recognition_failed
 export const recognition = pgTable(
   'recognition',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     householdId: text('household_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
@@ -308,7 +326,9 @@ export const recognition = pgTable(
 export const recognitionDraft = pgTable(
   'recognition_draft',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     householdId: text('household_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),

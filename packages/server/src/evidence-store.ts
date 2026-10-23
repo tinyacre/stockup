@@ -54,12 +54,15 @@ export async function probeEvidenceStore(store: EvidenceStore, name = 'Evidence 
     try {
       return await run();
     } catch (error) {
-      throw new Error(`${name} cannot be ${failure}: ${error instanceof Error ? error.message : error}`, { cause: error });
+      throw new Error(`${name} cannot be ${failure}: ${error instanceof Error ? error.message : error}`, {
+        cause: error,
+      });
     }
   };
 
   await step('written', () => store.put(key, data));
   const read = await step('read', () => store.get(key));
-  if (!read || !Buffer.from(read).equals(data)) throw new Error(`${name} cannot be read: the probe object came back different`);
+  if (!read || !Buffer.from(read).equals(data))
+    throw new Error(`${name} cannot be read: the probe object came back different`);
   await step('deleted', () => store.delete(key));
 }

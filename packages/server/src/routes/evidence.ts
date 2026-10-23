@@ -48,7 +48,8 @@ export function evidenceRoutes(db: Database, auth: Auth, store: EvidenceStore) {
           'multipart/form-data': {
             schema: z.object({
               files: z.union([file, z.array(file).min(1).max(maxFilesPerUpload)]).openapi({
-                description: 'Up to 10 PNG, JPEG, WebP or GIF images of at most 10 MB each, under repeated "files" fields',
+                description:
+                  'Up to 10 PNG, JPEG, WebP or GIF images of at most 10 MB each, under repeated "files" fields',
               }),
             }),
           },
@@ -60,7 +61,10 @@ export function evidenceRoutes(db: Database, auth: Auth, store: EvidenceStore) {
       201: { description: 'Attached', content: { 'application/json': { schema: z.array(evidenceSchema) } } },
       ...unauthenticated,
       404: { description: 'No such price record in this household', content: errorContent },
-      413: { description: 'A file is over 10 MB, or the upload as a whole too large (evidence_too_large)', content: errorContent },
+      413: {
+        description: 'A file is over 10 MB, or the upload as a whole too large (evidence_too_large)',
+        content: errorContent,
+      },
       422: { description: 'A file is not a supported image (unsupported_evidence_type)', content: errorContent },
     },
   });

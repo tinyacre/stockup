@@ -43,7 +43,9 @@ function SegmentedControl<T extends string | number | boolean>({
             size === "sm" ? "h-[22px] px-2.5 text-[11px]" : "h-[26px] text-xs",
             "aria-checked:bg-surface aria-checked:text-ink aria-checked:shadow-[0_0_0_1px_var(--line-strong)]",
             "price-tag:rounded-none price-tag:font-normal price-tag:text-ink price-tag:[&+&]:border-l price-tag:[&+&]:border-ink",
-            size === "sm" ? "price-tag:h-[26px] price-tag:text-[12.5px]" : "price-tag:h-[30px] price-tag:px-3.5 price-tag:text-[13px]",
+            size === "sm"
+              ? "price-tag:h-[26px] price-tag:text-[12.5px]"
+              : "price-tag:h-[30px] price-tag:px-3.5 price-tag:text-[13px]",
             "price-tag:aria-checked:bg-ink price-tag:aria-checked:font-medium price-tag:aria-checked:text-background price-tag:aria-checked:shadow-none"
           )}
           onClick={() => onValueChange(option.value)}

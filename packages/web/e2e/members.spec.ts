@@ -83,7 +83,11 @@ test('the instance admin creates a household that starts with the preset promoti
   await expect(page.getByText('双 11').first()).toBeVisible();
 });
 
-test('a removed member is signed out at once and rejoins later with the same account', async ({ page, browser, household }) => {
+test('a removed member is signed out at once and rejoins later with the same account', async ({
+  page,
+  browser,
+  household,
+}) => {
   const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const member = await invite(page, browser);
@@ -162,7 +166,11 @@ test('a household admin hands the admin role to another member', async ({ page, 
   );
 });
 
-test('a member renames themselves, changes the password and signs out other devices', async ({ page, browser, household }) => {
+test('a member renames themselves, changes the password and signs out other devices', async ({
+  page,
+  browser,
+  household,
+}) => {
   const { admin } = household;
   await signIn(page, admin.username, admin.password);
   const other = await (await browser.newContext()).newPage();

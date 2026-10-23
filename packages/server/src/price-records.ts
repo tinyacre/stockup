@@ -107,7 +107,10 @@ async function withDetails(db: Executor, scope: CurrentMember, rows: Row[]) {
   ]);
   const byRecord = new Map<string, Discount[]>();
   for (const { priceRecordId, amount, name } of discounts) {
-    byRecord.set(priceRecordId, [...(byRecord.get(priceRecordId) ?? []), name === null ? { amount } : { amount, name }]);
+    byRecord.set(priceRecordId, [
+      ...(byRecord.get(priceRecordId) ?? []),
+      name === null ? { amount } : { amount, name },
+    ]);
   }
   return rows.map((row) => ({
     ...toPriceRecord(row, byRecord.get(row.id) ?? []),
@@ -277,9 +280,9 @@ async function recordValues(
 
 async function insertDiscounts(db: Executor, priceRecordId: string, discounts: Discount[]) {
   if (discounts.length === 0) return;
-  await db.insert(discount).values(
-    discounts.map((d, position) => ({ priceRecordId, position, amount: d.amount, name: d.name || null })),
-  );
+  await db
+    .insert(discount)
+    .values(discounts.map((d, position) => ({ priceRecordId, position, amount: d.amount, name: d.name || null })));
 }
 
 // Writers lock the product so a change of pricing unit or a merge waits until the record is written.

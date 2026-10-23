@@ -83,7 +83,7 @@ describe('removing a member', () => {
     expect(await res.json()).toEqual({ error: 'cannot_remove_self' });
   });
 
-  test("a member of another household is not found", async () => {
+  test('a member of another household is not found', async () => {
     const alice = await signUpHousehold(ctx);
     const bob = await signUpHousehold(ctx);
     const dave = await joinHousehold(ctx, bob);
@@ -112,7 +112,7 @@ describe('handing over the household admin role', () => {
     expect(await res.json()).toEqual({ error: 'already_admin' });
   });
 
-  test("a member of another household is not found", async () => {
+  test('a member of another household is not found', async () => {
     const alice = await signUpHousehold(ctx);
     const dave = await joinHousehold(ctx, await signUpHousehold(ctx));
     expect((await makeAdmin(alice, dave.userId)).status).toBe(404);

@@ -16,7 +16,10 @@ const route = createRoute({
           schema: z.object({
             signup: z.boolean().openapi({ description: 'Whether visitors may register with an email code' }),
             email: z.boolean().openapi({ description: 'Whether the instance can mail verification codes' }),
-            turnstileSiteKey: z.string().nullable().openapi({ description: 'Set when requests need a Turnstile token' }),
+            turnstileSiteKey: z
+              .string()
+              .nullable()
+              .openapi({ description: 'Set when requests need a Turnstile token' }),
           }),
         },
       },

@@ -13,7 +13,10 @@ const timeoutMs = 10_000;
 
 // Fails closed: a token counts only when Cloudflare confirms it, so an outage refuses requests rather than
 // letting scripts through.
-export function cloudflareTurnstile(config: TurnstileConfig, fetch: typeof globalThis.fetch = globalThis.fetch): TurnstileVerifier {
+export function cloudflareTurnstile(
+  config: TurnstileConfig,
+  fetch: typeof globalThis.fetch = globalThis.fetch,
+): TurnstileVerifier {
   return {
     siteKey: config.siteKey,
     async verify(token, remoteIp) {

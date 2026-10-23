@@ -66,7 +66,10 @@ async function signInAndConsent(baseUrl: string, member: SignedInMember, authori
     ),
     200,
   );
-  const cookie = signedIn.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  const cookie = signedIn.headers
+    .getSetCookie()
+    .map((c) => c.split(';')[0])
+    .join('; ');
   const consentUrl = new URL(((await signedIn.json()) as { url: string }).url, baseUrl);
   if (consentUrl.pathname !== '/oauth/consent') throw new Error(`expected the consent page, got ${consentUrl}`);
 

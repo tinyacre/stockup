@@ -29,7 +29,12 @@ async function seedProducts(m: SignedInMember, names: string[]) {
       await created<Product>(
         await m.request(
           '/api/products',
-          jsonRequest('POST', { categoryId: category.id, name, pricingUnit: { dimension: 'count', name: '抽' }, baseSize: 90 }),
+          jsonRequest('POST', {
+            categoryId: category.id,
+            name,
+            pricingUnit: { dimension: 'count', name: '抽' },
+            baseSize: 90,
+          }),
         ),
       ),
     );

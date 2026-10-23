@@ -263,7 +263,10 @@ test('quick price shows the same judgment as the judgment API', async ({ page, h
   }
 });
 
-test('a wide screen shows the product list, the form and the result side by side', async ({ page, household }, info) => {
+test('a wide screen shows the product list, the form and the result side by side', async ({
+  page,
+  household,
+}, info) => {
   test.skip(!info.project.name.startsWith('desktop'), 'the three columns need a wide screen');
   const suffix = crypto.randomUUID().slice(0, 6);
   const productName = `洁柔面巾纸 ${suffix}`;

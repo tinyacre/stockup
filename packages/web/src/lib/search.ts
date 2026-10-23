@@ -60,7 +60,10 @@ export function useLocalProductSearch<P extends Product>(products: P[] | undefin
   return useMemo(
     () =>
       searchByName && products && query
-        ? searchByName(products.filter((p) => !p.archived), query).slice(0, limit)
+        ? searchByName(
+            products.filter((p) => !p.archived),
+            query,
+          ).slice(0, limit)
         : undefined,
     [searchByName, products, query, limit],
   );

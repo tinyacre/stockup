@@ -7,15 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { List, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
-import {
-  Alert,
-  attempt,
-  DeleteButton,
-  EditableTitle,
-  ListSkeleton,
-  NameForm,
-  RetryAlert,
-} from '@/components/editing';
+import { Alert, attempt, DeleteButton, EditableTitle, ListSkeleton, NameForm, RetryAlert } from '@/components/editing';
 import { api, type Channel } from '@/lib/api';
 import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 

@@ -103,7 +103,8 @@ export function VerdictDisplay({
               className={cn(
                 'numeric font-semibold text-(--verdict) price-tag:text-ink',
                 compact ? 'text-[32px] leading-none' : 'text-num-hero',
-                !compact && 'price-tag:flex price-tag:items-start price-tag:text-[72px] price-tag:wide:text-[104px] price-tag:leading-[.86] price-tag:tracking-[-.01em]',
+                !compact &&
+                  'price-tag:flex price-tag:items-start price-tag:text-[72px] price-tag:wide:text-[104px] price-tag:leading-[.86] price-tag:tracking-[-.01em]',
               )}
             >
               <span className={cn(!compact && 'price-tag:mt-[.09em] price-tag:mr-0.5 price-tag:text-[.3em]')}>¥</span>

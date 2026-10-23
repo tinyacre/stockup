@@ -31,9 +31,7 @@ const promotionInputSchema = z.object({
   endsOn: monthDay.openapi({ example: '11-11' }),
 });
 
-const promotionChangesSchema = promotionInputSchema
-  .partial()
-  .refine(hasChanges, nothingToChange);
+const promotionChangesSchema = promotionInputSchema.partial().refine(hasChanges, nothingToChange);
 
 function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };

@@ -76,7 +76,9 @@ test('a member revokes Claude in settings', async ({ page, household }) => {
   await page.goto('/settings');
   const authorized = page.getByRole('region', { name: '已授权的应用' });
   await expect(authorized.getByText('Claude（claude.ai）')).toBeVisible();
-  await expect(authorized.getByText('查看家庭的商品和价格、以你的名义新建、修改和删除商品、渠道、分类和价格记录')).toBeVisible();
+  await expect(
+    authorized.getByText('查看家庭的商品和价格、以你的名义新建、修改和删除商品、渠道、分类和价格记录'),
+  ).toBeVisible();
   await authorized.getByRole('button', { name: '撤销 Claude' }).click();
   await expect(authorized.getByText('暂无授权的应用')).toBeVisible();
 });

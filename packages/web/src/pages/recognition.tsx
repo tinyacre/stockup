@@ -182,7 +182,8 @@ export function RecognitionPage({
               <p role="status" className="text-sm">
                 已确认入库
               </p>
-            ) : recognition.status === 'succeeded' &&
+            ) : (
+              recognition.status === 'succeeded' &&
               (recognition.drafts.length === 0 ? (
                 <ManualEntry message="未识别出商品" onManualEntry={onManualEntry} />
               ) : (
@@ -201,7 +202,8 @@ export function RecognitionPage({
                     }}
                   />
                 )
-              ))}
+              ))
+            )}
           </div>
         </>
       )}
@@ -300,20 +302,12 @@ function Review({
           )}
         </section>
       </Panel>
-      {household && (
-        <ConfirmForm recognition={recognition} channels={household.channels} onConfirmed={onConfirmed} />
-      )}
+      {household && <ConfirmForm recognition={recognition} channels={household.channels} onConfirmed={onConfirmed} />}
     </>
   );
 }
 
-function Confirmed({
-  records,
-  names,
-}: {
-  records: PriceRecord[];
-  names: Map<string, string>;
-}) {
+function Confirmed({ records, names }: { records: PriceRecord[]; names: Map<string, string> }) {
   return (
     <Panel asChild>
       <section aria-label="入库结果">
@@ -355,7 +349,10 @@ function DraftItem({
   const [error, setError] = useState<string>();
 
   async function save(changes: DraftChanges) {
-    const message = await attempt(async () => onChange(await api.editDraft(recognition.id, draft.id, changes)), editErrors);
+    const message = await attempt(
+      async () => onChange(await api.editDraft(recognition.id, draft.id, changes)),
+      editErrors,
+    );
     setError(message ?? undefined);
     if (!message) setMode('view');
   }
@@ -567,7 +564,13 @@ function DraftForm({
           <Input id={`${id}-quantity`} name="quantity" autoComplete="off" defaultValue={draft.quantity ?? ''} />
         </Field>
         <Field label="原价（元）" htmlFor={`${id}-list-price`}>
-          <Input id={`${id}-list-price`} name="listPrice" inputMode="decimal" autoComplete="off" defaultValue={yuanText(draft.listPrice)} />
+          <Input
+            id={`${id}-list-price`}
+            name="listPrice"
+            inputMode="decimal"
+            autoComplete="off"
+            defaultValue={yuanText(draft.listPrice)}
+          />
         </Field>
       </div>
       <Field label="规格" htmlFor={`${id}-size`} hint={draft.sizeText ? `截图原文：${draft.sizeText}` : undefined}>
@@ -602,7 +605,9 @@ function DraftForm({
               placeholder="名称"
               maxLength={50}
               value={d.name}
-              onChange={(event) => setDiscounts(discounts.map((x, j) => (j === i ? { ...x, name: event.target.value } : x)))}
+              onChange={(event) =>
+                setDiscounts(discounts.map((x, j) => (j === i ? { ...x, name: event.target.value } : x)))
+              }
             />
             <Input
               aria-label={`优惠 ${i + 1} 金额`}
@@ -610,9 +615,16 @@ function DraftForm({
               inputMode="decimal"
               className="max-w-28"
               value={d.amount}
-              onChange={(event) => setDiscounts(discounts.map((x, j) => (j === i ? { ...x, amount: event.target.value } : x)))}
+              onChange={(event) =>
+                setDiscounts(discounts.map((x, j) => (j === i ? { ...x, amount: event.target.value } : x)))
+              }
             />
-            <Button type="button" variant="ghost" size="xs" onClick={() => setDiscounts(discounts.filter((_, j) => j !== i))}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => setDiscounts(discounts.filter((_, j) => j !== i))}
+            >
               移除
             </Button>
           </div>
@@ -700,7 +712,13 @@ function ConfirmForm({
         <PanelBody className="flex flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="日期" htmlFor={`${id}-date`}>
-              <Input id={`${id}-date`} type="date" required value={date} onChange={(event) => setDate(event.target.value)} />
+              <Input
+                id={`${id}-date`}
+                type="date"
+                required
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+              />
             </Field>
             <Field label="渠道" htmlFor={`${id}-channel`}>
               <NativeSelect

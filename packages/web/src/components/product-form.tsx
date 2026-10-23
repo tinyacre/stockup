@@ -16,7 +16,10 @@ const countUnit = 'count:';
 type Destination = { placement: Placement; groups?: never } | { placement?: never; groups: CategoryGroup[] };
 
 // Each group offers itself first, for products outside its categories.
-export function PlacementSelect({ groups, ...props }: { groups: CategoryGroup[] } & ComponentProps<typeof NativeSelect>) {
+export function PlacementSelect({
+  groups,
+  ...props
+}: { groups: CategoryGroup[] } & ComponentProps<typeof NativeSelect>) {
   return (
     <NativeSelect {...props}>
       {props.defaultValue === '' && (
@@ -99,11 +102,7 @@ export function NewProductForm({
             <Input id={`${id}-name`} name="name" required maxLength={100} autoFocus defaultValue={defaultName} />
           </Field>
           {groups && (
-            <Field
-              label="所属品类"
-              htmlFor={`${id}-category`}
-              hint={groups.length === 0 && '暂无大类'}
-            >
+            <Field label="所属品类" htmlFor={`${id}-category`} hint={groups.length === 0 && '暂无大类'}>
               <PlacementSelect
                 id={`${id}-category`}
                 name="placement"

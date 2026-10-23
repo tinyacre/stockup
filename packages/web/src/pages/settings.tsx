@@ -193,7 +193,9 @@ function AuthorizedClientItem({ client, onRevoked }: { client: AuthorizedClient;
         <span className="text-sm font-medium">{client.name ? `${client.name}（${host}）` : host}</span>
         <span className="text-xs text-ink-3">{new Date(client.authorizedAt).toLocaleDateString('zh-CN')} 授权</span>
         {scopes.length > 0 && (
-          <span className="text-xs text-ink-3">{scopes.map((scope) => scopeDescriptions[scope] ?? scope).join('、')}</span>
+          <span className="text-xs text-ink-3">
+            {scopes.map((scope) => scopeDescriptions[scope] ?? scope).join('、')}
+          </span>
         )}
       </ListCell>
       <Button

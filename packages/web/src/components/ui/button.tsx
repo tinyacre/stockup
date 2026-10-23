@@ -8,8 +8,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          "border-gold-edge bg-gold text-on-gold hover:bg-gold-hover price-tag:font-semibold",
+        default: "border-gold-edge bg-gold text-on-gold hover:bg-gold-hover price-tag:font-semibold",
         destructive: "bg-record-low text-on-verdict hover:bg-record-low/90",
         outline:
           "border-line-strong bg-surface text-ink hover:bg-surface-hover price-tag:border-ink price-tag:bg-transparent [&_svg]:text-ink-2",

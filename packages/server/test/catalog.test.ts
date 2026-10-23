@@ -369,7 +369,12 @@ describe('products', () => {
 
     const res = await m.request(`/api/products?categoryId=${category.id}`);
     expect(await res.json()).toEqual([
-      { ...product, stockLine: 5000, lowestUnitPrice: 4500, latestPrice: { date: '2026-10-01', unitPrice: 6000, verdict: 'skip' } },
+      {
+        ...product,
+        stockLine: 5000,
+        lowestUnitPrice: 4500,
+        latestPrice: { date: '2026-10-01', unitPrice: 6000, verdict: 'skip' },
+      },
       { ...plain, lowestUnitPrice: null, latestPrice: null },
     ]);
   });
@@ -406,11 +411,31 @@ describe('products', () => {
       return listed.find((p) => p.id === product.id)!.latestPrice!.verdict;
     }
 
-    expect(await latestVerdict(5000, [['2026-01-01', 4500], ['2026-10-01', 4000]])).toBe('recordLow');
-    expect(await latestVerdict(5000, [['2026-01-01', 4500], ['2026-10-01', 4500]])).toBe('stockUp');
+    expect(
+      await latestVerdict(5000, [
+        ['2026-01-01', 4500],
+        ['2026-10-01', 4000],
+      ]),
+    ).toBe('recordLow');
+    expect(
+      await latestVerdict(5000, [
+        ['2026-01-01', 4500],
+        ['2026-10-01', 4500],
+      ]),
+    ).toBe('stockUp');
     expect(await latestVerdict(null, [['2026-10-01', 4500]])).toBe('noReference');
-    expect(await latestVerdict(null, [['2026-01-01', 4500], ['2026-10-01', 4800]])).toBeNull();
-    expect(await latestVerdict(3500, [['2026-10-01', 4000], ['2026-01-01', 3000]])).toBe('skip');
+    expect(
+      await latestVerdict(null, [
+        ['2026-01-01', 4500],
+        ['2026-10-01', 4800],
+      ]),
+    ).toBeNull();
+    expect(
+      await latestVerdict(3500, [
+        ['2026-10-01', 4000],
+        ['2026-01-01', 3000],
+      ]),
+    ).toBe('skip');
   });
 
   test('are renamed, moved to another category and given a note', async () => {
@@ -452,7 +477,10 @@ describe('products', () => {
   test('cannot be moved to a missing category', async () => {
     const m = await signUpHousehold(ctx);
     const { product } = await seed(m);
-    const res = await m.request(`/api/products/${product.id}`, jsonRequest('PATCH', { categoryId: crypto.randomUUID() }));
+    const res = await m.request(
+      `/api/products/${product.id}`,
+      jsonRequest('PATCH', { categoryId: crypto.randomUUID() }),
+    );
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: 'category_not_found' });
   });
@@ -496,7 +524,10 @@ describe('household isolation', () => {
     const bobsCatalog = await catalogOf(bob);
     expect(bobsCatalog.find((g) => g.id === group.id)!.name).toBe(group.name);
     expect(bobsCatalog.some((g) => g.id === emptyGroup.id)).toBe(true);
-    expect(await (await bob.request(`/api/products/${product.id}`)).json()).toEqual({ ...product, lowestUnitPrice: null });
+    expect(await (await bob.request(`/api/products/${product.id}`)).json()).toEqual({
+      ...product,
+      lowestUnitPrice: null,
+    });
   });
 
   test("another household's groups and categories cannot be built on", async () => {

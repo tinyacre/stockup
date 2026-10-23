@@ -28,24 +28,11 @@ const badgeVariants = cva(
   }
 )
 
-function Badge({
-  className,
-  tone,
-  size,
-  ...props
-}: React.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+function Badge({ className, tone, size, ...props }: React.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
   return <span data-slot="badge" className={cn(badgeVariants({ tone, size }), className)} {...props} />
 }
 
-function VerdictBadge({
-  verdict,
-  size,
-  className,
-}: {
-  verdict: Verdict
-  size?: "default" | "lg"
-  className?: string
-}) {
+function VerdictBadge({ verdict, size, className }: { verdict: Verdict; size?: "default" | "lg"; className?: string }) {
   return (
     <Badge tone={verdict} size={size} className={className}>
       {verdictLabels[verdict]}
@@ -61,9 +48,7 @@ function PurchaseBadge({ purchased, className }: { purchased: boolean; className
       className={cn(
         "inline-flex h-5 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-[11px] leading-none font-semibold whitespace-nowrap shadow-[inset_0_0_0_1px_var(--line-strong)]",
         "before:size-1.5 before:rounded-full before:content-['']",
-        purchased
-          ? "bg-surface text-ink before:bg-ink-2"
-          : "text-ink-3 before:border-[1.25px] before:border-ink-3",
+        purchased ? "bg-surface text-ink before:bg-ink-2" : "text-ink-3 before:border-[1.25px] before:border-ink-3",
         "price-tag:h-[22px] price-tag:text-xs price-tag:font-medium price-tag:before:hidden",
         purchased
           ? "price-tag:bg-ink price-tag:text-background price-tag:shadow-[inset_0_0_0_1px_var(--ink)]"

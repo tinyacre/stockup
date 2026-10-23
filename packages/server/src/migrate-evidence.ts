@@ -9,7 +9,9 @@ const parallelUploads = 8;
 // Keys already in the bucket are taken as migrated, which makes a rerun after a partial failure cheap.
 export async function migrateEvidenceToS3(dir: string, target: S3EvidenceStore) {
   const source = localEvidenceStore(dir);
-  const keys = (await readdir(dir, { withFileTypes: true })).filter((entry) => entry.isFile()).map((entry) => entry.name);
+  const keys = (await readdir(dir, { withFileTypes: true }))
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name);
   const counts = { uploaded: 0, skipped: 0, failed: 0 };
 
   const migrate = async (key: string) => {
