@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -242,6 +243,7 @@ function SettingsForm({
     setOutcome(undefined);
     const result = await onSubmit(new FormData(form));
     if ('reset' in result && result.reset) form.reset();
+    if ('done' in result) toast.success(result.done);
     setOutcome(result);
     setPending(false);
   }
@@ -261,11 +263,6 @@ function SettingsForm({
               </Button>
             </div>
             {outcome && 'error' in outcome && <Alert>{outcome.error}</Alert>}
-            {outcome && 'done' in outcome && (
-              <p role="status" className="text-sm">
-                {outcome.done}
-              </p>
-            )}
           </form>
         </PanelBody>
       </section>

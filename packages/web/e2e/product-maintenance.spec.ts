@@ -48,6 +48,7 @@ test('a member re-bases, merges and archives products', async ({ page, household
   await group.getByRole('button', { name: `在 ${groupName} 下新建品类` }).click();
   await group.getByLabel('新品类名称').fill(categoryName);
   await group.getByRole('button', { name: '新建品类', exact: true }).click();
+  await group.getByRole('button', { name: categoryName }).click();
   await createProduct(page, kept, 'g', '500');
   await createProduct(page, duplicate, 'kg', '1');
 

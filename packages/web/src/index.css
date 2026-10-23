@@ -279,3 +279,55 @@
   font-variant-numeric: tabular-nums lining-nums;
   letter-spacing: 0.01em;
 }
+
+/* Page navigation: the content column slides in from the side it is reached from on phones and cross-fades on
+   wider screens, while the navigation stays put. */
+[data-slot="page-column"] {
+  view-transition-name: page;
+}
+
+::view-transition-old(page),
+::view-transition-new(page) {
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (max-width: 899.98px) {
+  [data-navigation="forward"]::view-transition-old(page) {
+    animation-name: page-out-left;
+  }
+  [data-navigation="forward"]::view-transition-new(page) {
+    animation-name: page-in-right;
+  }
+  [data-navigation="back"]::view-transition-old(page) {
+    animation-name: page-out-right;
+  }
+  [data-navigation="back"]::view-transition-new(page) {
+    animation-name: page-in-left;
+  }
+}
+
+@keyframes page-in-right {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+@keyframes page-in-left {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+@keyframes page-out-left {
+  to {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+@keyframes page-out-right {
+  to {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}

@@ -19,6 +19,8 @@ test('a member builds and browses the catalog', async ({ page, household }) => {
   await group.getByRole('button', { name: `在 ${groupName} 下新建品类` }).click();
   await group.getByLabel('新品类名称').fill(categoryName);
   await group.getByRole('button', { name: '新建品类', exact: true }).click();
+  // Phones stay on the tree after creating a category, so the new one is opened from there.
+  await group.getByRole('button', { name: categoryName }).click();
   await expect(page.getByRole('heading', { name: categoryName })).toBeVisible();
 
   await page.getByRole('button', { name: '新建商品' }).click();
@@ -35,7 +37,7 @@ test('a member builds and browses the catalog', async ({ page, household }) => {
 
   await page.getByRole('button', { name: `删除品类 ${categoryName}` }).click();
   await page.getByRole('button', { name: `确认删除品类 ${categoryName}` }).click();
-  await expect(page.getByRole('alert')).toHaveText('品类下还有商品');
+  await expect(page.getByText('品类下还有商品，无法删除')).toBeVisible();
 
   await product.getByRole('button', { name: '编辑' }).click();
   await product.getByLabel('商品名称').fill(`${productName} 加大`);
@@ -77,5 +79,5 @@ test('a product goes straight into a group that has no categories', async ({ pag
   if (await back.isVisible()) await back.click();
   await page.getByRole('button', { name: `删除大类 ${groupName}` }).click();
   await page.getByRole('button', { name: `确认删除大类 ${groupName}` }).click();
-  await expect(page.getByRole('alert')).toHaveText('大类下还有品类或商品');
+  await expect(page.getByText('大类下还有品类或商品，无法删除')).toBeVisible();
 });

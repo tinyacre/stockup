@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import { isMonthDay } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
@@ -11,13 +13,13 @@ import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import {
   Alert,
   attempt,
-  describeError,
   EditableTitle,
   ListSkeleton,
   nameTaken,
   RetryAlert,
 } from '@/components/editing';
 import { api, type Promotion } from '@/lib/api';
+import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 
 type Range = Pick<Promotion, 'startsOn' | 'endsOn'>;
 
@@ -32,21 +34,11 @@ function rangeOf({ startsOn, endsOn }: Range): Range {
 const rangeError = '日期格式应为 月-日';
 
 export function PromotionsPage() {
-  const [promotions, setPromotions] = useState<Promotion[]>();
-  const [loadError, setLoadError] = useState<string>();
+  const loaded = useQuery(queries.promotions());
+  const promotions = loaded.data;
+  const loadError = loadErrorOf(loaded.error);
+  const reload = useRefresh();
   const [creating, setCreating] = useState(false);
-
-  const reload = useCallback(async () => {
-    try {
-      setPromotions(await api.promotions());
-      setLoadError(undefined);
-    } catch (error) {
-      setLoadError(describeError(error));
-    }
-  }, []);
-  useEffect(() => {
-    reload();
-  }, [reload]);
 
   return (
     <PageContent>
@@ -68,6 +60,7 @@ export function PromotionsPage() {
           onCreated={async () => {
             await reload();
             setCreating(false);
+            toast.success('已新建大促');
           }}
         />
       )}
@@ -187,7 +180,10 @@ function PromotionItem({ promotion, onChange }: { promotion: Promotion; onChange
     });
     setPending(false);
     setError(message ?? undefined);
-    if (!message) setEditing(false);
+    if (!message) {
+      setEditing(false);
+      toast.success('已保存日期');
+    }
   }
 
   return (

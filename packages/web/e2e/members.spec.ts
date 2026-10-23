@@ -179,10 +179,10 @@ test('a member renames themselves, changes the password and signs out other devi
   await expect(password.getByRole('alert')).toHaveText('当前密码错误');
   await password.getByLabel('当前密码').fill(admin.password);
   await password.getByRole('button', { name: '修改密码' }).click();
-  await expect(password.getByRole('status')).toContainText('密码已修改');
+  await expect(page.getByText('密码已修改')).toBeVisible();
 
   await page.getByRole('button', { name: '登出其他设备' }).click();
-  await expect(page.getByRole('status').last()).toHaveText('其他设备已登出');
+  await expect(page.getByText('其他设备已登出')).toBeVisible();
   await other.reload();
   await expect(other.getByRole('button', { name: '登录' })).toBeVisible();
 

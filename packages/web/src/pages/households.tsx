@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -7,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { List, ListCell, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
-import { Alert, attempt, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
-import { api, type Household } from '@/lib/api';
+import { Alert, attempt, ListSkeleton, RetryAlert } from '@/components/editing';
+import { api } from '@/lib/api';
+import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 
 const fields = [
   { name: 'householdName', label: '家庭名称', maxLength: 50 },
@@ -18,21 +20,11 @@ const fields = [
 ];
 
 export function HouseholdsPage() {
-  const [households, setHouseholds] = useState<Household[]>();
-  const [loadError, setLoadError] = useState<string>();
+  const loaded = useQuery(queries.households());
+  const households = loaded.data;
+  const loadError = loadErrorOf(loaded.error);
+  const reload = useRefresh();
   const [creating, setCreating] = useState(false);
-
-  const reload = useCallback(async () => {
-    try {
-      setHouseholds(await api.households());
-      setLoadError(undefined);
-    } catch (error) {
-      setLoadError(describeError(error));
-    }
-  }, []);
-  useEffect(() => {
-    reload();
-  }, [reload]);
 
   return (
     <PageContent>

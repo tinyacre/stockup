@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { List, ListCell, ListRow } from '@/components/ui/list';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
-import { attempt, ConfirmButton, describeError, ListSkeleton, NameForm, RetryAlert } from '@/components/editing';
-import { api, type Member } from '@/lib/api';
+import { attempt, ConfirmButton, ListSkeleton, NameForm, RetryAlert } from '@/components/editing';
+import { api } from '@/lib/api';
+import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 
 const gone = { not_found: '该成员已不在家庭中' };
 
@@ -20,20 +21,10 @@ export function MembersPage({
   householdName: string;
   onSessionChange(): void;
 }) {
-  const [members, setMembers] = useState<Member[]>();
-  const [loadError, setLoadError] = useState<string>();
-
-  const reload = useCallback(async () => {
-    try {
-      setMembers(await api.members());
-      setLoadError(undefined);
-    } catch (error) {
-      setLoadError(describeError(error));
-    }
-  }, []);
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  const loaded = useQuery(queries.members());
+  const members = loaded.data;
+  const loadError = loadErrorOf(loaded.error);
+  const reload = useRefresh();
 
   return (
     <PageContent>

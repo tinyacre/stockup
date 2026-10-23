@@ -1,4 +1,6 @@
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { DropdownMenu } from 'radix-ui';
 import { Archive, ArchiveRestore, Combine, Ellipsis, Ruler } from 'lucide-react';
 import { convert, isConvertible } from '@stockup/domain';
@@ -7,9 +9,10 @@ import { Field } from '@/components/ui/field';
 import { InputGroup, InputGroupInput, InputAddon } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Panel, PanelBody, PanelFooter, PanelHeader } from '@/components/ui/panel';
-import { Alert, attempt, describeError } from '@/components/editing';
+import { Alert, attempt } from '@/components/editing';
 import { api, type Product } from '@/lib/api';
 import { formatSize } from '@/lib/format';
+import { loadErrorOf, queries } from '@/lib/queries';
 import { unitsLike } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 
@@ -89,6 +92,7 @@ export function ProductMaintenance({
   const done = async () => {
     onClose();
     await onChanged();
+    toast.success(task === 'units' ? '已修改计价单位' : '已合并商品');
   };
   return task === 'units' ? (
     <UnitsForm product={product} onCancel={onClose} onSaved={done} />
@@ -231,18 +235,13 @@ function MergeForm({
   onMerged(): Promise<void>;
 }) {
   const id = useId();
-  const [candidates, setCandidates] = useState<Product[]>();
+  const all = useQuery(queries.products(undefined, { includeArchived: true }));
+  const candidates = all.data?.filter((p) => p.id !== product.id);
   const [mergedId, setMergedId] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<string>();
+  const [actionError, setError] = useState<string>();
+  const error = actionError ?? loadErrorOf(all.error);
   const [pending, setPending] = useState(false);
-
-  useEffect(() => {
-    api.products(undefined, { includeArchived: true }).then(
-      (products) => setCandidates(products.filter((p) => p.id !== product.id)),
-      (e) => setError(describeError(e)),
-    );
-  }, [product.id]);
 
   const compatible = candidates?.filter((p) => isConvertible(p.pricingUnit, product.pricingUnit)) ?? [];
   const merged = compatible.find((p) => p.id === mergedId);

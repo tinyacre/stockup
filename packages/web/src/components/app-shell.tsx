@@ -163,7 +163,7 @@ export function AppShell({
           </div>
         </header>
 
-        <div className="flex min-w-0 flex-col">
+        <div data-slot="page-column" className="flex min-w-0 flex-col">
           <PageBar fallbackTitle={title} />
           <main className="min-w-0 flex-1">{children}</main>
         </div>

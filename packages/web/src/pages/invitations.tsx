@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,8 +11,9 @@ import { List, ListCell, ListRow } from '@/components/ui/list';
 import { NativeSelect } from '@/components/ui/native-select';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelHeader } from '@/components/ui/panel';
-import { Alert, attempt, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
+import { Alert, attempt, ListSkeleton, RetryAlert } from '@/components/editing';
 import { api, type Invitation } from '@/lib/api';
+import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 
 const expiryOptions = [
   { days: 1, label: '1 天' },
@@ -39,20 +42,10 @@ function formatTime(iso: string) {
 }
 
 export function InvitationsPage() {
-  const [invitations, setInvitations] = useState<Invitation[]>();
-  const [loadError, setLoadError] = useState<string>();
-
-  const reload = useCallback(async () => {
-    try {
-      setInvitations(await api.invitations());
-      setLoadError(undefined);
-    } catch (error) {
-      setLoadError(describeError(error));
-    }
-  }, []);
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  const loaded = useQuery(queries.invitations());
+  const invitations = loaded.data;
+  const loadError = loadErrorOf(loaded.error);
+  const reload = useRefresh();
 
   const pending = invitations?.filter((i) => i.status === 'pending') ?? [];
   const past = invitations?.filter((i) => i.status !== 'pending') ?? [];
@@ -112,6 +105,7 @@ function NewInvitationForm({ onCreated }: { onCreated(): Promise<void> }) {
       (await attempt(async () => {
         await api.createInvitation({ expiresInDays });
         await onCreated();
+        toast.success('已生成邀请链接');
       })) ?? undefined,
     );
     setPending(false);
@@ -140,7 +134,6 @@ function NewInvitationForm({ onCreated }: { onCreated(): Promise<void> }) {
 
 function PendingInvitation({ invitation, onChange }: { invitation: Invitation; onChange(): Promise<void> }) {
   const [error, setError] = useState<string>();
-  const [copied, setCopied] = useState(false);
   const link = invitationLink(invitation.id);
 
   return (
@@ -161,12 +154,12 @@ function PendingInvitation({ invitation, onChange }: { invitation: Invitation; o
           size="xs"
           onClick={() =>
             navigator.clipboard.writeText(link).then(
-              () => setCopied(true),
-              () => setError('复制失败'),
+              () => toast.success('邀请链接已复制'),
+              () => toast.error('复制失败，请手动选中链接复制'),
             )
           }
         >
-          {copied ? '已复制' : '复制'}
+          复制
         </Button>
         <Button
           variant="ghost"
@@ -176,7 +169,10 @@ function PendingInvitation({ invitation, onChange }: { invitation: Invitation; o
               invitation_used: '邀请链接已被使用',
             });
             setError(message ?? undefined);
-            if (!message) await onChange();
+            if (!message) {
+              await onChange();
+              toast.success('邀请已作废');
+            }
           }}
         >
           作废

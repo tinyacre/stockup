@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AppShell, canSee, sections, type SectionPath } from '@/components/app-shell';
 import { AuthLayout } from '@/components/auth-form';
 import { BrandLogo } from '@/components/brand';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
+import { Toaster } from '@/components/ui/toaster';
 import { api, ApiError, type Me } from '@/lib/api';
 import { NavigationProvider } from '@/lib/navigation';
+import { queryClient } from '@/lib/queries';
 import { applyTheme } from '@/lib/theme';
 import { CatalogPage } from '@/pages/catalog';
 import { ChannelsPage } from '@/pages/channels';
@@ -56,10 +60,27 @@ function authorizationPage() {
 }
 
 export function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Session />
+      <Toaster />
+    </QueryClientProvider>
+  );
+}
+
+function Session() {
   const [session, setSession] = useState<Session>({ state: 'loading' });
   // An invitee who already has an account signs in before using the invitation with it.
   const [signingInToJoin, setSigningInToJoin] = useState(false);
-  const refresh = useCallback(() => loadSession().then(setSession), []);
+  // Cached household data belongs to whoever was signed in when it was read.
+  const refresh = useCallback(
+    () =>
+      loadSession().then((next) => {
+        if (next.state !== 'signed-in') queryClient.clear();
+        setSession(next);
+      }),
+    [],
+  );
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -162,16 +183,33 @@ function currentRoute(): Route {
   return { section: sections.find((s) => s.path === path)?.path ?? '/' };
 }
 
+// The stylesheet reads the direction from the root element to slide the page in from the matching side.
+function transition(direction: 'forward' | 'back', update: () => void) {
+  if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return update();
+  document.documentElement.dataset.navigation = direction;
+  document.startViewTransition(() => flushSync(update));
+}
+
 function useRoute() {
   const [route, setRoute] = useState(currentRoute);
   useEffect(() => {
-    const onPopState = () => setRoute(currentRoute());
+    const onPopState = (event: PopStateEvent) => {
+      // A swipe back on iOS already animated the page away.
+      if ((event as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition) {
+        return setRoute(currentRoute());
+      }
+      transition('back', () => setRoute(currentRoute()));
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
   const navigate = (path: string, state: unknown = null) => {
-    if (path !== window.location.pathname) window.history.pushState(state, '', path);
-    setRoute(currentRoute());
+    if (path === window.location.pathname) return setRoute(currentRoute());
+    window.history.pushState(state, '', path);
+    transition('forward', () => {
+      setRoute(currentRoute());
+      window.scrollTo(0, 0);
+    });
   };
   return [route, navigate] as const;
 }

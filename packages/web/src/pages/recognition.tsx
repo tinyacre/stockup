@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { parseQuantity, type Discount, type Unit } from '@stockup/domain';
 import { ImageUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,7 @@ import {
 import { formatSize, formatYuan } from '@/lib/format';
 import { Link, productPath } from '@/lib/navigation';
 import { parseYuan, today, unitsLike } from '@/lib/pricing';
+import { loadErrorOf, queries } from '@/lib/queries';
 import { useProductSearch } from '@/lib/search';
 
 const uploadErrors = {
@@ -47,13 +49,7 @@ export function RecognitionUploadPage({ onStarted }: { onStarted(id: string): vo
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
   // Uploads stay open while the answer is outstanding: the server fails them cleanly if it has no recognizer.
-  const [available, setAvailable] = useState(true);
-  useEffect(() => {
-    api.recognizer().then(
-      (r) => setAvailable(r.available),
-      () => {},
-    );
-  }, []);
+  const available = useQuery(queries.recognizer()).data?.available ?? true;
   const disabled = uploading || !available;
 
   async function upload(file: File | undefined) {
@@ -253,21 +249,14 @@ function Review({
   onChange(recognition: Recognition): void;
   onConfirmed(records: PriceRecord[]): void;
 }) {
-  const [household, setHousehold] = useState<{ groups: CategoryGroup[]; channels: Channel[] }>();
-  const [loadError, setLoadError] = useState<string>();
-
-  const load = useCallback(async () => {
-    try {
-      const [groups, channels] = await Promise.all([api.catalog(), api.channels()]);
-      setHousehold({ groups, channels: channels.filter((c) => !c.archived) });
-      setLoadError(undefined);
-    } catch (error) {
-      setLoadError(describeError(error));
-    }
-  }, []);
-  useEffect(() => {
-    load();
-  }, [load]);
+  const catalog = useQuery(queries.catalog());
+  const allChannels = useQuery(queries.channels());
+  const household =
+    catalog.data && allChannels.data
+      ? { groups: catalog.data, channels: allChannels.data.filter((c) => !c.archived) }
+      : undefined;
+  const loadError = loadErrorOf(catalog.error ?? allChannels.error);
+  const load = () => [catalog, allChannels].filter((q) => q.error).forEach((q) => q.refetch());
 
   const orderTotal = sum(recognition.orderDiscounts);
   const shares = recognition.drafts.map((d) => d.orderDiscount);

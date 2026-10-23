@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { ChevronRight, Plus, ScanText, Search, SquarePen, X } from 'lucide-react';
 import { findLastYearPromotionLowest, judge, type Judgment, type Price } from '@stockup/domain';
-import { Alert, attempt, describeError, RetryAlert } from '@/components/editing';
+import { Alert, attempt, RetryAlert } from '@/components/editing';
 import { PriceRuler, type RulerReferences } from '@/components/price-ruler';
 import { NewProductForm } from '@/components/product-form';
 import { Button } from '@/components/ui/button';
@@ -22,7 +23,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { VerdictDisplay, verdictTone } from '@/components/verdict';
 import {
   api,
-  isFromCache,
   type CategoryGroup,
   type Channel,
   type PriceReferences,
@@ -33,7 +33,9 @@ import { formatSize, formatStockLineGap, formatYuan } from '@/lib/format';
 import { outsideCategories, placementLabel } from '@/lib/catalog';
 import { Link, productPath } from '@/lib/navigation';
 import { useHistoryState } from '@/lib/history';
+import { useWideScreen } from '@/lib/layout';
 import { useOnline } from '@/lib/online';
+import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 import { useLocalProductSearch } from '@/lib/search';
 import {
   discountDraft,
@@ -69,29 +71,53 @@ function shortDate(date: string) {
   return date.startsWith(today().slice(0, 5)) ? date.slice(5) : date;
 }
 
-const staleRetryDelay = 3000;
-
-const wideScreen = '(min-width: 900px)';
-
-function useWideScreen() {
-  const [wide, setWide] = useState(() => window.matchMedia(wideScreen).matches);
-  useEffect(() => {
-    const media = window.matchMedia(wideScreen);
-    const onChange = () => setWide(media.matches);
-    media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
-  }, []);
-  return wide;
-}
-
 // A column that stays in view under the page bar and scrolls on its own.
 const stickyColumn = 'sticky top-(--page-bar-height) h-[calc(100svh-var(--page-bar-height))] overflow-y-auto';
+
+// Defined once so TanStack Query hands back the same household until one of its parts changes.
+function combineHousehold(
+  results: [
+    UseQueryResult<CategoryGroup[]>,
+    UseQueryResult<ProductSummary[]>,
+    UseQueryResult<Channel[]>,
+    UseQueryResult<Promotion[]>,
+    UseQueryResult<{ channel: Channel | null }>,
+    UseQueryResult<PriceReferences[]>,
+  ],
+) {
+  const [groups, products, channels, promotions, lastUsed, references] = results;
+  const error = results.find((r) => r.error)?.error ?? null;
+  const retry = () => results.filter((r) => r.error).forEach((r) => r.refetch());
+  if (!groups.data || !products.data || !channels.data || !promotions.data || !lastUsed.data || !references.data) {
+    return { data: undefined, error, retry };
+  }
+  const data: Household = {
+    groups: groups.data,
+    products: products.data,
+    channels: channels.data,
+    promotions: promotions.data,
+    lastUsedChannel: lastUsed.data.channel,
+    references: references.data,
+  };
+  return { data, error, retry };
+}
 
 export function QuickPricePage() {
   const wide = useWideScreen();
   const online = useOnline();
-  const [household, setHousehold] = useState<Household>();
-  const [loadError, setLoadError] = useState<string>();
+  const { data: household, error, retry } = useQueries({
+    queries: [
+      queries.catalog(),
+      queries.products(),
+      queries.channels(),
+      queries.promotions(),
+      queries.lastUsedChannel(),
+      queries.priceReferences(),
+    ],
+    combine: combineHousehold,
+  });
+  const loadError = loadErrorOf(error);
+  const refresh = useRefresh();
   const [productId, setProductId] = useHistoryState<string | undefined>('quickPriceProductId', undefined);
   // Picking a product, even the one on screen, starts a fresh pricing.
   const [picks, setPicks] = useState(0);
@@ -102,47 +128,6 @@ export function QuickPricePage() {
   // The name a new product starts with, while the member creates it.
   const [creating, setCreating] = useState<string>();
   const searchRef = useRef<HTMLInputElement>(null);
-
-  const reload = useCallback(async () => {
-    try {
-      const fetched = await Promise.all([
-        api.catalog(),
-        api.products(),
-        api.channels(),
-        api.promotions(),
-        api.lastUsedChannel(),
-        api.priceReferences(),
-      ]);
-      const [groups, products, channels, promotions, lastUsed, references] = fetched;
-      setHousehold({ groups, products, channels, promotions, lastUsedChannel: lastUsed.channel, references });
-      setLoadError(undefined);
-      return fetched.some(isFromCache);
-    } catch (error) {
-      setLoadError(describeError(error));
-      return false;
-    }
-  }, []);
-
-  // Offline, the service worker answers from its cache. The network can still be down for a moment after
-  // the device reports it is back, so cached data is read again until a fresh answer arrives.
-  const mounted = useRef(true);
-  const retry = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const refresh = useCallback(async () => {
-    clearTimeout(retry.current);
-    const fromCache = await reload();
-    clearTimeout(retry.current);
-    if (mounted.current && fromCache && navigator.onLine) retry.current = setTimeout(refresh, staleRetryDelay);
-  }, [reload]);
-  useEffect(() => {
-    mounted.current = true;
-    refresh();
-    window.addEventListener('online', refresh);
-    return () => {
-      mounted.current = false;
-      clearTimeout(retry.current);
-      window.removeEventListener('online', refresh);
-    };
-  }, [refresh]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -242,7 +227,7 @@ export function QuickPricePage() {
       />
     </Panel>
   );
-  const loadAlert = loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />;
+  const loadAlert = loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={retry} />;
   const quickPrice = (layout: Layout) =>
     household &&
     product && (

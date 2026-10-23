@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ListCell } from '@/components/ui/list';
 import { controlClass, Input } from '@/components/ui/input';
@@ -26,6 +27,13 @@ export async function attempt(run: () => Promise<unknown>, messages?: Record<str
   } catch (error) {
     return describeError(error, messages);
   }
+}
+
+// Shows the outcome of an action whose result leaves the place it was taken, as a deletion does.
+export async function report(outcome: Promise<string | void>, done: string) {
+  const message = await outcome;
+  if (message) toast.error(message);
+  else toast.success(done);
 }
 
 export const nameTaken = { name_taken: '名称已被使用' };

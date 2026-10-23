@@ -1,4 +1,6 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useState, type ComponentProps, type FormEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useId, useState, type ComponentProps, type FormEvent, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { ImagePlus, Package, Pencil, Plus, ReceiptText, X } from 'lucide-react';
 import { judge, type Verdict } from '@stockup/domain';
 import { Badge, PromotionTag, PurchaseBadge, VerdictBadge } from '@/components/ui/badge';
@@ -13,13 +15,12 @@ import { Panel, PanelFooter, PanelHeader } from '@/components/ui/panel';
 import { PriceFigure } from '@/components/ui/price-figure';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, attempt, DeleteButton, describeError, RetryAlert } from '@/components/editing';
+import { Alert, attempt, DeleteButton, RetryAlert } from '@/components/editing';
 import { ProductMaintenance, ProductMenu, type MaintenanceTask } from '@/components/product-maintenance';
 import { JudgmentSummary } from '@/components/verdict';
 import {
   api,
   ApiError,
-  type CategoryGroup,
   type Channel,
   type PriceRecord,
   type Product,
@@ -43,6 +44,7 @@ import {
   unitsLike,
   type DiscountDraft,
 } from '@/lib/pricing';
+import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 // Recharts is most of the bundle's weight, so only the product page loads it.
@@ -51,12 +53,20 @@ const UnitPriceChart = lazy(() =>
 );
 
 export function ProductPage({ productId, onBack }: { productId: string; onBack(placement?: string): void }) {
-  const [product, setProduct] = useState<ProductDetail | null>();
-  const [records, setRecords] = useState<PriceRecord[]>();
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [promotions, setPromotions] = useState<Promotion[]>([]);
-  const [catalog, setCatalog] = useState<CategoryGroup[]>([]);
-  const [loadError, setLoadError] = useState<string>();
+  const productQuery = useQuery(queries.product(productId));
+  const recordsQuery = useQuery(queries.priceRecords(productId));
+  const channelsQuery = useQuery(queries.channels());
+  const promotionsQuery = useQuery(queries.promotions());
+  // The breadcrumb is the only reader, so a failed load leaves it at the section name.
+  const catalog = useQuery(queries.catalog()).data ?? [];
+  const pageQueries = [productQuery, recordsQuery, channelsQuery, promotionsQuery];
+  const missing = productQuery.error instanceof ApiError && productQuery.error.status === 404;
+  const product = missing ? null : productQuery.data;
+  const records = recordsQuery.data;
+  const channels = channelsQuery.data ?? [];
+  const promotions = promotionsQuery.data ?? [];
+  const loadError = loadErrorOf(pageQueries.find((q) => q.error)?.error ?? null);
+  const reload = useRefresh();
   const [actionError, setActionError] = useState<string>();
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string>();
@@ -64,33 +74,12 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(p
   const [task, setTask] = useState<MaintenanceTask>();
   const [filter, setFilter] = useState<RecordFilter>({});
 
-  const reload = useCallback(async () => {
-    try {
-      const [loadedProduct, loadedRecords, loadedChannels, loadedPromotions] = await Promise.all([
-        api.product(productId),
-        api.priceRecords(productId),
-        api.channels(),
-        api.promotions(),
-      ]);
-      setProduct(loadedProduct);
-      setRecords(loadedRecords);
-      setChannels(loadedChannels);
-      setPromotions(loadedPromotions);
-      setLoadError(undefined);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) return setProduct(null);
-      setLoadError(describeError(error));
-    }
-  }, [productId]);
-  useEffect(() => {
-    reload();
-  }, [reload]);
-  // The breadcrumb is the only reader, so a failed load leaves it at the section name.
-  useEffect(() => {
-    api.catalog().then(setCatalog, () => {});
-  }, []);
-
-  const loadAlert = loadError && <RetryAlert message={`加载失败：${loadError}`} onRetry={reload} />;
+  const loadAlert = loadError && (
+    <RetryAlert
+      message={`加载失败：${loadError}`}
+      onRetry={() => pageQueries.filter((q) => q.error).forEach((q) => q.refetch())}
+    />
+  );
 
   if (product === null) {
     return (
@@ -107,7 +96,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(p
       </PageContent>
     );
   }
-  if (!product) return <PageContent>{loadAlert || <ProductSkeleton />}</PageContent>;
+  if (!product || !records) return <PageContent>{loadAlert || <ProductSkeleton />}</PageContent>;
 
   const all = records ?? [];
   const filtering = Object.values(filter).some((v) => v !== undefined);
@@ -115,18 +104,23 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(p
   const group = catalog.find((g) => g.id === product.categoryGroupId);
   const category = group?.categories.find((c) => c.id === product.categoryId);
 
-  const saved = async () => {
+  const saved = (done: string) => async () => {
     setCreating(false);
     setEditingId(undefined);
     await reload();
+    toast.success(done);
   };
   const archive = async (archived: boolean) => {
-    setActionError(
-      (await attempt(async () => {
-        await api.updateProduct(product.id, { archived });
-        await reload();
-      })) ?? undefined,
-    );
+    const message = await attempt(async () => {
+      await api.updateProduct(product.id, { archived });
+      await reload();
+    });
+    setActionError(message ?? undefined);
+    if (!message) {
+      toast.success(archived ? '已归档，录入时不再列出' : '已恢复', {
+        action: { label: '撤销', onClick: () => archive(!archived) },
+      });
+    }
   };
 
   return (
@@ -179,7 +173,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(p
             promotions={promotions}
             records={all}
             onCancel={() => setCreating(false)}
-            onSaved={saved}
+            onSaved={saved('已记录价格')}
           />
         </Panel>
       )}
@@ -230,7 +224,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(p
                           records={all}
                           record={record}
                           onCancel={() => setEditingId(undefined)}
-                          onSaved={saved}
+                          onSaved={saved('已保存修改')}
                         />
                       ) : (
                         <PriceRecordItem
@@ -242,6 +236,7 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(p
                             attempt(async () => {
                               await api.deletePriceRecord(record.id);
                               await reload();
+                              toast.success('已删除价格记录');
                             })
                           }
                         />
@@ -262,7 +257,10 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(p
             editing={editingStockLine}
             onEdit={() => setEditingStockLine(true)}
             onClose={() => setEditingStockLine(false)}
-            onSaved={reload}
+            onSaved={async () => {
+              await reload();
+              toast.success('已保存入手价');
+            }}
           />
           {all.length > 0 && <ChannelLowest product={product} records={all} />}
         </aside>

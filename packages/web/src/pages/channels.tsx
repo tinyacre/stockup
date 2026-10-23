@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -9,34 +11,24 @@ import {
   Alert,
   attempt,
   DeleteButton,
-  describeError,
   EditableTitle,
   ListSkeleton,
   NameForm,
   RetryAlert,
 } from '@/components/editing';
 import { api, type Channel } from '@/lib/api';
+import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 
 // Archived channels keep their names, so a new or renamed channel can collide with one of them.
 const nameTaken = { name_taken: '名称已被使用（含已归档）' };
 
 export function ChannelsPage() {
-  const [channels, setChannels] = useState<Channel[]>();
-  const [loadError, setLoadError] = useState<string>();
+  const loaded = useQuery(queries.channels());
+  const channels = loaded.data;
+  const loadError = loadErrorOf(loaded.error);
+  const reload = useRefresh();
 
   const [creating, setCreating] = useState(false);
-
-  const reload = useCallback(async () => {
-    try {
-      setChannels(await api.channels());
-      setLoadError(undefined);
-    } catch (error) {
-      setLoadError(describeError(error));
-    }
-  }, []);
-  useEffect(() => {
-    reload();
-  }, [reload]);
 
   const active = channels?.filter((c) => !c.archived) ?? [];
   const archived = channels?.filter((c) => c.archived) ?? [];
@@ -69,7 +61,10 @@ export function ChannelsPage() {
                   await api.createChannel({ name });
                   await reload();
                 }, nameTaken);
-                if (!message) setCreating(false);
+                if (!message) {
+                  setCreating(false);
+                  toast.success(`已新建渠道「${name}」`);
+                }
                 return message;
               }}
             />
@@ -114,13 +109,17 @@ function ChannelItem({ channel, onChange }: { channel: Channel; onChange(): Prom
 
   async function setArchived(archived: boolean) {
     setPending(true);
-    setError(
-      (await attempt(async () => {
-        await api.updateChannel(channel.id, { archived });
-        await onChange();
-      })) ?? undefined,
-    );
+    const message = await attempt(async () => {
+      await api.updateChannel(channel.id, { archived });
+      await onChange();
+    });
+    setError(message ?? undefined);
     setPending(false);
+    if (!message) {
+      toast.success(archived ? `已归档「${channel.name}」` : `已恢复「${channel.name}」`, {
+        action: { label: '撤销', onClick: () => setArchived(!archived) },
+      });
+    }
   }
 
   return (
@@ -147,6 +146,7 @@ function ChannelItem({ channel, onChange }: { channel: Channel; onChange(): Prom
                 async () => {
                   await api.deleteChannel(channel.id);
                   await onChange();
+                  toast.success(`已删除渠道「${channel.name}」`);
                 },
                 { in_use: '渠道已有价格记录，只能归档' },
               )

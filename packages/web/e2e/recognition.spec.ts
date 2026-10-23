@@ -69,6 +69,7 @@ test('a member matches, edits and confirms drafts into price records', async ({ 
   await group.getByRole('button', { name: `在 ${groupName} 下新建品类` }).click();
   await group.getByLabel('新品类名称').fill(categoryName);
   await group.getByRole('button', { name: '新建品类', exact: true }).click();
+  await group.getByRole('button', { name: categoryName }).click();
   await page.getByRole('button', { name: '新建商品' }).click();
   const productForm = page.getByRole('form', { name: '新建商品' });
   await productForm.getByLabel('商品名称').fill(tissueName);

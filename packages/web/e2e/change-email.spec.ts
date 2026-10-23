@@ -23,7 +23,7 @@ test('a member without an email adds one in settings and signs in with it', asyn
   await expect(panel.getByRole('status')).toContainText('验证码已发送');
   await panel.getByLabel('验证码').fill(await latestCode(page.request, email));
   await panel.getByRole('button', { name: '更换邮箱' }).click();
-  await expect(panel.getByText('邮箱已更新')).toBeVisible();
+  await expect(page.getByText('邮箱已更新')).toBeVisible();
   await expect(panel.getByText(email)).toBeVisible();
 
   await page.getByRole('button', { name: '登出', exact: true }).click();

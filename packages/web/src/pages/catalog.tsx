@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Folder, Package, Pencil, Plus, Search, Tags, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { VerdictBadge } from '@/components/ui/badge';
@@ -13,13 +15,15 @@ import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel } from '@/components/ui/panel';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, attempt, describeError, NameForm, nameTaken, RetryAlert, type Action } from '@/components/editing';
+import { Alert, attempt, NameForm, nameTaken, report, RetryAlert } from '@/components/editing';
 import { NewProductForm, NoteField, PlacementSelect } from '@/components/product-form';
 import { api, type CategoryGroup, type Placement, type Product, type ProductSummary } from '@/lib/api';
+import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
 import { outsideCategories, parsePlacementKey, placementKey, placementLabel, placementOf } from '@/lib/catalog';
 import { formatSize } from '@/lib/format';
-import { Link, productPath } from '@/lib/navigation';
+import { Link, productPath, useNavigate } from '@/lib/navigation';
 import { useHistoryState } from '@/lib/history';
+import { wideScreen } from '@/lib/layout';
 import { useProductSearch } from '@/lib/search';
 import { cn } from '@/lib/utils';
 
@@ -59,25 +63,14 @@ function showsGroupShelf(group: CategoryGroup) {
 }
 
 export function CatalogPage() {
-  const [groups, setGroups] = useState<CategoryGroup[]>();
-  const [loadError, setLoadError] = useState<string>();
+  const catalog = useQuery(queries.catalog());
+  const groups = catalog.data;
+  const loadError = loadErrorOf(catalog.error);
+  const reload = useRefresh();
   const [selectedKey, setSelectedKey] = useHistoryState<string | undefined>('placement', undefined);
   const [query, setQuery] = useHistoryState('query', '');
   const [creating, setCreating] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-
-  // A failed refresh keeps the last catalog on screen: the write that triggered it has already succeeded.
-  const reload = useCallback(async () => {
-    try {
-      setGroups(await api.catalog());
-      setLoadError(undefined);
-    } catch (error) {
-      setLoadError(describeError(error));
-    }
-  }, []);
-  useEffect(() => {
-    reload();
-  }, [reload]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -128,7 +121,9 @@ export function CatalogPage() {
       }
     />
   );
-  const loadAlert = loadError && <RetryAlert message={`大类与品类加载失败：${loadError}`} onRetry={reload} />;
+  const loadAlert = loadError && (
+    <RetryAlert message={`大类与品类加载失败：${loadError}`} onRetry={() => catalog.refetch()} />
+  );
 
   if (!groups) {
     return (
@@ -344,7 +339,6 @@ function GroupItem({
 }) {
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const [error, setError] = useState<string>();
   const shelves = shelvesOf([group]).filter((s) => s.category || showsGroupShelf(group));
   const total = shelves.reduce((sum, s) => sum + s.productCount, 0);
 
@@ -383,15 +377,16 @@ function GroupItem({
                 </Button>
                 <ConfirmDelete
                   label={`删除大类 ${group.name}`}
-                  onDelete={async () =>
-                    setError(
-                      (await attempt(
+                  onDelete={() =>
+                    report(
+                      attempt(
                         async () => {
                           await api.deleteCategoryGroup(group.id);
                           await onChange();
                         },
-                        { not_empty: '大类下还有品类或商品' },
-                      )) ?? undefined,
+                        { not_empty: '大类下还有品类或商品，无法删除' },
+                      ),
+                      `已删除大类「${group.name}」`,
                     )
                   }
                 />
@@ -400,11 +395,6 @@ function GroupItem({
             </ListRow>
           )}
         </li>
-        {error && (
-          <li>
-            <Alert className="px-2 pb-1">{error}</Alert>
-          </li>
-        )}
         {adding && (
           <li>
             <ListRow inset className="py-1 hover:bg-transparent">
@@ -418,7 +408,15 @@ function GroupItem({
                     const created = await api.createCategory({ categoryGroupId: group.id, name });
                     setAdding(false);
                     await onChange();
-                    onSelect(placementKey({ categoryId: created.id }));
+                    const key = placementKey({ categoryId: created.id });
+                    // Wide screens show the category beside the tree. On a phone opening it would leave the tree,
+                    // where the member may be adding more, so it is offered instead.
+                    if (window.matchMedia(wideScreen).matches) onSelect(key);
+                    else {
+                      toast.success(`已新建品类「${created.name}」`, {
+                        action: { label: '查看', onClick: () => onSelect(key) },
+                      });
+                    }
                   }, nameTaken)
                 }
               />
@@ -470,29 +468,12 @@ function ShelfPanel({
   onDeleted(): Promise<void>;
 }) {
   const { key: shelfKey, category } = shelf;
-  const [products, setProducts] = useState<ProductSummary[]>();
+  const shelfProducts = useQuery(queries.products(parsePlacementKey(shelfKey)));
+  const products = shelfProducts.data;
+  const loadError = loadErrorOf(shelfProducts.error);
   const [editingId, setEditingId] = useState<string>();
   const [renaming, setRenaming] = useState(false);
-  const [error, setError] = useState<string>();
-  const [loadError, setLoadError] = useState<string>();
-
-  const reload = useCallback(async () => {
-    try {
-      setProducts(await api.products(parsePlacementKey(shelfKey)));
-      setLoadError(undefined);
-    } catch (error) {
-      setLoadError(describeError(error));
-    }
-  }, [shelfKey]);
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  // The category tree shows product counts, so it refreshes alongside the product list.
-  const refresh = async () => {
-    await Promise.all([reload(), onChange()]);
-  };
-  const run = async (action: Action) => setError((await action()) ?? undefined);
+  const navigate = useNavigate();
 
   return (
     <PageContent className="gap-4">
@@ -538,12 +519,13 @@ function ShelfPanel({
                   className="w-36"
                   value={shelf.group.id}
                   onChange={(event) => {
-                    const categoryGroupId = event.target.value;
-                    run(() =>
+                    const target = groups.find((g) => g.id === event.target.value)!;
+                    report(
                       attempt(async () => {
-                        await api.updateCategory(category.id, { categoryGroupId });
+                        await api.updateCategory(category.id, { categoryGroupId: target.id });
                         await onChange();
                       }),
+                      `已移至「${target.name}」`,
                     );
                   }}
                 >
@@ -561,14 +543,15 @@ function ShelfPanel({
               <ConfirmDelete
                 label={`删除品类 ${category.name}`}
                 onDelete={() =>
-                  run(() =>
+                  report(
                     attempt(
                       async () => {
                         await api.deleteCategory(category.id);
                         await onDeleted();
                       },
-                      { not_empty: '品类下还有商品' },
+                      { not_empty: '品类下还有商品，无法删除' },
                     ),
+                    `已删除品类「${category.name}」`,
                   )
                 }
               >
@@ -578,20 +561,21 @@ function ShelfPanel({
           )}
         </div>
       )}
-      {error && <Alert>{error}</Alert>}
-
       {creating && (
         <NewProductForm
           placement={shelf.placement}
           className="max-w-160"
           onCancel={() => onCreatingChange(false)}
-          onCreated={async () => {
+          onCreated={async (created) => {
             onCreatingChange(false);
-            await refresh();
+            await onChange();
+            toast.success(`已新建「${created.name}」`, {
+              action: { label: '查看', onClick: () => navigate(productPath(created.id)) },
+            });
           }}
         />
       )}
-      {loadError && <RetryAlert message={`商品加载失败：${loadError}`} onRetry={reload} />}
+      {loadError && <RetryAlert message={`商品加载失败：${loadError}`} onRetry={() => shelfProducts.refetch()} />}
       {!products ? (
         !loadError && <CatalogSkeleton />
       ) : products.length === 0 ? (
@@ -631,7 +615,7 @@ function ShelfPanel({
                       onCancel={() => setEditingId(undefined)}
                       onSaved={async () => {
                         setEditingId(undefined);
-                        await refresh();
+                        await onChange();
                       }}
                     />
                   </div>
@@ -640,12 +624,15 @@ function ShelfPanel({
                     product={product}
                     onEdit={() => setEditingId(product.id)}
                     onDelete={() =>
-                      attempt(
-                        async () => {
-                          await api.deleteProduct(product.id);
-                          await refresh();
-                        },
-                        { not_empty: '商品还有价格记录' },
+                      report(
+                        attempt(
+                          async () => {
+                            await api.deleteProduct(product.id);
+                            await onChange();
+                          },
+                          { not_empty: '商品还有价格记录，无法删除' },
+                        ),
+                        `已删除「${product.name}」`,
                       )
                     }
                   />
@@ -667,9 +654,8 @@ function ProductRow({
 }: {
   product: ProductSummary;
   onEdit(): void;
-  onDelete: Action;
+  onDelete(): Promise<void>;
 }) {
-  const [error, setError] = useState<string>();
   return (
     <ListRow className={cn('group/row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 py-3', rowGrid)}>
       <div className="flex min-w-0 flex-col">
@@ -686,9 +672,8 @@ function ProductRow({
         <Button variant="ghost" size="icon-xs" aria-label="编辑" onClick={onEdit}>
           <Pencil />
         </Button>
-        <ConfirmDelete label={`删除 ${product.name}`} onDelete={async () => setError((await onDelete()) ?? undefined)} />
+        <ConfirmDelete label={`删除 ${product.name}`} onDelete={onDelete} />
       </div>
-      {error && <Alert className="col-span-full">{error}</Alert>}
     </ListRow>
   );
 }
@@ -734,13 +719,8 @@ function PriceSummary({ product }: { product: ProductSummary }) {
 }
 
 function ArchivedProducts({ shelfKey }: { shelfKey: string }) {
-  const [archived, setArchived] = useState<Product[]>([]);
-  useEffect(() => {
-    api.products(parsePlacementKey(shelfKey), { includeArchived: true }).then(
-      (products) => setArchived(products.filter((p) => p.archived)),
-      () => setArchived([]),
-    );
-  }, [shelfKey]);
+  const { data } = useQuery(queries.products(parsePlacementKey(shelfKey), { includeArchived: true }));
+  const archived = data?.filter((p) => p.archived) ?? [];
 
   if (archived.length === 0) return null;
   return (
