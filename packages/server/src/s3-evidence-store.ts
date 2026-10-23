@@ -12,16 +12,31 @@ function s3Failure(operation: string, key: string, error: unknown) {
   return new Error(`S3 ${operation} ${key}: ${typeof code === 'string' ? `${code}: ` : ''}${message}`, { cause: error });
 }
 
+const dnsLabel = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+// Mirrors the AWS SDK's virtual-hostable bucket rule: a dotted bucket name would add subdomain levels that a
+// wildcard TLS certificate does not cover, so it only goes into the host over plain http.
+function bucketFitsHost(bucket: string, protocol: string) {
+  const labels = protocol === 'https:' ? [bucket] : bucket.split('.');
+  return bucket.length >= 3 && bucket.length <= 63 && isIP(bucket) === 0 && labels.every((label) => dnsLabel.test(label));
+}
+
 export function s3EvidenceStore(config: S3Config): S3EvidenceStore {
-  const host = new URL(config.endpoint).hostname.replace(/^\[|\]$/g, '');
+  const endpoint = new URL(config.endpoint);
+  // An IP address cannot carry the bucket as a subdomain.
+  const virtualHostedStyle =
+    !config.pathStyle &&
+    isIP(endpoint.hostname.replace(/^\[|\]$/g, '')) === 0 &&
+    bucketFitsHost(config.bucket, endpoint.protocol);
+  // Bun sends virtual-hosted requests to the endpoint host as given, so the bucket subdomain has to be part of it.
+  if (virtualHostedStyle) endpoint.hostname = `${config.bucket}.${endpoint.hostname}`;
   const client = new Bun.S3Client({
-    endpoint: config.endpoint,
+    endpoint: endpoint.origin,
     region: config.region,
     bucket: config.bucket,
     accessKeyId: config.accessKeyId,
     secretAccessKey: config.secretAccessKey,
-    // An IP address cannot carry the bucket as a subdomain.
-    virtualHostedStyle: !config.pathStyle && isIP(host) === 0,
+    virtualHostedStyle,
   });
 
   const run = async <T>(operation: string, key: string, call: () => Promise<T>) => {

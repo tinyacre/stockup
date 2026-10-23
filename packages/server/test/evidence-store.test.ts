@@ -57,6 +57,30 @@ describe('S3 evidence store', () => {
     await store.delete(key);
   });
 
+  test('addresses a hostname endpoint through the bucket subdomain unless path style is configured or the bucket name cannot be a subdomain', async () => {
+    const requests: string[] = [];
+    using server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        requests.push(`${request.headers.get('host')}${new URL(request.url).pathname}`);
+        return new Response(null, { status: 200 });
+      },
+    });
+    const endpoint = `http://localhost:${server.port}`;
+    const put = (bucket: string, pathStyle: boolean) =>
+      s3EvidenceStore(testS3Config({ endpoint, bucket, pathStyle })).put('key', new Uint8Array([1]));
+    await put('evidence', false);
+    await put('evidence', true);
+    await put('evidence.backup', false);
+    await put('Evidence_Bucket', false);
+    expect(requests).toEqual([
+      `evidence.localhost:${server.port}/key`,
+      `localhost:${server.port}/evidence/key`,
+      `evidence.backup.localhost:${server.port}/key`,
+      `localhost:${server.port}/Evidence_Bucket/key`,
+    ]);
+  });
+
   test('opens once the bucket accepts a probe object', async () => {
     const store = await openS3EvidenceStore(testS3Config());
     await expect(store.get(crypto.randomUUID())).resolves.toBeNull();
