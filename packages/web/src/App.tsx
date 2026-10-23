@@ -12,6 +12,7 @@ import { NavigationProvider } from '@/lib/navigation';
 import { queryClient } from '@/lib/queries';
 import { applyTheme } from '@/lib/theme';
 import { CatalogPage } from '@/pages/catalog';
+import { CategoriesPage } from '@/pages/categories';
 import { ChannelsPage } from '@/pages/channels';
 import { ConsentPage } from '@/pages/consent';
 import { HouseholdsPage } from '@/pages/households';
@@ -240,6 +241,8 @@ function Home({ me, onSignOut, onSessionChange }: { me: Me; onSignOut(): void; o
           />
         ) : section === '/recognitions' ? (
           <RecognitionUploadPage onStarted={(id) => navigate(`/recognitions/${encodeURIComponent(id)}`)} />
+        ) : section === '/categories' ? (
+          <CategoriesPage />
         ) : section === '/channels' ? (
           <ChannelsPage />
         ) : section === '/promotions' ? (

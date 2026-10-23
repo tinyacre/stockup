@@ -1,8 +1,10 @@
+import { createGroup } from './categories';
 import { expect, test } from './test';
 
 test('a member builds and browses the catalog', async ({ page, household }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const groupName = `宠物 ${suffix}`;
+  const otherGroupName = `生活用品 ${suffix}`;
   const categoryName = `猫砂 ${suffix}`;
   const productName = `豆腐猫砂 ${suffix}`;
 
@@ -11,15 +13,7 @@ test('a member builds and browses the catalog', async ({ page, household }) => {
   await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
-  await page.getByLabel('新大类名称').fill(groupName);
-  await page.getByRole('button', { name: '新建大类' }).click();
-  const group = page.getByRole('group', { name: `大类 ${groupName}` });
-  await expect(group).toBeVisible();
-
-  await group.getByRole('button', { name: `在 ${groupName} 下新建品类` }).click();
-  await group.getByLabel('新品类名称').fill(categoryName);
-  await group.getByRole('button', { name: '新建品类', exact: true }).click();
-  // Phones stay on the tree after creating a category, so the new one is opened from there.
+  const group = await createGroup(page, groupName, [categoryName]);
   await group.getByRole('button', { name: categoryName }).click();
   await expect(page.getByRole('heading', { name: categoryName })).toBeVisible();
 
@@ -35,21 +29,38 @@ test('a member builds and browses the catalog', async ({ page, household }) => {
   await expect(product).toContainText('基准规格 6 kg');
   await expect(product).toContainText('原味和绿茶味都算');
 
-  await page.getByRole('button', { name: `删除品类 ${categoryName}` }).click();
-  const blocked = page.getByRole('alertdialog');
-  await expect(blocked).toContainText('品类下还有 1 个商品');
-  await blocked.getByRole('button', { name: '知道了' }).click();
-  await expect(blocked).toBeHidden();
-
-  await product.getByRole('button', { name: '编辑' }).click();
-  await product.getByLabel('商品名称').fill(`${productName} 加大`);
-  await product.getByRole('button', { name: '保存' }).click();
-  await expect(page.getByRole('listitem', { name: `${productName} 加大` })).toBeVisible();
-
   // The selected category is kept in the history entry, so a reload shows it again.
   await page.reload();
   await expect(page.getByRole('heading', { name: categoryName })).toBeVisible();
-  await expect(page.getByRole('listitem', { name: `${productName} 加大` })).toContainText('基准规格 6 kg');
+
+  // A product is edited on its own page.
+  await product.getByRole('link', { name: productName }).click();
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  const editor = page.getByRole('form', { name: '编辑商品' });
+  await editor.getByLabel('商品名称').fill(`${productName} 加大`);
+  await editor.getByLabel('基准规格').fill('10');
+  await editor.getByRole('button', { name: '保存' }).click();
+  await expect(page.getByRole('heading', { name: `${productName} 加大` })).toBeVisible();
+  await expect(page.getByText('计价单位 kg · 基准规格 10 kg')).toBeVisible();
+
+  // Groups and categories are set up on their own page.
+  await createGroup(page, otherGroupName);
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await nav.getByRole('link', { name: '分类' }).click();
+  const settings = page.getByRole('group', { name: `大类 ${groupName}` });
+  await settings.getByRole('button', { name: `设置 ${groupName} 的图标` }).click();
+  await page.getByRole('button', { name: '🐱' }).click();
+  await expect(settings.getByRole('button', { name: `设置 ${groupName} 的图标` })).toContainText('🐱');
+
+  await settings.getByRole('button', { name: `删除品类 ${categoryName}` }).click();
+  await page.getByRole('button', { name: `确认删除品类 ${categoryName}` }).click();
+  await expect(page.getByText('品类下还有商品，无法删除')).toBeVisible();
+  await page.getByRole('button', { name: '取消' }).click();
+
+  await settings.getByLabel(`${categoryName} 所属大类`).selectOption({ label: otherGroupName });
+  await expect(
+    page.getByRole('group', { name: `大类 ${otherGroupName}` }).getByRole('listitem', { name: categoryName }),
+  ).toBeVisible();
 });
 
 test('a product goes straight into a group that has no categories', async ({ page, household }) => {
@@ -62,9 +73,7 @@ test('a product goes straight into a group that has no categories', async ({ pag
   await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
-  await page.getByLabel('新大类名称').fill(groupName);
-  await page.getByRole('button', { name: '新建大类' }).click();
-  const group = page.getByRole('group', { name: `大类 ${groupName}` });
+  const group = await createGroup(page, groupName);
   await group.getByRole('button', { name: '未分品类' }).click();
   await expect(page.getByRole('heading', { name: '未分品类' })).toBeVisible();
 
@@ -76,9 +85,8 @@ test('a product goes straight into a group that has no categories', async ({ pag
   await form.getByRole('button', { name: '创建商品' }).click();
   await expect(page.getByRole('listitem', { name: productName })).toContainText('基准规格 100 只');
 
-  // A phone shows the category tree and the shelf one at a time.
-  const back = page.getByRole('button', { name: groupName, exact: true });
-  if (await back.isVisible()) await back.click();
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '分类' }).click();
   await page.getByRole('button', { name: `删除大类 ${groupName}` }).click();
-  await expect(page.getByRole('alertdialog')).toContainText('大类下还有品类或商品');
+  await page.getByRole('button', { name: `确认删除大类 ${groupName}` }).click();
+  await expect(page.getByText('大类下还有品类或商品，无法删除')).toBeVisible();
 });

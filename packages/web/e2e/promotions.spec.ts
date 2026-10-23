@@ -1,3 +1,4 @@
+import { createGroup } from './categories';
 import { expect, test } from './test';
 
 test('a member adjusts promotions and sees them tag price records', async ({ page, household }) => {
@@ -46,13 +47,7 @@ test('a member adjusts promotions and sees them tag price records', async ({ pag
   await page.getByRole('button', { name: '新建渠道' }).click();
   await expect(page.getByRole('listitem', { name: channelName })).toBeVisible();
 
-  await nav.getByRole('link', { name: '商品' }).click();
-  await page.getByLabel('新大类名称').fill(groupName);
-  await page.getByRole('button', { name: '新建大类' }).click();
-  const group = page.getByRole('group', { name: `大类 ${groupName}` });
-  await group.getByRole('button', { name: `在 ${groupName} 下新建品类` }).click();
-  await group.getByLabel('新品类名称').fill(categoryName);
-  await group.getByRole('button', { name: '新建品类', exact: true }).click();
+  const group = await createGroup(page, groupName, [categoryName]);
   await group.getByRole('button', { name: categoryName }).click();
   await page.getByRole('button', { name: '新建商品' }).click();
   const productForm = page.getByRole('form', { name: '新建商品' });

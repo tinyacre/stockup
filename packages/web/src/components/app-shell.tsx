@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import {
+  FolderTree,
   House,
   LogOut,
   Package,
@@ -20,6 +21,7 @@ import { cn } from '@/lib/utils';
 export const sections = [
   { path: '/', label: '录入', group: 'daily', icon: SquarePen },
   { path: '/products', label: '商品', group: 'daily', icon: Package },
+  { path: '/categories', label: '分类', group: 'daily', icon: FolderTree },
   { path: '/recognitions', label: '识别', group: 'daily', icon: ScanText },
   { path: '/channels', label: '渠道', group: 'daily', icon: Store },
   { path: '/promotions', label: '大促', group: 'daily', icon: Tag },

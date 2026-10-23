@@ -2,15 +2,17 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { DropdownMenu } from 'radix-ui';
-import { Archive, ArchiveRestore, Combine, Ellipsis, Ruler } from 'lucide-react';
+import { Archive, ArchiveRestore, Combine, Ellipsis } from 'lucide-react';
 import { convert, isConvertible } from '@stockup/domain';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
-import { InputGroup, InputGroupInput, InputAddon } from '@/components/ui/input';
+import { Input, InputGroup, InputGroupInput, InputAddon } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Panel, PanelBody, PanelFooter, PanelHeader } from '@/components/ui/panel';
 import { Alert, attempt } from '@/components/editing';
+import { NoteField, PlacementSelect } from '@/components/product-form';
 import { api, type Product } from '@/lib/api';
+import { parsePlacementKey, placementKey, placementOf } from '@/lib/catalog';
 import { formatSize } from '@/lib/format';
 import { loadErrorOf, queries } from '@/lib/queries';
 import { unitsLike } from '@/lib/pricing';
@@ -18,7 +20,7 @@ import { cn } from '@/lib/utils';
 
 const incompatibleUnit = { incompatible_unit: '单位量纲不同，无法换算' };
 
-export type MaintenanceTask = 'units' | 'merge';
+export type MaintenanceTask = 'edit' | 'merge';
 
 const itemClass = cn(
   'flex h-8 cursor-default items-center gap-2.5 rounded-md px-2.5 text-[13px] text-ink outline-none select-none',
@@ -49,10 +51,6 @@ export function ProductMenu({
           sideOffset={6}
           className="z-50 min-w-52 rounded-md border border-line bg-surface p-1 shadow-overlay"
         >
-          <DropdownMenu.Item className={itemClass} onSelect={() => onOpen('units')}>
-            <Ruler />
-            修改计价单位和基准规格
-          </DropdownMenu.Item>
           <DropdownMenu.Item className={itemClass} onSelect={() => onOpen('merge')}>
             <Combine />
             合并重复商品
@@ -92,10 +90,10 @@ export function ProductMaintenance({
   const done = async () => {
     onClose();
     await onChanged();
-    toast.success(task === 'units' ? '已修改计价单位' : '已合并商品');
+    toast.success(task === 'edit' ? '已保存商品' : '已合并商品');
   };
-  return task === 'units' ? (
-    <UnitsForm product={product} onCancel={onClose} onSaved={done} />
+  return task === 'edit' ? (
+    <EditForm product={product} onCancel={onClose} onSaved={done} />
   ) : (
     <MergeForm product={product} onCancel={onClose} onMerged={done} />
   );
@@ -128,8 +126,9 @@ function TaskPanel({
   );
 }
 
-function UnitsForm({ product, onCancel, onSaved }: { product: Product; onCancel(): void; onSaved(): Promise<void> }) {
+function EditForm({ product, onCancel, onSaved }: { product: Product; onCancel(): void; onSaved(): Promise<void> }) {
   const id = useId();
+  const groups = useQuery(queries.catalog()).data ?? [];
   const [unitName, setUnitName] = useState(product.pricingUnit.name);
   const units = unitsLike(product.pricingUnit);
   const unit = units.find((u) => u.name === unitName)!;
@@ -147,13 +146,17 @@ function UnitsForm({ product, onCancel, onSaved }: { product: Product; onCancel(
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const data = new FormData(event.currentTarget);
     const amount = Number(baseSize);
     if (!(amount > 0)) return setError('基准规格需大于 0');
     setPending(true);
     const message = await attempt(async () => {
       await api.updateProduct(product.id, {
+        name: String(data.get('name')),
+        ...parsePlacementKey(String(data.get('placement'))),
+        note: String(data.get('note')),
         ...(unit.name === product.pricingUnit.name ? {} : { pricingUnit: unit }),
-        baseSize: amount,
+        ...(amount === product.baseSize ? {} : { baseSize: amount }),
       });
       await onSaved();
     }, incompatibleUnit);
@@ -163,7 +166,7 @@ function UnitsForm({ product, onCancel, onSaved }: { product: Product; onCancel(
 
   return (
     <TaskPanel
-      title="修改计价单位和基准规格"
+      title="编辑商品"
       onSubmit={handleSubmit}
       error={error}
       footer={
@@ -177,7 +180,21 @@ function UnitsForm({ product, onCancel, onSaved }: { product: Product; onCancel(
         </>
       }
     >
-      <div className="grid gap-4 wide:max-w-lg wide:grid-cols-2">
+      <div className="grid gap-4 wide:max-w-2xl wide:grid-cols-2">
+        <Field label="商品名称" htmlFor={`${id}-name`}>
+          <Input id={`${id}-name`} name="name" required maxLength={100} defaultValue={product.name} />
+        </Field>
+        <Field label="所属品类" htmlFor={`${id}-placement`}>
+          {groups.length > 0 && (
+            <PlacementSelect
+              id={`${id}-placement`}
+              name="placement"
+              className="w-full"
+              defaultValue={placementKey(placementOf(product))}
+              groups={groups}
+            />
+          )}
+        </Field>
         <Field
           label="计价单位"
           htmlFor={`${id}-unit`}
@@ -212,6 +229,9 @@ function UnitsForm({ product, onCancel, onSaved }: { product: Product; onCancel(
             <InputAddon boxed>{unit.name}</InputAddon>
           </InputGroup>
         </Field>
+        <div className="wide:col-span-2">
+          <NoteField id={`${id}-note`} defaultValue={product.note} />
+        </div>
       </div>
     </TaskPanel>
   );

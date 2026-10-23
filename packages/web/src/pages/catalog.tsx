@@ -1,38 +1,27 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Folder, Package, Pencil, Plus, Search, Tags, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Folder, Package, Plus, Search, Tags, Trash2 } from 'lucide-react';
+import { GroupIcon } from '@/components/group-icon';
 import { Button } from '@/components/ui/button';
 import { VerdictBadge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Field } from '@/components/ui/field';
-import { Input, InputGroup, InputGroupInput } from '@/components/ui/input';
+import { InputGroup, InputGroupInput } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
 import { List, ListCell, ListHeader, ListRow } from '@/components/ui/list';
 import { PriceFigure } from '@/components/ui/price-figure';
-import { NativeSelect } from '@/components/ui/native-select';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel } from '@/components/ui/panel';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Alert,
-  attempt,
-  ConfirmButton,
-  NameForm,
-  nameTaken,
-  report,
-  RetryAlert,
-  type Action,
-} from '@/components/editing';
-import { NewProductForm, NoteField, PlacementSelect } from '@/components/product-form';
+import { Alert, attempt, ConfirmButton, report, RetryAlert, type Action } from '@/components/editing';
+import { NewProductForm } from '@/components/product-form';
 import { api, type CategoryGroup, type Placement, type Product, type ProductSummary } from '@/lib/api';
 import { loadErrorOf, queries, useRefresh } from '@/lib/queries';
-import { outsideCategories, parsePlacementKey, placementKey, placementLabel, placementOf } from '@/lib/catalog';
+import { outsideCategories, parsePlacementKey, placementKey, placementLabel } from '@/lib/catalog';
 import { formatSize } from '@/lib/format';
 import { Link, productPath, useNavigate } from '@/lib/navigation';
 import { useHistoryState } from '@/lib/history';
-import { wideScreen } from '@/lib/layout';
 import { useProductSearch } from '@/lib/search';
 import { cn } from '@/lib/utils';
 
@@ -174,7 +163,6 @@ export function CatalogPage() {
               setCreating(false);
               setSelectedKey(key);
             }}
-            onChange={reload}
           />
         </section>
         <section aria-label="品类详情" className={cn('flex min-w-0 flex-col', !showsDetail && 'max-wide:hidden')}>
@@ -190,10 +178,6 @@ export function CatalogPage() {
                 setSelectedKey(undefined);
               }}
               onChange={reload}
-              onDeleted={() => {
-                setSelectedKey(undefined);
-                return reload();
-              }}
             />
           ) : (
             <EmptyState title="未选择品类" icon={<Tags />} />
@@ -267,36 +251,40 @@ function CategoryTree({
   groups,
   selectedKey,
   onSelect,
-  onChange,
 }: {
   groups: CategoryGroup[];
   selectedKey?: string;
   onSelect(key: string): void;
-  onChange(): Promise<void>;
 }) {
-  const newGroup = (
-    <NameForm
-      label="新大类名称"
-      submitLabel="新建大类"
-      onSubmit={(name) =>
-        attempt(async () => {
-          await api.createCategoryGroup({ name });
-          await onChange();
-        }, nameTaken)
-      }
-    />
-  );
-
-  if (groups.length === 0) return <EmptyState title="暂无大类" icon={<Folder />} action={newGroup} />;
+  if (groups.length === 0) {
+    return (
+      <EmptyState
+        title="暂无大类"
+        icon={<Folder />}
+        action={
+          <Button variant="outline" asChild>
+            <Link href="/categories">设置分类</Link>
+          </Button>
+        }
+      />
+    );
+  }
   return (
     <>
-      <SectionHeader title="分类" className="px-4 pt-3" />
+      <SectionHeader
+        title="分类"
+        className="px-4 pt-3"
+        actions={
+          <Link href="/categories" className="text-xs font-normal text-ink-3 hover:text-ink">
+            管理
+          </Link>
+        }
+      />
       <div className="flex flex-1 flex-col gap-1 pb-3">
         {groups.map((group) => (
-          <GroupItem key={group.id} group={group} selectedKey={selectedKey} onSelect={onSelect} onChange={onChange} />
+          <GroupItem key={group.id} group={group} selectedKey={selectedKey} onSelect={onSelect} />
         ))}
       </div>
-      <div className="border-t border-line px-3 py-3 wide:sticky wide:bottom-0 wide:bg-surface">{newGroup}</div>
     </>
   );
 }
@@ -305,15 +293,11 @@ function GroupItem({
   group,
   selectedKey,
   onSelect,
-  onChange,
 }: {
   group: CategoryGroup;
   selectedKey?: string;
   onSelect(key: string): void;
-  onChange(): Promise<void>;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [renaming, setRenaming] = useState(false);
   const shelves = shelvesOf([group]).filter((s) => s.category || showsGroupShelf(group));
   const total = shelves.reduce((sum, s) => sum + s.productCount, 0);
 
@@ -321,102 +305,12 @@ function GroupItem({
     <div role="group" aria-label={`大类 ${group.name}`}>
       <List>
         <li>
-          {renaming ? (
-            <ListRow className="py-1 hover:bg-transparent">
-              <NameForm
-                label="大类名称"
-                submitLabel="保存"
-                defaultValue={group.name}
-                autoFocus
-                onCancel={() => setRenaming(false)}
-                onSubmit={async (name) => {
-                  const message = await attempt(async () => {
-                    await api.updateCategoryGroup(group.id, { name });
-                    await onChange();
-                  }, nameTaken);
-                  if (!message) setRenaming(false);
-                  return message;
-                }}
-              />
-            </ListRow>
-          ) : (
-            <ListRow className="group/row h-9 gap-1.5 py-0 text-ink-3">
-              <Folder className="size-4 shrink-0" />
-              <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{group.name}</h2>
-              <span className="flex items-center wide:opacity-0 wide:group-focus-within/row:opacity-100 wide:group-hover/row:opacity-100">
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`在 ${group.name} 下新建品类`}
-                  onClick={() => setAdding(true)}
-                >
-                  <Plus />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`重命名 ${group.name}`}
-                  onClick={() => setRenaming(true)}
-                >
-                  <Pencil />
-                </Button>
-                <ConfirmButton
-                  ariaLabel={`删除大类 ${group.name}`}
-                  size="icon-xs"
-                  title={`删除大类「${group.name}」？`}
-                  description="删除后无法恢复。"
-                  confirmLabel="删除"
-                  blocked={
-                    group.categories.length > 0 || group.productCount > 0
-                      ? { title: `无法删除「${group.name}」`, reason: '大类下还有品类或商品，先把它们移走或删除。' }
-                      : undefined
-                  }
-                  onConfirm={() =>
-                    attempt(
-                      async () => {
-                        await api.deleteCategoryGroup(group.id);
-                        await onChange();
-                        toast.success(`已删除大类「${group.name}」`);
-                      },
-                      { not_empty: '大类下还有品类或商品，无法删除' },
-                    )
-                  }
-                >
-                  <Trash2 />
-                </ConfirmButton>
-              </span>
-              <span className="numeric w-6 text-right text-xs">{total}</span>
-            </ListRow>
-          )}
+          <ListRow className="h-9 gap-1.5 py-0 text-ink-3 hover:bg-transparent">
+            <GroupIcon icon={group.icon} />
+            <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{group.name}</h2>
+            <span className="numeric w-6 text-right text-xs">{total}</span>
+          </ListRow>
         </li>
-        {adding && (
-          <li>
-            <ListRow inset className="py-1 hover:bg-transparent">
-              <NameForm
-                label="新品类名称"
-                submitLabel="新建品类"
-                autoFocus
-                onCancel={() => setAdding(false)}
-                onSubmit={(name) =>
-                  attempt(async () => {
-                    const created = await api.createCategory({ categoryGroupId: group.id, name });
-                    setAdding(false);
-                    await onChange();
-                    const key = placementKey({ categoryId: created.id });
-                    // Wide screens show the category beside the tree. On a phone opening it would leave the tree,
-                    // where the member may be adding more, so it is offered instead.
-                    if (window.matchMedia(wideScreen).matches) onSelect(key);
-                    else {
-                      toast.success(`已新建品类「${created.name}」`, {
-                        action: { label: '查看', onClick: () => onSelect(key) },
-                      });
-                    }
-                  }, nameTaken)
-                }
-              />
-            </ListRow>
-          </li>
-        )}
         {shelves.map((shelf) => (
           <li key={shelf.key}>
             <ListRow inset asChild aria-current={shelf.key === selectedKey ? 'true' : undefined}>
@@ -441,7 +335,7 @@ function GroupItem({
 
 const priceColumns = 'grid grid-cols-3 gap-3';
 
-const rowGrid = 'wide:grid-cols-[minmax(0,1fr)_6rem_minmax(0,26rem)_4.5rem] wide:items-center wide:gap-x-4';
+const rowGrid = 'wide:grid-cols-[minmax(0,1fr)_6rem_minmax(0,26rem)_4.5rem] wide:items-baseline wide:gap-x-4';
 
 function ShelfPanel({
   shelf,
@@ -450,7 +344,6 @@ function ShelfPanel({
   onCreatingChange,
   onBack,
   onChange,
-  onDeleted,
 }: {
   shelf: Shelf;
   groups: CategoryGroup[];
@@ -458,14 +351,11 @@ function ShelfPanel({
   onCreatingChange(creating: boolean): void;
   onBack(): void;
   onChange(): Promise<void>;
-  onDeleted(): Promise<void>;
 }) {
-  const { key: shelfKey, category } = shelf;
+  const { key: shelfKey } = shelf;
   const shelfProducts = useQuery(queries.products(parsePlacementKey(shelfKey)));
   const products = shelfProducts.data;
   const loadError = loadErrorOf(shelfProducts.error);
-  const [editingId, setEditingId] = useState<string>();
-  const [renaming, setRenaming] = useState(false);
   const navigate = useNavigate();
 
   return (
@@ -474,95 +364,16 @@ function ShelfPanel({
         <ChevronLeft />
         {shelf.group.name}
       </Button>
-      {renaming && category ? (
-        <NameForm
-          label="品类名称"
-          submitLabel="保存"
-          defaultValue={category.name}
-          autoFocus
-          onCancel={() => setRenaming(false)}
-          onSubmit={async (name) => {
-            const message = await attempt(async () => {
-              await api.updateCategory(category.id, { name });
-              await onChange();
-            }, nameTaken);
-            if (!message) setRenaming(false);
-            return message;
-          }}
-        />
-      ) : (
-        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
-          <div className="min-w-0">
-            <p className="flex items-center gap-1 text-xs text-ink-3 max-wide:hidden">
-              {shelf.group.name}
-              <ChevronRight className="size-3.5 text-ink-4" />
-            </p>
-            <h2 className="flex items-baseline gap-2.5 text-xl font-semibold text-ink">
-              {shelf.name}
-              <small className="text-[13px] font-normal tracking-normal text-ink-3">{shelf.productCount} 个商品</small>
-            </h2>
-          </div>
-          {category && (
-            <div className="flex flex-wrap items-center gap-2 wide:ml-auto">
-              <label className="flex items-center gap-2 text-xs text-ink-3">
-                所属大类
-                <NativeSelect
-                  className="w-36"
-                  value={shelf.group.id}
-                  onChange={(event) => {
-                    const target = groups.find((g) => g.id === event.target.value)!;
-                    report(
-                      attempt(async () => {
-                        await api.updateCategory(category.id, { categoryGroupId: target.id });
-                        await onChange();
-                      }),
-                      `已移至「${target.name}」`,
-                    );
-                  }}
-                >
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </label>
-              <Button variant="outline" aria-label={`重命名 ${category.name}`} onClick={() => setRenaming(true)}>
-                <Pencil />
-                重命名
-              </Button>
-              <ConfirmButton
-                ariaLabel={`删除品类 ${category.name}`}
-                size="sm"
-                title={`删除品类「${category.name}」？`}
-                description="删除后无法恢复。"
-                confirmLabel="删除"
-                blocked={
-                  category.productCount > 0
-                    ? {
-                        title: `无法删除「${category.name}」`,
-                        reason: `品类下还有 ${category.productCount} 个商品，先把它们移到其他品类或删除。`,
-                      }
-                    : undefined
-                }
-                onConfirm={() =>
-                  attempt(
-                    async () => {
-                      await api.deleteCategory(category.id);
-                      await onDeleted();
-                      toast.success(`已删除品类「${category.name}」`);
-                    },
-                    { not_empty: '品类下还有商品，无法删除' },
-                  )
-                }
-              >
-                <Trash2 />
-                删除
-              </ConfirmButton>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="min-w-0">
+        <p className="flex items-center gap-1 text-xs text-ink-3 max-wide:hidden">
+          {shelf.group.name}
+          <ChevronRight className="size-3.5 text-ink-4" />
+        </p>
+        <h2 className="flex items-baseline gap-2.5 text-xl font-semibold text-ink">
+          {shelf.name}
+          <small className="text-[13px] font-normal tracking-normal text-ink-3">{shelf.productCount} 个商品</small>
+        </h2>
+      </div>
       {creating && (
         <NewProductForm
           placement={shelf.placement}
@@ -572,7 +383,10 @@ function ShelfPanel({
             onCreatingChange(false);
             await onChange();
             toast.success(`已新建「${created.name}」`, {
-              action: { label: '查看', onClick: () => navigate(productPath(created.id)) },
+              action: {
+                label: '查看',
+                onClick: () => navigate(productPath(created.id)),
+              },
             });
           }}
         />
@@ -609,57 +423,44 @@ function ShelfPanel({
             </ListHeader>
             {products.map((product) => (
               <li key={product.id} aria-label={product.name}>
-                {editingId === product.id ? (
-                  <div className="px-4 py-4">
-                    <ProductEditor
-                      product={product}
-                      groups={groups}
-                      onCancel={() => setEditingId(undefined)}
-                      onSaved={async () => {
-                        setEditingId(undefined);
+                <ProductRow
+                  product={product}
+                  onDelete={() =>
+                    attempt(
+                      async () => {
+                        await api.deleteProduct(product.id);
                         await onChange();
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <ProductRow
-                    product={product}
-                    onEdit={() => setEditingId(product.id)}
-                    onDelete={() =>
-                      attempt(
-                        async () => {
-                          await api.deleteProduct(product.id);
-                          await onChange();
-                          toast.success(`已删除「${product.name}」`);
-                        },
-                        { not_empty: '商品已有价格记录，无法删除' },
-                      )
+                        toast.success(`已删除「${product.name}」`);
+                      },
+                      { not_empty: '商品已有价格记录，无法删除' },
+                    )
+                  }
+                  onArchive={async () => {
+                    const message = await attempt(async () => {
+                      await api.updateProduct(product.id, { archived: true });
+                      await onChange();
+                    });
+                    if (message) {
+                      toast.error(message);
+                      return;
                     }
-                    onArchive={async () => {
-                      const message = await attempt(async () => {
-                        await api.updateProduct(product.id, { archived: true });
-                        await onChange();
-                      });
-                      if (message) {
-                        toast.error(message);
-                        return;
-                      }
-                      toast.success(`已归档「${product.name}」`, {
-                        action: {
-                          label: '撤销',
-                          onClick: () =>
-                            report(
-                              attempt(async () => {
-                                await api.updateProduct(product.id, { archived: false });
-                                await onChange();
-                              }),
-                              `已恢复「${product.name}」`,
-                            ),
-                        },
-                      });
-                    }}
-                  />
-                )}
+                    toast.success(`已归档「${product.name}」`, {
+                      action: {
+                        label: '撤销',
+                        onClick: () =>
+                          report(
+                            attempt(async () => {
+                              await api.updateProduct(product.id, {
+                                archived: false,
+                              });
+                              await onChange();
+                            }),
+                            `已恢复「${product.name}」`,
+                          ),
+                      },
+                    });
+                  }}
+                />
               </li>
             ))}
           </List>
@@ -672,17 +473,20 @@ function ShelfPanel({
 
 function ProductRow({
   product,
-  onEdit,
   onDelete,
   onArchive,
 }: {
   product: ProductSummary;
-  onEdit(): void;
   onDelete: Action;
   onArchive(): Promise<void>;
 }) {
   return (
-    <ListRow className={cn('group/row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 py-3', rowGrid)}>
+    <ListRow
+      className={cn(
+        'group/row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 py-3 wide:h-16 wide:content-center',
+        rowGrid,
+      )}
+    >
       <div className="flex min-w-0 flex-col">
         <ProductLink product={product} />
         {product.note && <p className="truncate text-xs text-ink-3">{product.note}</p>}
@@ -693,10 +497,7 @@ function ProductRow({
         {product.pricingUnit.name}
       </div>
       <PriceSummary product={product} />
-      <div className="col-start-2 row-start-1 flex items-center justify-end gap-0.5 wide:col-start-auto wide:row-start-auto wide:opacity-0 wide:group-focus-within/row:opacity-100 wide:group-hover/row:opacity-100">
-        <Button variant="ghost" size="icon-xs" aria-label="编辑" onClick={onEdit}>
-          <Pencil />
-        </Button>
+      <div className="col-start-2 row-start-1 flex items-center justify-end gap-0.5 wide:col-start-auto wide:row-start-auto wide:self-center wide:opacity-0 wide:group-focus-within/row:opacity-100 wide:group-hover/row:opacity-100">
         <ConfirmButton
           ariaLabel={`删除 ${product.name}`}
           size="icon-xs"
@@ -726,7 +527,7 @@ function PriceSummary({ product }: { product: ProductSummary }) {
   const { stockLine, lowestUnitPrice, latestPrice } = product;
   const none = <span className="text-sm text-ink-4">暂无</span>;
   return (
-    <dl aria-label="价格概览" className={cn('col-span-2 wide:col-span-1', priceColumns)}>
+    <dl aria-label="价格概览" className={cn('col-span-2 wide:col-span-1 wide:items-baseline', priceColumns)}>
       <ListCell figure>
         <dt className="text-xs text-ink-3 wide:sr-only">入手价</dt>
         <dd>
@@ -788,70 +589,5 @@ function ArchivedProducts({ shelfKey }: { shelfKey: string }) {
         </List>
       </details>
     </Panel>
-  );
-}
-
-function ProductEditor({
-  product,
-  groups,
-  onCancel,
-  onSaved,
-}: {
-  product: Product;
-  groups: CategoryGroup[];
-  onCancel(): void;
-  onSaved(): Promise<void>;
-}) {
-  const id = useId();
-  const [error, setError] = useState<string>();
-  const [pending, setPending] = useState(false);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    setPending(true);
-    setError(
-      (await attempt(async () => {
-        await api.updateProduct(product.id, {
-          name: String(data.get('name')),
-          ...parsePlacementKey(String(data.get('placement'))),
-          note: String(data.get('note')),
-        });
-        await onSaved();
-      })) ?? undefined,
-    );
-    setPending(false);
-  }
-
-  return (
-    <form aria-label={`编辑 ${product.name}`} className="flex max-w-160 flex-col gap-4" onSubmit={handleSubmit}>
-      <div className="grid gap-3 wide:grid-cols-2">
-        <Field label="商品名称" htmlFor={`${id}-name`}>
-          <Input id={`${id}-name`} name="name" required maxLength={100} defaultValue={product.name} />
-        </Field>
-        <Field label="所属品类" htmlFor={`${id}-category`}>
-          <PlacementSelect
-            id={`${id}-category`}
-            name="placement"
-            className="w-full"
-            defaultValue={placementKey(placementOf(product))}
-            groups={groups}
-          />
-        </Field>
-      </div>
-      <p className="text-xs text-ink-3">
-        计价单位 {product.pricingUnit.name} · 基准规格 {formatSize(product.baseSize, product.pricingUnit)}
-      </p>
-      <NoteField id={`${id}-note`} defaultValue={product.note} />
-      {error && <Alert>{error}</Alert>}
-      <div className="flex gap-2">
-        <Button type="submit" disabled={pending}>
-          保存
-        </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          取消
-        </Button>
-      </div>
-    </form>
   );
 }

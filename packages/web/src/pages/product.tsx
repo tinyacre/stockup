@@ -150,6 +150,10 @@ export function ProductPage({ productId, onBack }: { productId: string; onBack(p
           {product.note && <p className="text-[13px] whitespace-pre-wrap text-ink-2">{product.note}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" onClick={() => setTask('edit')}>
+            <Pencil />
+            编辑
+          </Button>
           <Button variant="outline" onClick={() => setEditingStockLine(true)}>
             <Pencil />
             {product.stockLine === null ? '设置入手价' : '修改入手价'}

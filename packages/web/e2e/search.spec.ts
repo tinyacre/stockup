@@ -1,3 +1,4 @@
+import { createGroup } from './categories';
 import { expect, test } from './test';
 
 test('a member finds a product by its pinyin initials', async ({ page, household }) => {
@@ -11,12 +12,7 @@ test('a member finds a product by its pinyin initials', async ({ page, household
   await page.getByLabel('密码').fill(household.admin.password);
   await page.getByRole('button', { name: '登录' }).click();
 
-  await page.getByLabel('新大类名称').fill(groupName);
-  await page.getByRole('button', { name: '新建大类' }).click();
-  const group = page.getByRole('group', { name: `大类 ${groupName}` });
-  await group.getByRole('button', { name: `在 ${groupName} 下新建品类` }).click();
-  await group.getByLabel('新品类名称').fill(categoryName);
-  await group.getByRole('button', { name: '新建品类', exact: true }).click();
+  const group = await createGroup(page, groupName, [categoryName]);
   await group.getByRole('button', { name: categoryName }).click();
 
   await page.getByRole('button', { name: '新建商品' }).click();

@@ -18,9 +18,11 @@ function Panel({ className, asChild, ...props }: React.ComponentProps<"div"> & {
   )
 }
 
+// `leading` sits before the heading, outside it, so a control there stays out of the heading's name.
 function PanelHeader({
   title,
   count,
+  leading,
   actions,
   as: Heading = "h2",
   className,
@@ -28,6 +30,7 @@ function PanelHeader({
 }: {
   title: React.ReactNode
   count?: React.ReactNode
+  leading?: React.ReactNode
   actions?: React.ReactNode
   as?: "h2" | "h3" | "h4"
   className?: string
@@ -42,6 +45,7 @@ function PanelHeader({
         className
       )}
     >
+      {leading}
       <Heading className="flex items-baseline gap-2 text-[13px] font-semibold price-tag:text-[15px] price-tag:tracking-[.06em]">
         {title}
         {count !== undefined && (
