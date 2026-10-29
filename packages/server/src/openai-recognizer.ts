@@ -3,13 +3,15 @@ import { zodResponseFormat } from 'openai/helpers/zod';
 import { answerFormat, instructions, probeImage, probeRequest, readAnswer, request } from './recognition-answer';
 import type { RecognitionResult, Screenshot, ScreenshotRecognizer } from './recognizer';
 
+const responseFormat = zodResponseFormat(answerFormat, 'recognition');
+
 // Speaks Chat Completions rather than the Responses API, since that is what OpenAI-compatible services implement.
 export function openaiRecognizer(client: OpenAI, model: string): ScreenshotRecognizer {
   return {
     async recognize(screenshot: Screenshot): Promise<RecognitionResult> {
       const completion = await client.chat.completions.create({
         model,
-        response_format: zodResponseFormat(answerFormat, 'recognition'),
+        response_format: responseFormat,
         messages: [
           { role: 'system', content: instructions },
           {

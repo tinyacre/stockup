@@ -3,6 +3,8 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { answerFormat, instructions, probeImage, probeRequest, readAnswer, request } from './recognition-answer';
 import type { RecognitionResult, Screenshot, ScreenshotRecognizer } from './recognizer';
 
+const outputFormat = zodOutputFormat(answerFormat);
+
 export function anthropicRecognizer(client: Anthropic, model: string): ScreenshotRecognizer {
   return {
     async recognize(screenshot: Screenshot): Promise<RecognitionResult> {
@@ -10,7 +12,7 @@ export function anthropicRecognizer(client: Anthropic, model: string): Screensho
         model,
         max_tokens: 16000,
         system: instructions,
-        output_config: { format: zodOutputFormat(answerFormat) },
+        output_config: { format: outputFormat },
         messages: [
           {
             role: 'user',
