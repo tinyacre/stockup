@@ -1,6 +1,7 @@
 import {
   calculatePrice,
   IncompatibleUnitsError,
+  localDate,
   matchPromotion,
   parseQuantity,
   promotionYear,
@@ -24,9 +25,7 @@ export function parseYuan(text: string): number | null {
 }
 
 export function today() {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return localDate(new Date());
 }
 
 export function unitsLike(unit: Unit): Unit[] {
