@@ -52,6 +52,7 @@ export async function bootstrap(
     evidence,
     recognizers,
     instanceRecognition: config.recognition,
+    encryptionKey: config.encryptionKey,
     webDir: config.webDir,
     mailer,
     signupOpen: config.signup === 'open',

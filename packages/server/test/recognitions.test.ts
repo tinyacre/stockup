@@ -327,6 +327,8 @@ describe('recognitions', () => {
       source: 'instance',
       quota: { monthly: 1000, used: 0, resetsOn: expect.stringMatching(/^\d{4}-\d{2}-01$/) },
       householdAdmin: true,
+      householdCredentials: false,
+      credential: null,
     });
   });
 
@@ -679,6 +681,8 @@ describe('recognitions without a recognizer', () => {
       source: null,
       quota: null,
       householdAdmin: true,
+      householdCredentials: false,
+      credential: null,
     });
   });
 

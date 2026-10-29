@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { RecognizerConfig, Screenshot } from '../src/recognizer';
+import { RecognizerCallError, type RecognizerConfig, type Screenshot } from '../src/recognizer';
 import { providerRecognizers } from '../src/recognizer-factory';
 
 const screenshot: Screenshot = { bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]), contentType: 'image/png' };
@@ -129,6 +129,42 @@ describe('providerRecognizers', () => {
         throw new TypeError('fetch failed');
       });
       expect(await recognizers.validate(config)).toMatchObject({ ok: false, problem: 'unreachable' });
+    });
+  });
+
+  describe.each([
+    {
+      config: anthropic,
+      refused: json({ type: 'error', error: { type: 'authentication_error', message: 'no' } }, 401),
+      garbled: json({ ...replies.anthropic, content: [{ type: 'text', text: 'not json' }] }),
+    },
+    {
+      config: openai,
+      refused: json({ error: { type: 'invalid_api_key', code: 'invalid_api_key', message: 'no' } }, 401),
+      garbled: json({
+        ...replies.openai,
+        choices: [{ ...replies.openai.choices[0], message: { role: 'assistant', content: 'not json', refusal: null } }],
+      }),
+    },
+  ])('a $config.provider recognizer', ({ config, refused, garbled }) => {
+    test('reports a call the provider refuses as a call error', async () => {
+      const { recognizers } = fakeProviders(() => refused);
+      const error = await recognizers
+        .create(config)
+        .recognize(screenshot)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(RecognizerCallError);
+      expect(error).toMatchObject({ problem: 'authentication_failed' });
+    });
+
+    test('reports an answer it cannot read as an ordinary error', async () => {
+      const { recognizers } = fakeProviders(() => garbled);
+      const error = await recognizers
+        .create(config)
+        .recognize(screenshot)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(RecognizerCallError);
     });
   });
 });

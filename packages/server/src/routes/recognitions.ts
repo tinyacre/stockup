@@ -20,7 +20,9 @@ import {
   startRecognition,
 } from '../recognitions';
 import { HOUSEHOLD_ADMIN_ROLE } from '../households';
+import type { HouseholdCredentials } from '../household-credentials';
 import type { RecognitionAccess } from '../recognition-access';
+import { credentialSchema, serializeCredential } from './recognition-credential';
 import { pricingUnitSchema } from './catalog';
 import {
   cents,
@@ -71,7 +73,7 @@ const recognitionSchema = z
     status: z.enum(recognitionStatuses),
     error: z.enum(recognitionErrors).nullable().openapi({
       description:
-        "Why it failed: the household has nothing to recognize with (recognition_unavailable), it has used up this month's recognitions on the instance's provider (recognition_quota_exhausted), the recognizer failed or gave an answer it could not read (recognition_failed), or the server restarted while it ran (recognition_interrupted)",
+        "Why it failed: the household has nothing to recognize with (recognition_unavailable), it has used up this month's recognitions on the instance's provider (recognition_quota_exhausted), the household's own key could not be used or its provider refused the call (household_key_unavailable), the recognizer failed or gave an answer it could not read (recognition_failed), or the server restarted while it ran (recognition_interrupted)",
     }),
     requestedBy: z.object({ id: z.string(), name: z.string() }).nullable(),
     screenshot: z
@@ -94,9 +96,9 @@ const recognitionSchema = z
 const recognitionStatusSchema = z
   .object({
     available: z.boolean().openapi({ description: 'Whether a screenshot uploaded now would be recognized' }),
-    source: z.enum(['instance']).nullable().openapi({
+    source: z.enum(['household', 'instance']).nullable().openapi({
       description:
-        "What recognitions are read with: the instance's provider within its monthly quota (instance); null when the household has nothing to recognize with",
+        "What recognitions are read with: the household's own credential, without a quota (household), or the instance's provider within its monthly quota (instance); null when the household has nothing to recognize with",
     }),
     quota: z
       .object({
@@ -109,6 +111,12 @@ const recognitionStatusSchema = z
       .nullable()
       .openapi({ description: 'Null for a source without a quota' }),
     householdAdmin: z.boolean().openapi({ description: 'Whether the caller is the household admin' }),
+    householdCredentials: z.boolean().openapi({
+      description: 'Whether the instance lets household admins configure a credential of their own',
+    }),
+    credential: credentialSchema.nullable().openapi({
+      description: "The household's own credential, shown to the household admin only; null for everyone else",
+    }),
   })
   .openapi('RecognitionStatus');
 
@@ -154,7 +162,13 @@ function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };
 }
 
-export function recognitionRoutes(db: Database, auth: Auth, store: EvidenceStore, access: RecognitionAccess) {
+export function recognitionRoutes(
+  db: Database,
+  auth: Auth,
+  store: EvidenceStore,
+  access: RecognitionAccess,
+  credentials: HouseholdCredentials | undefined,
+) {
   const middleware = requireMember(auth, db);
   const unauthenticated = { 401: { description: 'Not signed in' } };
   const notFound = { 404: { description: 'No such recognition in this household', content: errorContent } };
@@ -294,7 +308,7 @@ export function recognitionRoutes(db: Database, auth: Auth, store: EvidenceStore
     tags: ['recognitions'],
     summary: "Report whether and with what the household's screenshots can be recognized",
     description:
-      "The instance's provider gives every household the same number of recognitions a month, counted from the first day of the month in the server's time zone. Only recognitions that succeed or are still running count.",
+      "A household with a credential of its own recognizes with it, without a quota. Otherwise the instance's provider gives every household the same number of recognitions a month, counted from the first day of the month in the server's time zone; only recognitions that succeed or are still running count.",
     middleware,
     responses: {
       200: {
@@ -317,7 +331,17 @@ export function recognitionRoutes(db: Database, auth: Auth, store: EvidenceStore
   return app
     .openapi(availabilityRoute, async (c) => {
       const status = await access.status(db, c.var.member);
-      return c.json({ ...status, householdAdmin: c.var.member.householdRole === HOUSEHOLD_ADMIN_ROLE }, 200);
+      const householdAdmin = c.var.member.householdRole === HOUSEHOLD_ADMIN_ROLE;
+      const credential = householdAdmin ? await credentials?.summary(c.var.member.householdId) : null;
+      return c.json(
+        {
+          ...status,
+          householdAdmin,
+          householdCredentials: credentials !== undefined,
+          credential: credential ? serializeCredential(credential) : null,
+        },
+        200,
+      );
     })
     .openapi(startRoute, async (c) => {
       const { file } = c.req.valid('form');

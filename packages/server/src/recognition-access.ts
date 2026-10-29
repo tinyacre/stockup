@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { Database, Transaction } from './db';
-import { organization, recognition } from './db/schema';
+import { organization, recognition, type recognitionSources } from './db/schema';
+import { unreadable, type HouseholdCredentials } from './household-credentials';
 import type { CurrentMember } from './members';
 import type { RecognizerConfig, RecognizerFactory, ScreenshotRecognizer } from './recognizer';
 
@@ -11,12 +12,13 @@ export interface InstanceRecognition {
   monthlyQuota: number;
 }
 
-// Where a household's recognitions are read with.
-export type RecognitionSource = 'instance';
+// What a household's recognitions are read with: its own credential, or the instance's provider within the quota.
+export type RecognitionSource = (typeof recognitionSources)[number];
 
 export interface RecognitionQuota {
   monthly: number;
-  // Recognitions this month that succeeded or are still running; failed ones give their turn back.
+  // Recognitions on the instance's provider this month that succeeded or are still running; failed ones give their
+  // turn back, and the household's own credential never takes one.
   used: number;
   // The first day of next month, as YYYY-MM-DD.
   resetsOn: string;
@@ -31,7 +33,8 @@ export interface RecognitionStatus {
 }
 
 export type RecognizerChoice =
-  { recognizer: ScreenshotRecognizer } | { error: 'recognition_unavailable' | 'recognition_quota_exhausted' };
+  | { recognizer: ScreenshotRecognizer; source: RecognitionSource }
+  | { error: 'recognition_unavailable' | 'recognition_quota_exhausted' | 'household_key_unavailable' };
 
 function localDate(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -54,6 +57,7 @@ async function usedThisMonth(db: Database | Transaction, householdId: string) {
     .where(
       and(
         eq(recognition.householdId, householdId),
+        eq(recognition.source, 'instance'),
         inArray(recognition.status, ['succeeded', 'pending']),
         gte(recognition.createdAt, start),
         lt(recognition.createdAt, next),
@@ -62,8 +66,14 @@ async function usedThisMonth(db: Database | Transaction, householdId: string) {
   return counted!.used;
 }
 
-// Decides what each household recognizes screenshots with: today the instance's provider within its monthly quota.
-export function recognitionAccess(recognizers: RecognizerFactory, instance: InstanceRecognition | undefined) {
+// Decides what each household recognizes screenshots with: its own credential when it has one, which never falls
+// back to the instance's provider, and otherwise the instance's provider within its monthly quota. Without
+// `credentials` (no encryption key) households' own credentials are left unread, so they use the quota.
+export function recognitionAccess(
+  recognizers: RecognizerFactory,
+  instance: InstanceRecognition | undefined,
+  credentials: HouseholdCredentials | undefined,
+) {
   const offered =
     instance && instance.monthlyQuota > 0
       ? { monthlyQuota: instance.monthlyQuota, recognizer: recognizers.create(instance.recognizer) }
@@ -75,6 +85,8 @@ export function recognitionAccess(recognizers: RecognizerFactory, instance: Inst
 
   return {
     async status(db: Database, scope: CurrentMember): Promise<RecognitionStatus> {
+      const own = await credentials?.config(db, scope.householdId);
+      if (own) return { available: own !== unreadable, source: 'household', quota: null };
       if (!offered) return { available: false, source: null, quota: null };
       const quota = await quotaOf(db, offered.monthlyQuota, scope.householdId);
       return { available: quota.used < quota.monthly, source: 'instance', quota };
@@ -83,15 +95,18 @@ export function recognitionAccess(recognizers: RecognizerFactory, instance: Inst
     // Holds the household until the transaction ends, so recognitions started at the same time take the
     // quota's last turns one by one; the caller records the new recognition in the same transaction.
     async choose(tx: Transaction, scope: CurrentMember): Promise<RecognizerChoice> {
-      if (!offered) return { error: 'recognition_unavailable' };
       await tx
         .select({ id: organization.id })
         .from(organization)
         .where(eq(organization.id, scope.householdId))
         .for('no key update');
+      const own = await credentials?.config(tx, scope.householdId);
+      if (own === unreadable) return { error: 'household_key_unavailable' };
+      if (own) return { recognizer: recognizers.create(own), source: 'household' };
+      if (!offered) return { error: 'recognition_unavailable' };
       const quota = await quotaOf(tx, offered.monthlyQuota, scope.householdId);
       if (quota.used >= quota.monthly) return { error: 'recognition_quota_exhausted' };
-      return { recognizer: offered.recognizer };
+      return { recognizer: offered.recognizer, source: 'instance' };
     },
   };
 }

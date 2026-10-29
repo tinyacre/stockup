@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { InstanceRecognition } from './recognition-access';
 import { recognitionProviders, type RecognitionProvider, type RecognizerConfig } from './recognizer';
+import { parseEncryptionKey } from './secret-box';
 
 export interface Config {
   databaseUrl: string;
@@ -13,6 +14,8 @@ export interface Config {
   clientIpHeader: string | undefined;
   // The instance's own recognition provider and monthly quota; screenshot recognition is unavailable without one.
   recognition: InstanceRecognition | undefined;
+  // Seals households' own recognition API keys; households cannot configure one without it.
+  encryptionKey: Buffer | undefined;
   // Evidence lives in the local directory without one.
   s3: S3Config | undefined;
   signup: 'open' | 'closed';
@@ -206,6 +209,16 @@ function loadInstanceRecognition(env: Env): InstanceRecognition | undefined {
 
 const turnstileVars = ['STOCKUP_TURNSTILE_SITE_KEY', 'STOCKUP_TURNSTILE_SECRET_KEY'];
 
+function loadEncryptionKey(env: Env) {
+  const value = env.STOCKUP_ENCRYPTION_KEY;
+  if (!value) return undefined;
+  const key = parseEncryptionKey(value);
+  if (!key) {
+    throw new Error('STOCKUP_ENCRYPTION_KEY must be 32 bytes in base64, e.g. the output of openssl rand -base64 32');
+  }
+  return key;
+}
+
 function loadTurnstileConfig(env: Env): TurnstileConfig | undefined {
   const missing = missingVars(env, turnstileVars);
   if (missing.length === turnstileVars.length) return undefined;
@@ -259,6 +272,7 @@ export function loadConfig(env: Env): Config {
     webDir: env.STOCKUP_WEB_DIR ? path.resolve(env.STOCKUP_WEB_DIR) : undefined,
     clientIpHeader: env.STOCKUP_CLIENT_IP_HEADER?.toLowerCase() || undefined,
     recognition: loadInstanceRecognition(env),
+    encryptionKey: loadEncryptionKey(env),
     s3: loadS3Config(env),
     signup: loadSignup(env, smtp),
     smtp,

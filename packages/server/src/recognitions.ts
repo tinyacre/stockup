@@ -15,12 +15,12 @@ import { checkEvidenceFile, removeEvidenceFiles } from './evidence';
 import type { EvidenceStore } from './evidence-store';
 import type { CurrentMember } from './members';
 import { findPriceRecord, insertPriceRecord, InvalidPriceError, ProductNotFoundError } from './price-records';
-import type { RecognitionAccess } from './recognition-access';
-import type { RecognitionResult, Screenshot, ScreenshotRecognizer } from './recognizer';
+import type { RecognitionAccess, RecognitionSource } from './recognition-access';
+import { RecognizerCallError, type RecognitionResult, type Screenshot, type ScreenshotRecognizer } from './recognizer';
 
 // Stores the screenshot and starts reading it in the background; the caller polls findRecognition
-// for the outcome. When the household has nothing to recognize with, or has used up its quota, the recognition
-// fails at once, keeping the screenshot for manual entry.
+// for the outcome. When the household has nothing to recognize with, has used up its quota, or has a key of its own
+// that cannot be read, the recognition fails at once, keeping the screenshot for manual entry.
 export async function startRecognition(
   db: Database,
   store: EvidenceStore,
@@ -46,7 +46,7 @@ export async function startRecognition(
         // The quota counts months by the server's clock, so the recognition is dated by it too.
         createdAt: now,
         ...('recognizer' in chosen
-          ? { status: 'pending' as const }
+          ? { status: 'pending' as const, source: chosen.source }
           : { status: 'failed' as const, error: chosen.error, finishedAt: now }),
       });
       return chosen;
@@ -56,7 +56,7 @@ export async function startRecognition(
     throw error;
   }
   const started = (await findRecognition(db, scope, id))!;
-  if ('recognizer' in choice) void recognize(db, choice.recognizer, scope, id, { bytes, contentType });
+  if ('recognizer' in choice) void recognize(db, choice, scope, id, { bytes, contentType });
   return started;
 }
 
@@ -73,7 +73,7 @@ function withDeadline<T>(work: Promise<T>, ms: number) {
 
 async function recognize(
   db: Database,
-  recognizer: ScreenshotRecognizer,
+  { recognizer, source }: { recognizer: ScreenshotRecognizer; source: RecognitionSource },
   scope: CurrentMember,
   id: string,
   screenshot: Screenshot,
@@ -83,9 +83,14 @@ async function recognize(
     await saveDrafts(db, scope, id, result);
   } catch (error) {
     console.error(`Recognition ${id} failed`, error);
+    // The household admin has to fix a key of the household's own, so its failure is told apart.
+    const failure =
+      source === 'household' && error instanceof RecognizerCallError
+        ? 'household_key_unavailable'
+        : 'recognition_failed';
     await db
       .update(recognition)
-      .set({ status: 'failed', error: 'recognition_failed', finishedAt: new Date() })
+      .set({ status: 'failed', error: failure, finishedAt: new Date() })
       .where(and(eq(recognition.id, id), eq(recognition.status, 'pending')))
       .catch((e) => console.error(`Could not mark recognition ${id} as failed`, e));
   }

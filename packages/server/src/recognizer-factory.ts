@@ -2,12 +2,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { anthropicRecognizer } from './anthropic-recognizer';
 import { openaiRecognizer } from './openai-recognizer';
-import type {
-  RecognitionProvider,
-  RecognizerConfig,
-  RecognizerFactory,
-  RecognizerProblem,
-  RecognizerValidation,
+import {
+  RecognizerCallError,
+  type RecognitionProvider,
+  type RecognizerConfig,
+  type RecognizerFactory,
+  type RecognizerProblem,
+  type RecognizerValidation,
+  type ScreenshotRecognizer,
 } from './recognizer';
 
 // Both read images and keep to a JSON schema, and are cheap enough to run on every screenshot.
@@ -38,6 +40,19 @@ function problemOf(error: unknown, sdk: SdkErrors): RecognizerProblem {
   throw error;
 }
 
+function reportingCallErrors(recognizer: ScreenshotRecognizer, sdk: SdkErrors): ScreenshotRecognizer {
+  return {
+    async recognize(screenshot) {
+      try {
+        return await recognizer.recognize(screenshot);
+      } catch (error) {
+        if (error instanceof sdk.APIError) throw new RecognizerCallError(problemOf(error, sdk), error.message);
+        throw error;
+      }
+    },
+  };
+}
+
 // `fetch` stands in for the network, so tests can play the provider's side.
 export function providerRecognizers({
   fetch,
@@ -54,8 +69,8 @@ export function providerRecognizers({
       const model = config.model || defaultModels[config.provider];
       const sdk = client(config, recognizing);
       return sdk.provider === 'anthropic'
-        ? anthropicRecognizer(sdk.client, model)
-        : openaiRecognizer(sdk.client, model);
+        ? reportingCallErrors(anthropicRecognizer(sdk.client, model), Anthropic)
+        : reportingCallErrors(openaiRecognizer(sdk.client, model), OpenAI);
     },
 
     async validate(config): Promise<RecognizerValidation> {

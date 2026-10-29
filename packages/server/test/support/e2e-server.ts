@@ -26,6 +26,7 @@ const config = loadConfig({
   STOCKUP_RECOGNITION_API_KEY: 'sk-ant-e2e',
   // Every test has a household of its own, and none needs more recognitions than this before using them up.
   STOCKUP_RECOGNITION_MONTHLY_QUOTA: '3',
+  STOCKUP_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
 });
 const mailer = fakeMailer();
 const { app, close } = await bootstrap(config, {

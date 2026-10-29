@@ -16,7 +16,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { Discount } from '@stockup/domain';
-import type { RecognitionResult } from '../recognizer';
+import { recognitionProviders, type RecognitionResult } from '../recognizer';
 import { organization, user } from './auth-schema';
 
 export * from './auth-schema';
@@ -283,10 +283,12 @@ export const evidence = pgTable(
 );
 
 export const recognitionStatuses = ['pending', 'succeeded', 'failed'] as const;
+export const recognitionSources = ['household', 'instance'] as const;
 export const recognitionErrors = [
   'recognition_unavailable',
   'recognition_quota_exhausted',
   'recognition_failed',
+  'household_key_unavailable',
   'recognition_interrupted',
 ] as const;
 
@@ -304,6 +306,8 @@ export const recognition = pgTable(
     requestedBy: text('requested_by').references(() => user.id, { onDelete: 'set null' }),
     status: text('status', { enum: recognitionStatuses }).notNull(),
     error: text('error', { enum: recognitionErrors }),
+    // What read the screenshot, which decides whether it counts against the quota; null when nothing did.
+    source: text('source', { enum: recognitionSources }),
     screenshotContentType: text('screenshot_content_type', { enum: evidenceContentTypes }).notNull(),
     // Bytes.
     screenshotSize: integer('screenshot_size').notNull(),
@@ -322,8 +326,38 @@ export const recognition = pgTable(
     ),
     check('recognition_error_check', sql`(${table.status} = 'failed') = (${table.error} is not null)`),
     check(
+      'recognition_source_check',
+      sql`${table.source} in (${sql.raw(recognitionSources.map((s) => `'${s}'`).join(', '))})`,
+    ),
+    check(
       'recognition_screenshot_content_type_check',
       sql`${table.screenshotContentType} in (${sql.raw(evidenceContentTypes.map((t) => `'${t}'`).join(', '))})`,
+    ),
+  ],
+);
+
+// The provider and API key a household recognizes screenshots with instead of the instance's quota; at most one
+// per household. The key is sealed with STOCKUP_ENCRYPTION_KEY and the household's id, and only its last four
+// characters are kept in the clear, to tell keys apart when showing them.
+export const householdRecognitionCredential = pgTable(
+  'household_recognition_credential',
+  {
+    householdId: text('household_id')
+      .primaryKey()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    provider: text('provider', { enum: recognitionProviders }).notNull(),
+    sealedApiKey: text('sealed_api_key').notNull(),
+    apiKeyLastFour: text('api_key_last_four').notNull(),
+    // Null for the provider's own endpoint, or its default model.
+    baseUrl: text('base_url'),
+    model: text('model'),
+    updatedAt: timestamp('updated_at').notNull(),
+    updatedBy: text('updated_by').references(() => user.id, { onDelete: 'set null' }),
+  },
+  (table) => [
+    check(
+      'household_recognition_credential_provider_check',
+      sql`${table.provider} in (${sql.raw(recognitionProviders.map((p) => `'${p}'`).join(', '))})`,
     ),
   ],
 );

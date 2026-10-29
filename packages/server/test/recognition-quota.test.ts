@@ -4,9 +4,11 @@ import { joinHousehold, signUpHousehold, useTestApp, type SignedInMember } from 
 
 interface RecognitionStatus {
   available: boolean;
-  source: 'instance' | null;
+  source: 'household' | 'instance' | null;
   quota: { monthly: number; used: number; resetsOn: string } | null;
   householdAdmin: boolean;
+  householdCredentials: boolean;
+  credential: null;
 }
 
 interface Recognition {
@@ -75,6 +77,8 @@ describe('the monthly recognition quota', () => {
       source: 'instance',
       quota: { monthly: 2, used: 0, resetsOn: localDate(monthStart(1)) },
       householdAdmin: true,
+      householdCredentials: false,
+      credential: null,
     });
   });
 
@@ -164,7 +168,14 @@ describe('a monthly quota of 0', () => {
 
   test('offers no recognition on the instance provider', async () => {
     const m = await signUpHousehold(ctx);
-    expect(await statusOf(m)).toEqual({ available: false, source: null, quota: null, householdAdmin: true });
+    expect(await statusOf(m)).toEqual({
+      available: false,
+      source: null,
+      quota: null,
+      householdAdmin: true,
+      householdCredentials: false,
+      credential: null,
+    });
     expect((await upload(m)).error).toBe('recognition_unavailable');
     expect(recognizers.recognizer.screenshots).toHaveLength(0);
   });

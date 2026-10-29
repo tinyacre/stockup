@@ -7,6 +7,7 @@ import type { Database } from './db';
 import { createEmailCodes } from './email-codes';
 import type { EvidenceStore } from './evidence-store';
 import type { Mailer } from './mailer';
+import { householdCredentials } from './household-credentials';
 import { mcpRoutes } from './mcp';
 import { recognitionAccess, type InstanceRecognition } from './recognition-access';
 import type { RecognizerFactory } from './recognizer';
@@ -25,9 +26,11 @@ import { meRoutes } from './routes/me';
 import { memberRoutes } from './routes/members';
 import { priceRecordRoutes } from './routes/price-records';
 import { promotionRoutes } from './routes/promotions';
+import { recognitionCredentialRoutes } from './routes/recognition-credential';
 import { recognitionRoutes } from './routes/recognitions';
 import { setupRoutes } from './routes/setup';
 import { emailCodeRoutes } from './routes/email-codes';
+import { secretBox } from './secret-box';
 import { signupRoutes } from './routes/signup';
 import { requireTurnstile, type TurnstileVerifier } from './turnstile';
 
@@ -40,6 +43,8 @@ export interface AppOptions {
   // The instance's own provider and how many recognitions it gives each household a month; recognition is
   // unavailable without one.
   instanceRecognition?: InstanceRecognition;
+  // The 32-byte key that seals households' own recognition API keys; households cannot configure one without it.
+  encryptionKey?: Uint8Array;
   webDir?: string;
   // Email-based flows (code sending, signup, password reset, changing the email, joining with an email) are unavailable without one.
   mailer?: Mailer;
@@ -57,6 +62,7 @@ export function createApp({
   evidence,
   recognizers = providerRecognizers(),
   instanceRecognition,
+  encryptionKey,
   webDir,
   mailer,
   signupOpen = false,
@@ -64,7 +70,8 @@ export function createApp({
   clientIpHeader,
 }: AppOptions) {
   if (signupOpen && !mailer) throw new Error('Open signup requires a mailer');
-  const recognition = recognitionAccess(recognizers, instanceRecognition);
+  const credentials = encryptionKey && householdCredentials(db, secretBox(encryptionKey), recognizers);
+  const recognition = recognitionAccess(recognizers, instanceRecognition, credentials);
   const codes = mailer && createEmailCodes({ db, mailer, secret: auth.options.secret! });
 
   const app = new OpenAPIHono();
@@ -92,7 +99,8 @@ export function createApp({
     .route('/api', channelRoutes(db, auth))
     .route('/api', priceRecordRoutes(db, auth, evidence))
     .route('/api', evidenceRoutes(db, auth, evidence))
-    .route('/api', recognitionRoutes(db, auth, evidence, recognition))
+    .route('/api', recognitionRoutes(db, auth, evidence, recognition, credentials))
+    .route('/api', recognitionCredentialRoutes(db, auth, credentials))
     .route('/api', judgmentRoutes(db, auth))
     .route('/api', mcpClientRoutes(db, auth));
 

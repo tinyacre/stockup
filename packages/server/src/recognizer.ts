@@ -46,6 +46,18 @@ export type RecognizerProblem = 'authentication_failed' | 'model_not_found' | 'u
 
 export type RecognizerValidation = { ok: true } | { ok: false; problem: RecognizerProblem; message: string };
 
+// A recognizer's call to its provider failed, as opposed to the provider answering with something unreadable;
+// for a household's own key this means the key no longer works.
+export class RecognizerCallError extends Error {
+  override name = 'RecognizerCallError';
+  constructor(
+    readonly problem: RecognizerProblem,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 // Builds recognizers from a configuration, the instance's or a household's, and checks one against its provider
 // before it is relied on.
 export interface RecognizerFactory {

@@ -22,6 +22,11 @@ services:
       STOCKUP_RECOGNITION_BASE_URL: ${STOCKUP_RECOGNITION_BASE_URL:-}
       STOCKUP_RECOGNITION_MODEL: ${STOCKUP_RECOGNITION_MODEL:-}
       STOCKUP_RECOGNITION_MONTHLY_QUOTA: ${STOCKUP_RECOGNITION_MONTHLY_QUOTA:-}
+      # Lets household admins give their household a provider and API key of its own, used instead of the quota above
+      # and never falling back to it. The keys are encrypted with this one: 32 random bytes in base64, e.g.
+      # openssl rand -base64 32. Without it the setting is not offered. Keep it with your backups: changing or losing it
+      # leaves every household's key unreadable until its admin enters it again.
+      STOCKUP_ENCRYPTION_KEY: ${STOCKUP_ENCRYPTION_KEY:-}
       # The header carrying the client address for rate limiting, e.g. CF-Connecting-IP behind Cloudflare. Trust it
       # only when the server is reachable solely through that proxy, since clients can set it themselves otherwise.
       STOCKUP_CLIENT_IP_HEADER: ${STOCKUP_CLIENT_IP_HEADER:-}

@@ -46,6 +46,7 @@ describe('loadConfig', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognition: undefined,
+      encryptionKey: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -84,6 +85,7 @@ describe('loadConfig', () => {
         },
         monthlyQuota: 50,
       },
+      encryptionKey: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -152,6 +154,18 @@ describe('loadConfig', () => {
           STOCKUP_RECOGNITION_MONTHLY_QUOTA: quota,
         }),
       ).toThrow('STOCKUP_RECOGNITION_MONTHLY_QUOTA');
+    }
+  });
+
+  test('reads the encryption key as 32 bytes in base64', () => {
+    const key = Buffer.alloc(32, 7);
+    expect(loadConfig({ ...required, STOCKUP_ENCRYPTION_KEY: key.toString('base64') }).encryptionKey).toEqual(key);
+    expect(loadConfig({ ...required, STOCKUP_ENCRYPTION_KEY: '' }).encryptionKey).toBeUndefined();
+  });
+
+  test('rejects an encryption key that is not 32 bytes in base64', () => {
+    for (const value of [Buffer.alloc(16).toString('base64'), 'a'.repeat(32), Buffer.alloc(32).toString('hex')]) {
+      expect(() => loadConfig({ ...required, STOCKUP_ENCRYPTION_KEY: value })).toThrow('STOCKUP_ENCRYPTION_KEY');
     }
   });
 
@@ -380,6 +394,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognition: undefined,
+      encryptionKey: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -407,6 +422,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognition: undefined,
+      encryptionKey: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -451,6 +467,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognition: instanceRecognition,
+      encryptionKey: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -533,6 +550,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognition: undefined,
+      encryptionKey: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -558,6 +576,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognition: undefined,
+      encryptionKey: undefined,
       s3: testS3Config(),
       signup: 'closed' as const,
       smtp: undefined,
@@ -638,6 +657,7 @@ describe('bootstrap', () => {
       webDir: undefined,
       clientIpHeader: undefined,
       recognition: undefined,
+      encryptionKey: undefined,
       s3: testS3Config({ bucket: `stockup-missing-${crypto.randomUUID().slice(0, 8)}` }),
       signup: 'closed' as const,
       smtp: undefined,
