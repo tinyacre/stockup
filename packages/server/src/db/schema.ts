@@ -1,5 +1,6 @@
 import {
   boolean,
+  type AnyPgColumn,
   check,
   date,
   doublePrecision,
@@ -20,6 +21,11 @@ import { recognitionProviders, type RecognitionResult } from '../recognizer';
 import { organization, user } from './auth-schema';
 
 export * from './auth-schema';
+
+// The values are this file's own constants, so they are safe to write into the constraint verbatim.
+function enumCheck(name: string, column: AnyPgColumn, values: readonly string[]) {
+  return check(name, sql`${column} in (${sql.raw(values.map((v) => `'${v}'`).join(', '))})`);
+}
 
 const monthDay = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.source;
 
@@ -137,10 +143,7 @@ export const product = pgTable(
     }).onUpdate('cascade'),
     check('product_base_size_check', sql`${table.baseSize} > 0`),
     check('product_stock_line_check', sql`${table.stockLine} > 0`),
-    check(
-      'product_pricing_unit_dimension_check',
-      sql`${table.pricingUnitDimension} in (${sql.raw(unitDimensions.map((d) => `'${d}'`).join(', '))})`,
-    ),
+    enumCheck('product_pricing_unit_dimension_check', table.pricingUnitDimension, unitDimensions),
   ],
 );
 
@@ -217,10 +220,7 @@ export const priceRecord = pgTable(
     check('price_record_list_price_check', sql`${table.listPrice} > 0`),
     check('price_record_quantity_check', sql`${table.quantity} > 0`),
     check('price_record_size_check', sql`${table.sizeAmount} > 0 and ${table.enteredSizeAmount} > 0`),
-    check(
-      'price_record_source_check',
-      sql`${table.source} in (${sql.raw(priceRecordSources.map((s) => `'${s}'`).join(', '))})`,
-    ),
+    enumCheck('price_record_source_check', table.source, priceRecordSources),
   ],
 );
 
@@ -274,10 +274,7 @@ export const evidence = pgTable(
       columns: [table.householdId, table.priceRecordId],
       foreignColumns: [priceRecord.householdId, priceRecord.id],
     }).onDelete('cascade'),
-    check(
-      'evidence_content_type_check',
-      sql`${table.contentType} in (${sql.raw(evidenceContentTypes.map((t) => `'${t}'`).join(', '))})`,
-    ),
+    enumCheck('evidence_content_type_check', table.contentType, evidenceContentTypes),
     check('evidence_size_check', sql`${table.size} > 0`),
   ],
 );
@@ -320,19 +317,10 @@ export const recognition = pgTable(
   },
   (table) => [
     unique('recognition_household_id_unique').on(table.householdId, table.id),
-    check(
-      'recognition_status_check',
-      sql`${table.status} in (${sql.raw(recognitionStatuses.map((s) => `'${s}'`).join(', '))})`,
-    ),
+    enumCheck('recognition_status_check', table.status, recognitionStatuses),
     check('recognition_error_check', sql`(${table.status} = 'failed') = (${table.error} is not null)`),
-    check(
-      'recognition_source_check',
-      sql`${table.source} in (${sql.raw(recognitionSources.map((s) => `'${s}'`).join(', '))})`,
-    ),
-    check(
-      'recognition_screenshot_content_type_check',
-      sql`${table.screenshotContentType} in (${sql.raw(evidenceContentTypes.map((t) => `'${t}'`).join(', '))})`,
-    ),
+    enumCheck('recognition_source_check', table.source, recognitionSources),
+    enumCheck('recognition_screenshot_content_type_check', table.screenshotContentType, evidenceContentTypes),
   ],
 );
 
@@ -354,12 +342,7 @@ export const householdRecognitionCredential = pgTable(
     updatedAt: timestamp('updated_at').notNull(),
     updatedBy: text('updated_by').references(() => user.id, { onDelete: 'set null' }),
   },
-  (table) => [
-    check(
-      'household_recognition_credential_provider_check',
-      sql`${table.provider} in (${sql.raw(recognitionProviders.map((p) => `'${p}'`).join(', '))})`,
-    ),
-  ],
+  (table) => [enumCheck('household_recognition_credential_provider_check', table.provider, recognitionProviders)],
 );
 
 // One line of goods read from a recognition's screenshot, waiting for a member to confirm it.
@@ -432,9 +415,6 @@ export const emailCode = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.email, table.purpose] }),
-    check(
-      'email_code_purpose_check',
-      sql`${table.purpose} in (${sql.raw(emailCodePurposes.map((p) => `'${p}'`).join(', '))})`,
-    ),
+    enumCheck('email_code_purpose_check', table.purpose, emailCodePurposes),
   ],
 );
