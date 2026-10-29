@@ -22,7 +22,7 @@ import { organization, user } from './auth-schema';
 
 export * from './auth-schema';
 
-// The values are this file's own constants, so they are safe to write into the constraint verbatim.
+// Requires values that are compile-time constant tuples: sql.raw writes them into the constraint verbatim.
 function enumCheck(name: string, column: AnyPgColumn, values: readonly string[]) {
   return check(name, sql`${column} in (${sql.raw(values.map((v) => `'${v}'`).join(', '))})`);
 }

@@ -31,6 +31,7 @@ const config = loadConfig({
 const mailer = fakeMailer();
 const { app, close } = await bootstrap(config, {
   recognizers: fakeRecognizerFactory(),
+  householdRecognizers: fakeRecognizerFactory(),
   fetchClientMetadataResource: fetchClaudeMetadata,
   mailer,
 });

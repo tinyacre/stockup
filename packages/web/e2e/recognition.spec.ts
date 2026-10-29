@@ -149,7 +149,7 @@ test('a household admin who used up the monthly quota is pointed at the settings
 
   const nav = page.getByRole('navigation', { name: '主导航' });
   await nav.getByRole('link', { name: '识别' }).click();
-  await expect(page.getByText('本月还可识别 3 次')).toBeVisible();
+  await expect(page.getByText('使用实例的识别配额，本月还可识别 3 次')).toBeVisible();
 
   for (let i = 0; i < 3; i++) {
     const started = await page.request.post('/api/recognitions', {
@@ -201,7 +201,7 @@ test('a household admin configures a key of their own and recognizes without the
   await page.getByRole('button', { name: '确认删除 API key' }).click();
   await expect(section.getByRole('definition')).toHaveCount(0);
   await nav.getByRole('link', { name: '识别' }).click();
-  await expect(page.getByText('本月还可识别 3 次')).toBeVisible();
+  await expect(page.getByText('使用实例的识别配额，本月还可识别 3 次')).toBeVisible();
 });
 
 test.describe('without a recognizer', () => {

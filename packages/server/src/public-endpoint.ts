@@ -3,7 +3,6 @@ import { BlockList, isIP } from 'node:net';
 
 export type Fetch = (url: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-// Every address a hostname resolves to.
 export type ResolveHost = (hostname: string) => Promise<string[]>;
 
 export const resolveHost: ResolveHost = async (hostname) =>

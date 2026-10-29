@@ -77,7 +77,9 @@ function problemOf(error: unknown, sdk: SdkErrors): RecognizerProblem {
   }
   if (error instanceof sdk.NotFoundError) return 'model_not_found';
   if (error instanceof sdk.APIError) return 'provider_error';
-  throw error;
+  // Anything else, such as an answer the SDK cannot parse, is still the provider failing the call.
+  console.error('Validating a recognizer configuration failed unexpectedly', error);
+  return 'provider_error';
 }
 
 function reportingCallErrors(recognizer: ScreenshotRecognizer, sdk: SdkErrors): ScreenshotRecognizer {

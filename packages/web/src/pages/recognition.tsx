@@ -132,7 +132,9 @@ function Availability({ status }: { status: RecognitionStatus }) {
     );
   }
   if (available) {
-    return quota && <p className="text-ink-3 text-sm">本月还可识别 {quota.monthly - quota.used} 次</p>;
+    return (
+      quota && <p className="text-ink-3 text-sm">使用实例的识别配额，本月还可识别 {quota.monthly - quota.used} 次</p>
+    );
   }
   const ownKey =
     householdCredentials &&

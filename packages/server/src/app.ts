@@ -39,9 +39,8 @@ export interface AppOptions {
   db: Database;
   auth: Auth;
   evidence: EvidenceStore;
-  // Turn recognizer configurations into recognizers, the real providers unless replaced: the instance's, called
-  // wherever its operator points it, and households', called only at public https addresses. A replacement for
-  // `recognizers` serves households too unless `householdRecognizers` replaces theirs.
+  // Separate because the instance's provider is wherever its operator points it, while households' may only be called at
+  // public https addresses.
   recognizers?: RecognizerFactory;
   householdRecognizers?: RecognizerFactory;
   // The instance's own provider and how many recognitions it gives each household a month; recognition is
@@ -64,8 +63,8 @@ export function createApp({
   db,
   auth,
   evidence,
-  recognizers,
-  householdRecognizers = recognizers ?? providerRecognizers({ fetch: publicOnly(globalThis.fetch) }),
+  recognizers = providerRecognizers(),
+  householdRecognizers = providerRecognizers({ fetch: publicOnly(globalThis.fetch) }),
   instanceRecognition,
   encryptionKey,
   webDir,
@@ -77,7 +76,7 @@ export function createApp({
   if (signupOpen && !mailer) throw new Error('Open signup requires a mailer');
   const credentials = encryptionKey && householdCredentials(db, secretBox(encryptionKey), householdRecognizers);
   const recognition = recognitionAccess(
-    { recognizers: recognizers ?? providerRecognizers(), recognition: instanceRecognition },
+    { recognizers, recognition: instanceRecognition },
     { recognizers: householdRecognizers, credentials },
   );
   const codes = mailer && createEmailCodes({ db, mailer, secret: auth.options.secret! });

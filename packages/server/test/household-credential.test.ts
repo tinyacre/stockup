@@ -50,6 +50,7 @@ describe("a household's own recognition credential", () => {
   const { recognizers, instance, household } = recognizersByKey();
   const ctx = useTestApp({
     recognizers,
+    householdRecognizers: recognizers,
     instanceRecognition: { recognizer: instanceRecognizer, monthlyQuota: 1 },
     encryptionKey,
   });
@@ -222,6 +223,7 @@ describe("a household's own recognition credential", () => {
         auth: ctx.auth,
         evidence: ctx.evidence,
         recognizers,
+        householdRecognizers: recognizers,
         instanceRecognition: { recognizer: instanceRecognizer, monthlyQuota: 1 },
         encryptionKey: Buffer.alloc(32, 2),
       }),
@@ -258,6 +260,23 @@ describe('without an encryption key', () => {
       householdCredentials: false,
       credential: null,
     });
+  });
+});
+
+describe("households' recognizers by default", () => {
+  const recognizers = fakeRecognizerFactory();
+  const ctx = useTestApp({
+    recognizers,
+    instanceRecognition: { recognizer: instanceRecognizer, monthlyQuota: 1 },
+    encryptionKey,
+  });
+
+  test('refuse a base URL at a non-public address, whatever serves the instance', async () => {
+    const admin = await signUpHousehold(ctx);
+    const res = await saveCredential(admin, { ...openRouter, baseURL: 'https://127.0.0.1:1/v1' });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: 'credential_rejected', problem: 'endpoint_not_public' });
+    expect(recognizers.validated).toHaveLength(0);
   });
 });
 

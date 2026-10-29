@@ -16,18 +16,19 @@ async function openLocalEvidenceStore(dir: string) {
   return localEvidenceStore(dir);
 }
 
-// A recognizer factory passed in takes the place of the real providers, and a mailer or Turnstile verifier the
+// Recognizer factories passed in take the place of the real providers, and a mailer or Turnstile verifier the
 // place of the one the config describes.
 export async function bootstrap(
   config: Config,
   options: {
     recognizers?: RecognizerFactory;
+    householdRecognizers?: RecognizerFactory;
     fetchClientMetadataResource?: ClientMetadataResourceFetch;
     mailer?: Mailer;
     turnstile?: TurnstileVerifier;
   } = {},
 ) {
-  const { recognizers, fetchClientMetadataResource } = options;
+  const { recognizers, householdRecognizers, fetchClientMetadataResource } = options;
   const mailer = options.mailer ?? (config.smtp && smtpMailer(config.smtp));
   const turnstile = options.turnstile ?? (config.turnstile && cloudflareTurnstile(config.turnstile));
   const evidence = config.s3 ? await openS3EvidenceStore(config.s3) : await openLocalEvidenceStore(config.evidenceDir);
@@ -51,6 +52,7 @@ export async function bootstrap(
     auth,
     evidence,
     recognizers,
+    householdRecognizers,
     instanceRecognition: config.recognition,
     encryptionKey: config.encryptionKey,
     webDir: config.webDir,

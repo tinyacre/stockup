@@ -120,6 +120,13 @@ describe('providerRecognizers', () => {
       });
       expect(await recognizers.validate(config)).toMatchObject({ ok: false, problem: 'unreachable' });
     });
+
+    test('reports an answer it cannot parse as a provider error', async () => {
+      const { recognizers } = fakeProviders(
+        () => new Response('not json', { headers: { 'content-type': 'application/json' } }),
+      );
+      expect(await recognizers.validate(config)).toMatchObject({ ok: false, problem: 'provider_error' });
+    });
   });
 
   describe.each([
