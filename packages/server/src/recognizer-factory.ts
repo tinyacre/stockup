@@ -26,7 +26,7 @@ const validating = { timeout: 20_000, maxRetries: 0 };
 
 interface ClientSettings {
   apiKey: string;
-  baseURL?: string;
+  baseURL: string | null;
   fetch: Fetch;
   timeout: number;
   maxRetries: number;
@@ -34,7 +34,12 @@ interface ClientSettings {
 
 type SdkErrors = Pick<
   typeof Anthropic | typeof OpenAI,
-  'APIError' | 'APIConnectionError' | 'AuthenticationError' | 'PermissionDeniedError' | 'NotFoundError'
+  | 'APIError'
+  | 'APIConnectionError'
+  | 'BadRequestError'
+  | 'AuthenticationError'
+  | 'PermissionDeniedError'
+  | 'NotFoundError'
 >;
 
 interface Provider<Client> {
@@ -68,6 +73,14 @@ function modelOf(config: RecognizerConfig) {
   return config.model || defaultModels[config.provider];
 }
 
+// OpenAI-compatible services such as OpenRouter answer an unknown model with a 400 rather than a 404, so a bad request
+// counts as one only when its code or message says the model is unknown, keeping every other bad request a provider error.
+function namesUnknownModel(error: unknown, sdk: SdkErrors) {
+  if (!(error instanceof sdk.BadRequestError)) return false;
+  if ('code' in error && error.code === 'model_not_found') return true;
+  return /\b(not a valid|invalid|unknown) model\b|\bmodel\b.*\b(not found|does not exist)\b/i.test(error.message);
+}
+
 function problemOf(error: unknown, sdk: SdkErrors): RecognizerProblem {
   if (error instanceof sdk.APIConnectionError) {
     return error.cause instanceof NonPublicEndpointError ? 'endpoint_not_public' : 'unreachable';
@@ -75,7 +88,7 @@ function problemOf(error: unknown, sdk: SdkErrors): RecognizerProblem {
   if (error instanceof sdk.AuthenticationError || error instanceof sdk.PermissionDeniedError) {
     return 'authentication_failed';
   }
-  if (error instanceof sdk.NotFoundError) return 'model_not_found';
+  if (error instanceof sdk.NotFoundError || namesUnknownModel(error, sdk)) return 'model_not_found';
   if (error instanceof sdk.APIError) return 'provider_error';
   // Anything else, such as an answer the SDK cannot parse, is still the provider failing the call.
   console.error('Validating a recognizer configuration failed unexpectedly', error);
@@ -103,8 +116,9 @@ export function providerRecognizers({ fetch = globalThis.fetch }: { fetch?: Fetc
     options: typeof recognizing,
   ) {
     const provider: Provider<Clients[P]> = providers[config.provider];
-    // The SDKs read their base URL environment variable only when the option is undefined, not when it is null.
-    const client = provider.client({ apiKey: config.apiKey, baseURL: config.baseURL ?? undefined, fetch, ...options });
+    // A null base URL reaches the SDKs as is: they fall back to their base URL environment variable only for an
+    // undefined one, and a household's credential must never inherit wherever the server's environment points.
+    const client = provider.client({ apiKey: config.apiKey, baseURL: config.baseURL, fetch, ...options });
     return { provider, client, model: modelOf(config) };
   }
 

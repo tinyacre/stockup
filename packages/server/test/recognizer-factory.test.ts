@@ -67,6 +67,36 @@ describe('providerRecognizers', () => {
     expect(requests.map((r) => r.url)).toEqual(['http://10.0.0.5:4000/v1/chat/completions']);
   });
 
+  test.each([
+    { config: anthropic, variable: 'ANTHROPIC_BASE_URL', url: 'https://api.anthropic.com/v1/messages' },
+    { config: openai, variable: 'OPENAI_BASE_URL', url: 'https://api.openai.com/v1/chat/completions' },
+  ])(
+    'calls $config.provider without a base URL at its own endpoint whatever $variable says',
+    async ({ config, variable, url }) => {
+      const saved = process.env[variable];
+      process.env[variable] = 'http://10.0.0.5:4000/v1';
+      try {
+        const { recognizers, requests } = fakeProviders(() => json(replies[config.provider]));
+        await recognizers.create(config).recognize(screenshot);
+        expect(requests.map((r) => r.url)).toEqual([url]);
+      } finally {
+        if (saved === undefined) delete process.env[variable];
+        else process.env[variable] = saved;
+      }
+    },
+  );
+
+  test.each([
+    { code: 'model_not_found', message: 'The model `nope` does not exist' },
+    { code: 400, message: 'nope is not a valid model ID' },
+  ])('reports an OpenAI-compatible 400 naming an unknown model as model_not_found: $message', async (body) => {
+    const { recognizers } = fakeProviders(() => json({ error: body }, 400));
+    expect(await recognizers.validate({ ...openai, model: 'nope' })).toMatchObject({
+      ok: false,
+      problem: 'model_not_found',
+    });
+  });
+
   describe.each([
     {
       config: anthropic,
