@@ -131,116 +131,87 @@ function describeCredentialError(error: unknown) {
 function RecognitionKeySetting({ credential }: { credential: RecognitionCredential | null }) {
   const refresh = useRefresh();
   const [provider, setProvider] = useState<RecognitionProvider>(credential?.provider ?? 'anthropic');
-  const [error, setError] = useState<string>();
-  const [pending, setPending] = useState(false);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    setPending(true);
-    setError(undefined);
-    try {
-      await api.saveRecognitionCredential({
-        provider,
-        apiKey: String(data.get('apiKey')).trim(),
-        baseURL: String(data.get('baseURL')).trim(),
-        model: String(data.get('model')).trim(),
-      });
-      form.reset();
-      toast.success('API key 已保存');
-      await refresh();
-    } catch (failure) {
-      setError(describeCredentialError(failure));
-    }
-    setPending(false);
-  }
 
   return (
-    <Panel asChild>
-      <section aria-label="家庭识别 API key">
-        <PanelHeader title="家庭识别 API key">
-          <span className="text-xs text-ink-3">全家共用，不占每月识别次数</span>
-        </PanelHeader>
-        <PanelBody className="flex flex-col gap-4">
-          {credential && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <dl aria-label="当前 API key" className="flex flex-1 flex-col gap-0.5 text-sm">
-                <dt className="sr-only">服务商与模型</dt>
-                <dd className="font-medium">
-                  {providerLabels[credential.provider]} · {credential.model ?? '默认模型'}
-                </dd>
-                <dt className="sr-only">API key</dt>
-                <dd className="font-mono text-ink-2">••••{credential.apiKeyLastFour}</dd>
-                {credential.baseURL && (
-                  <>
-                    <dt className="sr-only">Base URL</dt>
-                    <dd className="break-all text-xs text-ink-3">{credential.baseURL}</dd>
-                  </>
-                )}
-              </dl>
-              <DeleteButton
-                label="删除 API key"
-                title="删除家庭的 API key？"
-                description="删除后家庭改用实例的每月识别次数。"
-                onDelete={async () => {
-                  const message = await attempt(() => api.deleteRecognitionCredential());
-                  if (message) return message;
-                  toast.success('API key 已删除');
-                  await refresh();
-                }}
-              />
-            </div>
-          )}
-          <form className="flex max-w-sm flex-col gap-4" onSubmit={handleSubmit}>
-            <Field label="服务商" htmlFor="provider">
-              <NativeSelect
-                id="provider"
-                value={provider}
-                onChange={(event) => setProvider(event.currentTarget.value as RecognitionProvider)}
-              >
-                {Object.entries(providerLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field label="API key" htmlFor="apiKey">
-              <Input
-                id="apiKey"
-                name="apiKey"
-                type="password"
-                autoComplete="off"
-                required
-                minLength={8}
-                maxLength={500}
-              />
-            </Field>
-            <Field
-              label="Base URL"
-              htmlFor="baseURL"
-              hint={
-                provider === 'openai'
-                  ? '可填 OpenAI 兼容服务，如 https://openrouter.ai/api/v1；留空使用官方地址'
-                  : '留空使用官方地址'
-              }
-            >
-              <Input id="baseURL" name="baseURL" type="url" maxLength={500} />
-            </Field>
-            <Field label="模型" htmlFor="model" hint="留空使用默认模型；需支持图片输入">
-              <Input id="model" name="model" maxLength={200} />
-            </Field>
-            <div>
-              <Button type="submit" variant="outline" disabled={pending}>
-                {pending ? '校验中…' : credential ? '替换 API key' : '保存 API key'}
-              </Button>
-            </div>
-            {error && <Alert>{error}</Alert>}
-          </form>
-        </PanelBody>
-      </section>
-    </Panel>
+    <SettingsForm
+      title="家庭识别 API key"
+      description="全家共用，不占每月识别次数"
+      submitLabel={credential ? '替换 API key' : '保存 API key'}
+      pendingLabel="校验中…"
+      current={
+        credential && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <dl aria-label="当前 API key" className="flex flex-1 flex-col gap-0.5 text-sm">
+              <dt className="sr-only">服务商与模型</dt>
+              <dd className="font-medium">
+                {providerLabels[credential.provider]} · {credential.model ?? '默认模型'}
+              </dd>
+              <dt className="sr-only">API key</dt>
+              <dd className="font-mono text-ink-2">••••{credential.apiKeyLastFour}</dd>
+              {credential.baseURL && (
+                <>
+                  <dt className="sr-only">Base URL</dt>
+                  <dd className="break-all text-xs text-ink-3">{credential.baseURL}</dd>
+                </>
+              )}
+            </dl>
+            <DeleteButton
+              label="删除 API key"
+              title="删除家庭的 API key？"
+              description="删除后家庭改用实例的每月识别次数。"
+              onDelete={async () => {
+                const message = await attempt(() => api.deleteRecognitionCredential());
+                if (message) return message;
+                toast.success('API key 已删除');
+                await refresh();
+              }}
+            />
+          </div>
+        )
+      }
+      onSubmit={async (data) => {
+        try {
+          await api.saveRecognitionCredential({
+            provider,
+            apiKey: String(data.get('apiKey')).trim(),
+            baseURL: String(data.get('baseURL')).trim(),
+            model: String(data.get('model')).trim(),
+          });
+          await refresh();
+        } catch (failure) {
+          return { error: describeCredentialError(failure) };
+        }
+        return { done: 'API key 已保存', reset: true };
+      }}
+    >
+      <Field label="服务商" htmlFor="provider">
+        <NativeSelect
+          id="provider"
+          value={provider}
+          onChange={(event) => setProvider(event.currentTarget.value as RecognitionProvider)}
+        >
+          {Object.entries(providerLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </NativeSelect>
+      </Field>
+      <TextField name="apiKey" label="API key" type="password" autoComplete="off" minLength={8} maxLength={500} />
+      <TextField
+        name="baseURL"
+        label="Base URL"
+        type="url"
+        required={false}
+        maxLength={500}
+        hint={
+          provider === 'openai'
+            ? '可填 OpenAI 兼容服务，如 https://openrouter.ai/api/v1；留空使用官方地址'
+            : '留空使用官方地址'
+        }
+      />
+      <TextField name="model" label="模型" required={false} maxLength={200} hint="留空使用默认模型；需支持图片输入" />
+    </SettingsForm>
   );
 }
 
@@ -375,12 +346,17 @@ function SettingsForm({
   title,
   description,
   submitLabel,
+  pendingLabel = submitLabel,
+  current,
   onSubmit,
   children,
 }: {
   title: string;
   description?: string;
   submitLabel: string;
+  pendingLabel?: string;
+  // What the form would replace, shown above it.
+  current?: ReactNode;
   onSubmit(data: FormData): Promise<Outcome>;
   children?: ReactNode;
 }) {
@@ -405,12 +381,13 @@ function SettingsForm({
         <PanelHeader title={title}>
           {description && <span className="text-xs text-ink-3">{description}</span>}
         </PanelHeader>
-        <PanelBody>
+        <PanelBody className="flex flex-col gap-4">
+          {current}
           <form className="flex max-w-sm flex-col gap-4" onSubmit={handleSubmit}>
             {children}
             <div>
               <Button type="submit" variant="outline" disabled={pending}>
-                {submitLabel}
+                {pending ? pendingLabel : submitLabel}
               </Button>
             </div>
             {outcome && 'error' in outcome && <Alert>{outcome.error}</Alert>}
@@ -425,11 +402,13 @@ function TextField({
   name,
   label,
   hint,
+  required = true,
   ...input
 }: {
   name: string;
   label: string;
   hint?: string;
+  required?: boolean;
   type?: string;
   autoComplete?: string;
   defaultValue?: string;
@@ -438,7 +417,7 @@ function TextField({
 }) {
   return (
     <Field label={label} htmlFor={name} hint={hint}>
-      <Input id={name} name={name} required {...input} />
+      <Input id={name} name={name} required={required} {...input} />
     </Field>
   );
 }
