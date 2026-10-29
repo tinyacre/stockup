@@ -177,10 +177,10 @@ function RecognitionKeySetting({ credential }: { credential: RecognitionCredenti
             baseURL: String(data.get('baseURL')).trim(),
             model: String(data.get('model')).trim(),
           });
-          await refresh();
         } catch (failure) {
           return { error: describeCredentialError(failure) };
         }
+        await refresh();
         return { done: 'API key 已保存', reset: true };
       }}
     >
