@@ -201,7 +201,12 @@ export interface Recognition {
   id: string;
   status: 'pending' | 'succeeded' | 'failed';
   error:
-    'recognition_unavailable' | 'recognition_quota_exhausted' | 'recognition_failed' | 'recognition_interrupted' | null;
+    | 'recognition_unavailable'
+    | 'recognition_quota_exhausted'
+    | 'household_key_unavailable'
+    | 'recognition_failed'
+    | 'recognition_interrupted'
+    | null;
   requestedBy: { id: string; name: string } | null;
   screenshot: { contentType: string; size: number };
   date: string | null;
@@ -214,13 +219,31 @@ export interface Recognition {
   confirmedAt: string | null;
 }
 
+export type RecognitionProvider = 'anthropic' | 'openai';
+
+// The household's own provider and key, as its admin sees them: the key only by its last four characters.
+export interface RecognitionCredential {
+  provider: RecognitionProvider;
+  // Null for the provider's own endpoint and default model.
+  baseURL: string | null;
+  model: string | null;
+  apiKeyLastFour: string;
+  updatedAt: string;
+  updatedBy: { id: string; name: string } | null;
+}
+
 export interface RecognitionStatus {
   available: boolean;
   // Null while the household has nothing to recognize with.
-  source: 'instance' | null;
-  // Used counts recognitions that succeeded or are still running; resetsOn is YYYY-MM-DD.
+  source: 'household' | 'instance' | null;
+  // Null for the household's own key. Used counts recognitions that succeeded or are still running; resetsOn is
+  // YYYY-MM-DD.
   quota: { monthly: number; used: number; resetsOn: string } | null;
   householdAdmin: boolean;
+  // Whether the instance lets household admins configure a key of their own.
+  householdCredentials: boolean;
+  // Shown to the household admin only.
+  credential: RecognitionCredential | null;
 }
 
 export interface PriceReferences {
@@ -434,6 +457,13 @@ export const api = {
   deleteEvidence: (id: string) => request(`/api/evidence/${id}`, { method: 'DELETE' }),
   evidenceUrl: (id: string) => `/api/evidence/${encodeURIComponent(id)}`,
   recognizer: () => request<RecognitionStatus>('/api/recognizer'),
+  saveRecognitionCredential: (body: {
+    provider: RecognitionProvider;
+    apiKey: string;
+    baseURL: string;
+    model: string;
+  }) => request<RecognitionCredential>('/api/household/recognition-credential', { method: 'PUT', body }),
+  deleteRecognitionCredential: () => request('/api/household/recognition-credential', { method: 'DELETE' }),
   startRecognition: (file: File) => {
     const body = new FormData();
     body.append('file', file);

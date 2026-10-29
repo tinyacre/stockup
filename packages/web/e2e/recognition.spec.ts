@@ -167,6 +167,43 @@ test('a household admin who used up the monthly quota is pointed at the settings
   await expect(page).toHaveURL(/\/settings$/);
 });
 
+// The e2e server's fake recognizer factory accepts every key.
+test('a household admin configures a key of their own and recognizes without the quota', async ({
+  page,
+  household,
+}) => {
+  await page.goto('/');
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
+  await page.getByRole('button', { name: '登录' }).click();
+
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await nav.getByRole('link', { name: '设置' }).click();
+  const section = page.getByRole('region', { name: '家庭识别 API key' });
+  await section.getByLabel('服务商').selectOption({ label: 'OpenAI' });
+  await section.getByLabel('API key', { exact: true }).fill('sk-or-e2e-key-wxyz');
+  await section.getByLabel('Base URL').fill('https://openrouter.ai/api/v1');
+  await section.getByLabel('模型').fill('google/gemini-3-flash');
+  await section.getByRole('button', { name: '保存 API key' }).click();
+
+  const current = section.getByRole('definition');
+  await expect(current).toHaveText(['OpenAI · google/gemini-3-flash', '••••wxyz', 'https://openrouter.ai/api/v1']);
+  await expect(section.getByLabel('API key', { exact: true })).toHaveValue('');
+  await expect(section).not.toContainText('sk-or-e2e');
+
+  await nav.getByRole('link', { name: '识别' }).click();
+  await expect(page.getByText('使用家庭自己的 API key 识别，不限次数')).toBeVisible();
+  await page.getByLabel('上传截图').setInputFiles({ name: 'order.png', mimeType: 'image/png', buffer: pixel });
+  await expect(page.getByRole('region', { name: '识别草稿' }).getByRole('heading')).toHaveText(/^识别草稿\s*2$/);
+
+  await nav.getByRole('link', { name: '设置' }).click();
+  await section.getByRole('button', { name: '删除 API key' }).click();
+  await page.getByRole('button', { name: '确认删除 API key' }).click();
+  await expect(section.getByRole('definition')).toHaveCount(0);
+  await nav.getByRole('link', { name: '识别' }).click();
+  await expect(page.getByText('本月还可识别 3 次')).toBeVisible();
+});
+
 test.describe('without a recognizer', () => {
   // The e2e server always has the fake recognizer, so the server's answer is stood in for here;
   // the service worker would otherwise serve the request out of reach of page.route.
@@ -174,7 +211,16 @@ test.describe('without a recognizer', () => {
 
   test('recognition shows as unavailable', async ({ page, household }) => {
     await page.route('**/api/recognizer', (route) =>
-      route.fulfill({ json: { available: false, source: null, quota: null, householdAdmin: true } }),
+      route.fulfill({
+        json: {
+          available: false,
+          source: null,
+          quota: null,
+          householdAdmin: true,
+          householdCredentials: false,
+          credential: null,
+        },
+      }),
     );
     await page.goto('/');
     await page.getByLabel('用户名').fill(household.admin.username);
@@ -182,7 +228,7 @@ test.describe('without a recognizer', () => {
     await page.getByRole('button', { name: '登录' }).click();
 
     await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '识别' }).click();
-    await expect(page.getByRole('alert')).toHaveText('识别服务未配置');
+    await expect(page.getByRole('alert')).toHaveText('识别服务未配置。');
     await expect(page.getByLabel('上传截图')).toBeDisabled();
   });
 });

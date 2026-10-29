@@ -1,24 +1,35 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { List, ListCell, ListRow } from '@/components/ui/list';
+import { NativeSelect } from '@/components/ui/native-select';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { Alert, attempt, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
+import { Alert, attempt, DeleteButton, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
 import { codeErrors, EmailCodeField } from '@/components/email-code-field';
 import { useTurnstile } from '@/components/turnstile';
-import { api, type AuthorizedClient, type Me } from '@/lib/api';
+import {
+  api,
+  ApiError,
+  type AuthorizedClient,
+  type Me,
+  type RecognitionCredential,
+  type RecognitionProvider,
+} from '@/lib/api';
 import { useCapabilities } from '@/lib/capabilities';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
+import { queries, useRefresh } from '@/lib/queries';
 import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
 
 // The header shows the display name, the shell applies the theme and the email panel shows the address,
 // so `onSessionChange` reloads the session.
 export function SettingsPage({ me, onSessionChange }: { me: Me; onSessionChange(): void }) {
   const capabilities = useCapabilities();
+  const recognizer = useQuery(queries.recognizer()).data;
   return (
     <PageContent className="grid items-stretch min-[1200px]:grid-cols-2">
       <PageHeader title="个人设置" />
@@ -69,6 +80,9 @@ export function SettingsPage({ me, onSessionChange }: { me: Me; onSessionChange(
           return message ? { error: message } : { done: '其他设备已登出' };
         }}
       />
+      {recognizer?.householdAdmin && recognizer.householdCredentials && (
+        <RecognitionKeySetting credential={recognizer.credential} />
+      )}
       <AuthorizedClients />
     </PageContent>
   );
@@ -94,6 +108,139 @@ function EmailSetting({ email, onChanged }: { email: string | null; onChanged():
       <EmailCodeField purpose="change-email" emailLabel="新邮箱" turnstile={turnstile} />
       {turnstile.widget}
     </SettingsForm>
+  );
+}
+
+const providerLabels: Record<RecognitionProvider, string> = { anthropic: 'Anthropic', openai: 'OpenAI' };
+
+const credentialProblems: Record<string, string> = {
+  authentication_failed: '服务商不接受这个 API key',
+  model_not_found: '服务商没有这个模型',
+  unreachable: '连接不上服务商，请检查 Base URL',
+};
+
+function describeCredentialError(error: unknown) {
+  const payload = error instanceof ApiError ? (error.payload as { problem?: string; message?: string } | null) : null;
+  if (error instanceof ApiError && error.code === 'credential_rejected') {
+    return credentialProblems[payload?.problem ?? ''] ?? `服务商报错：${payload?.message ?? '未知错误'}`;
+  }
+  return describeError(error);
+}
+
+// The household admin's own provider and key, which the household recognizes with instead of the monthly quota.
+function RecognitionKeySetting({ credential }: { credential: RecognitionCredential | null }) {
+  const refresh = useRefresh();
+  const [provider, setProvider] = useState<RecognitionProvider>(credential?.provider ?? 'anthropic');
+  const [error, setError] = useState<string>();
+  const [pending, setPending] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setPending(true);
+    setError(undefined);
+    try {
+      await api.saveRecognitionCredential({
+        provider,
+        apiKey: String(data.get('apiKey')).trim(),
+        baseURL: String(data.get('baseURL')).trim(),
+        model: String(data.get('model')).trim(),
+      });
+      form.reset();
+      toast.success('API key 已保存');
+      await refresh();
+    } catch (failure) {
+      setError(describeCredentialError(failure));
+    }
+    setPending(false);
+  }
+
+  return (
+    <Panel asChild>
+      <section aria-label="家庭识别 API key">
+        <PanelHeader title="家庭识别 API key">
+          <span className="text-xs text-ink-3">全家共用，不占每月识别次数</span>
+        </PanelHeader>
+        <PanelBody className="flex flex-col gap-4">
+          {credential && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <dl aria-label="当前 API key" className="flex flex-1 flex-col gap-0.5 text-sm">
+                <dt className="sr-only">服务商与模型</dt>
+                <dd className="font-medium">
+                  {providerLabels[credential.provider]} · {credential.model ?? '默认模型'}
+                </dd>
+                <dt className="sr-only">API key</dt>
+                <dd className="font-mono text-ink-2">••••{credential.apiKeyLastFour}</dd>
+                {credential.baseURL && (
+                  <>
+                    <dt className="sr-only">Base URL</dt>
+                    <dd className="break-all text-xs text-ink-3">{credential.baseURL}</dd>
+                  </>
+                )}
+              </dl>
+              <DeleteButton
+                label="删除 API key"
+                title="删除家庭的 API key？"
+                description="删除后家庭改用实例的每月识别次数。"
+                onDelete={async () => {
+                  const message = await attempt(() => api.deleteRecognitionCredential());
+                  if (message) return message;
+                  toast.success('API key 已删除');
+                  await refresh();
+                }}
+              />
+            </div>
+          )}
+          <form className="flex max-w-sm flex-col gap-4" onSubmit={handleSubmit}>
+            <Field label="服务商" htmlFor="provider">
+              <NativeSelect
+                id="provider"
+                value={provider}
+                onChange={(event) => setProvider(event.currentTarget.value as RecognitionProvider)}
+              >
+                {Object.entries(providerLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field label="API key" htmlFor="apiKey">
+              <Input
+                id="apiKey"
+                name="apiKey"
+                type="password"
+                autoComplete="off"
+                required
+                minLength={8}
+                maxLength={500}
+              />
+            </Field>
+            <Field
+              label="Base URL"
+              htmlFor="baseURL"
+              hint={
+                provider === 'openai'
+                  ? '可填 OpenAI 兼容服务，如 https://openrouter.ai/api/v1；留空使用官方地址'
+                  : '留空使用官方地址'
+              }
+            >
+              <Input id="baseURL" name="baseURL" type="url" maxLength={500} />
+            </Field>
+            <Field label="模型" htmlFor="model" hint="留空使用默认模型；需支持图片输入">
+              <Input id="model" name="model" maxLength={200} />
+            </Field>
+            <div>
+              <Button type="submit" variant="outline" disabled={pending}>
+                {pending ? '校验中…' : credential ? '替换 API key' : '保存 API key'}
+              </Button>
+            </div>
+            {error && <Alert>{error}</Alert>}
+          </form>
+        </PanelBody>
+      </section>
+    </Panel>
   );
 }
 

@@ -40,6 +40,7 @@ const uploadErrors = {
 const failures: Record<NonNullable<Recognition['error']>, string> = {
   recognition_unavailable: '识别服务未配置',
   recognition_quota_exhausted: '本月识别次数已用完',
+  household_key_unavailable: '家庭的 API key 不可用，请家庭管理员检查或更换',
   recognition_failed: '识别失败',
   recognition_interrupted: '识别已中断',
 };
@@ -115,24 +116,35 @@ function resetDay(date: string) {
 }
 
 function Availability({ status }: { status: RecognitionStatus }) {
-  const { available, quota, householdAdmin } = status;
-  if (!quota) return available ? null : <Alert>识别服务未配置</Alert>;
-  if (available) {
-    return <p className="text-ink-3 text-sm">本月还可识别 {quota.monthly - quota.used} 次</p>;
+  const { available, source, quota, householdAdmin, householdCredentials } = status;
+  const settingsLink = (
+    <Link href="/settings" className="underline underline-offset-2">
+      去设置
+    </Link>
+  );
+  if (source === 'household') {
+    if (available) return <p className="text-ink-3 text-sm">使用家庭自己的 API key 识别，不限次数</p>;
+    return (
+      <Alert>
+        家庭的 API key 无法使用，请家庭管理员重新配置。
+        {householdAdmin && settingsLink}
+      </Alert>
+    );
   }
+  if (available) {
+    return quota && <p className="text-ink-3 text-sm">本月还可识别 {quota.monthly - quota.used} 次</p>;
+  }
+  const ownKey =
+    householdCredentials &&
+    (householdAdmin ? (
+      <>也可以为家庭配置自己的 API key：{settingsLink}</>
+    ) : (
+      '也可以请家庭管理员配置家庭自己的 API key。'
+    ));
   return (
     <Alert>
-      本月识别次数已用完，{resetDay(quota.resetsOn)}恢复。
-      {householdAdmin ? (
-        <>
-          也可以为家庭配置自己的 API key：
-          <Link href="/settings" className="underline underline-offset-2">
-            去设置
-          </Link>
-        </>
-      ) : (
-        '也可以请家庭管理员配置家庭自己的 API key。'
-      )}
+      {quota ? `本月识别次数已用完，${resetDay(quota.resetsOn)}恢复。` : '识别服务未配置。'}
+      {ownKey}
     </Alert>
   );
 }
