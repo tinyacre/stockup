@@ -1,0 +1,1 @@
+CREATE INDEX "recognition_household_instance_created_idx" ON "recognition" USING btree ("household_id","created_at") WHERE "recognition"."source" = 'instance';

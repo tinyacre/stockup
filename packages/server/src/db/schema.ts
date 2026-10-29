@@ -317,6 +317,10 @@ export const recognition = pgTable(
   },
   (table) => [
     unique('recognition_household_id_unique').on(table.householdId, table.id),
+    // Counting a household's quota this month reads only the recognitions on the instance's provider.
+    index('recognition_household_instance_created_idx')
+      .on(table.householdId, table.createdAt)
+      .where(sql`${table.source} = 'instance'`),
     enumCheck('recognition_status_check', table.status, recognitionStatuses),
     check('recognition_error_check', sql`(${table.status} = 'failed') = (${table.error} is not null)`),
     enumCheck('recognition_source_check', table.source, recognitionSources),
