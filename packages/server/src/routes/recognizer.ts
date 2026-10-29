@@ -4,12 +4,12 @@ import type { Database } from '../db';
 import { recognitionSources } from '../db/schema';
 import { CredentialRejectedError, type CredentialSummary, type HouseholdCredentials } from '../household-credentials';
 import { requireMember } from '../members';
-import type { RecognitionAccess } from '../recognition-access';
+import { recognitionRefusals, type RecognitionAccess } from '../recognition-access';
 import { recognitionProviders, recognizerProblems } from '../recognizer';
 
 const errorContent = { 'application/json': { schema: z.object({ error: z.string() }) } };
 
-const credentialSchema = z
+export const credentialSchema = z
   .object({
     provider: z.enum(recognitionProviders),
     baseURL: z.string().nullable().openapi({ description: "Null for the provider's own endpoint" }),
@@ -24,9 +24,13 @@ function serializeCredential(credential: CredentialSummary) {
   return { ...credential, updatedAt: credential.updatedAt.toISOString() };
 }
 
-const recognitionStatusSchema = z
+export const recognitionStatusSchema = z
   .object({
     available: z.boolean().openapi({ description: 'Whether a screenshot uploaded now would be recognized' }),
+    refusal: z.enum(recognitionRefusals).nullable().openapi({
+      description:
+        "Why a screenshot uploaded now would fail at once, with the error its recognition would get: the household has nothing to recognize with (recognition_unavailable), it has used up this month's recognitions on the instance's provider (recognition_quota_exhausted), or the household's own key cannot be read (household_key_unavailable); null while it would be recognized",
+    }),
     source: z.enum(recognitionSources).nullable().openapi({
       description:
         "What recognitions are read with: the household's own credential, without a quota (household), or the instance's provider within its monthly quota (instance); null when the household has nothing to recognize with",

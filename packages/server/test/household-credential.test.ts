@@ -78,6 +78,7 @@ describe("a household's own recognition credential", () => {
     const status = await statusOf(admin);
     expect(status).toEqual({
       available: true,
+      refusal: null,
       source: 'household',
       quota: null,
       householdAdmin: true,
@@ -161,6 +162,7 @@ describe("a household's own recognition credential", () => {
     const status = await statusOf(housemate);
     expect(status).toEqual({
       available: true,
+      refusal: null,
       source: 'household',
       quota: null,
       householdAdmin: false,
@@ -236,7 +238,12 @@ describe("a household's own recognition credential", () => {
     );
     const seen = instance.screenshots.length;
 
-    expect(await statusOf(restarted)).toMatchObject({ available: false, source: 'household', quota: null });
+    expect(await statusOf(restarted)).toMatchObject({
+      available: false,
+      refusal: 'household_key_unavailable',
+      source: 'household',
+      quota: null,
+    });
     expect((await startRecognition(restarted)).error).toBe('household_key_unavailable');
     expect(instance.screenshots).toHaveLength(seen);
 

@@ -26,8 +26,19 @@ export interface RecognitionQuota {
   resetsOn: string;
 }
 
+// Why a screenshot uploaded now fails at once: nothing to recognize with, the quota used up, or a household key the
+// server cannot read.
+export const recognitionRefusals = [
+  'recognition_unavailable',
+  'recognition_quota_exhausted',
+  'household_key_unavailable',
+] as const;
+export type RecognitionRefusal = (typeof recognitionRefusals)[number];
+
 export interface RecognitionStatus {
   available: boolean;
+  // Null while a screenshot uploaded now would be recognized.
+  refusal: RecognitionRefusal | null;
   // Null while the household has nothing to recognize with.
   source: RecognitionSource | null;
   // Null for a source without a quota.
@@ -39,15 +50,18 @@ export interface RecognitionStatus {
   credential: CredentialSummary | null;
 }
 
-export type RecognizerChoice =
-  | { recognizer: ScreenshotRecognizer; source: RecognitionSource }
-  | { error: 'recognition_unavailable' | 'recognition_quota_exhausted' | 'household_key_unavailable' };
+// What a recognition fails with when its call to the provider does: the household admin has to fix a key of the
+// household's own, so its failure is told apart.
+type CallFailure = 'household_key_unavailable' | 'recognition_failed';
 
-type Refusal = Extract<RecognizerChoice, { error: unknown }>['error'];
+export type RecognizerChoice =
+  | { recognizer: ScreenshotRecognizer; source: RecognitionSource; callFailure: CallFailure }
+  | { error: RecognitionRefusal };
 
 // What a household recognizes with right now, or why it cannot; the recognizer is built only once one is needed.
 type Decision = { own: StoredCredential | null; source: RecognitionSource | null; quota: RecognitionQuota | null } & (
-  { refusal: Refusal } | { refusal: null; source: RecognitionSource; recognizer: () => ScreenshotRecognizer }
+  | { refusal: RecognitionRefusal }
+  | { source: RecognitionSource; callFailure: CallFailure; recognizer: () => ScreenshotRecognizer }
 );
 
 // Months follow the server's time zone, so every household's quota turns over at the same local midnight.
@@ -94,57 +108,57 @@ export function recognitionAccess(
     recognizer: instance.recognizers.create(instance.recognition.recognizer),
   };
 
-  async function decide(db: Database | Transaction, householdId: string): Promise<Decision> {
+  // `lock` holds the household until the transaction ends, so recognitions started at the same time take the quota's
+  // last turns one by one; a household with its own credential takes no turns, so it is never held.
+  async function decide(db: Database | Transaction, householdId: string, { lock = false } = {}): Promise<Decision> {
     const own = (await credentials?.find(db, householdId)) ?? null;
     if (own) {
+      const base = { own, source: 'household' as const, quota: null };
       const { config } = own;
       return config
-        ? {
-            own,
-            source: 'household',
-            quota: null,
-            refusal: null,
-            recognizer: () => households.recognizers.create(config),
-          }
-        : { own, source: 'household', quota: null, refusal: 'household_key_unavailable' };
+        ? { ...base, callFailure: 'household_key_unavailable', recognizer: () => households.recognizers.create(config) }
+        : { ...base, refusal: 'household_key_unavailable' };
     }
     if (!offered) return { own, source: null, quota: null, refusal: 'recognition_unavailable' };
+    if (lock) {
+      await db
+        .select({ id: organization.id })
+        .from(organization)
+        .where(eq(organization.id, householdId))
+        .for('no key update');
+    }
     const month = currentMonth();
     const quota = {
       monthly: offered.monthlyQuota,
       used: await usedThisMonth(db, householdId, month),
       resetsOn: localDate(month.next),
     };
+    const base = { own, source: 'instance' as const, quota };
     return quota.used < quota.monthly
-      ? { own, source: 'instance', quota, refusal: null, recognizer: () => offered.recognizer }
-      : { own, source: 'instance', quota, refusal: 'recognition_quota_exhausted' };
+      ? { ...base, callFailure: 'recognition_failed', recognizer: () => offered.recognizer }
+      : { ...base, refusal: 'recognition_quota_exhausted' };
   }
 
   return {
     async status(db: Database, scope: CurrentMember): Promise<RecognitionStatus> {
       const householdAdmin = scope.householdRole === HOUSEHOLD_ADMIN_ROLE;
-      const { own, source, quota, refusal } = await decide(db, scope.householdId);
+      const decision = await decide(db, scope.householdId);
       return {
-        available: refusal === null,
-        source,
-        quota,
+        available: 'recognizer' in decision,
+        refusal: 'recognizer' in decision ? null : decision.refusal,
+        source: decision.source,
+        quota: decision.quota,
         householdAdmin,
         householdCredentials: credentials !== undefined,
-        credential: (householdAdmin && own?.summary) || null,
+        credential: (householdAdmin && decision.own?.summary) || null,
       };
     },
 
-    // Holds the household until the transaction ends, so recognitions started at the same time take the
-    // quota's last turns one by one; the caller records the new recognition in the same transaction.
+    // The caller records the new recognition in the same transaction, which keeps the household held until then.
     async choose(tx: Transaction, scope: CurrentMember): Promise<RecognizerChoice> {
-      await tx
-        .select({ id: organization.id })
-        .from(organization)
-        .where(eq(organization.id, scope.householdId))
-        .for('no key update');
-      const decision = await decide(tx, scope.householdId);
-      if (decision.refusal) return { error: decision.refusal };
-      return { recognizer: decision.recognizer(), source: decision.source };
+      const decision = await decide(tx, scope.householdId, { lock: true });
+      if (!('recognizer' in decision)) return { error: decision.refusal };
+      return { recognizer: decision.recognizer(), source: decision.source, callFailure: decision.callFailure };
     },
   };
 }

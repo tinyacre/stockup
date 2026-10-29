@@ -23,6 +23,7 @@ describe('the monthly recognition quota', () => {
     const m = await signUpHousehold(ctx);
     expect(await statusOf(m)).toEqual({
       available: true,
+      refusal: null,
       source: 'instance',
       quota: { monthly: 2, used: 0, resetsOn: localDate(monthStart(1)) },
       householdAdmin: true,
@@ -76,7 +77,12 @@ describe('the monthly recognition quota', () => {
     const m = await signUpHousehold(ctx);
     await recognize(m);
     await recognize(m);
-    expect(await statusOf(m)).toMatchObject({ available: false, source: 'instance', quota: { monthly: 2, used: 2 } });
+    expect(await statusOf(m)).toMatchObject({
+      available: false,
+      refusal: 'recognition_quota_exhausted',
+      source: 'instance',
+      quota: { monthly: 2, used: 2 },
+    });
 
     const seen = recognizer.screenshots.length;
     const bytes = screenshot(9);

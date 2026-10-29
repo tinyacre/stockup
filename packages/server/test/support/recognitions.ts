@@ -1,23 +1,10 @@
 import { expect } from 'bun:test';
+import type { z } from '@hono/zod-openapi';
+import type { credentialSchema, recognitionStatusSchema } from '../../src/routes/recognizer';
 import type { SignedInMember } from './harness';
 
-export interface RecognitionCredential {
-  provider: 'anthropic' | 'openai';
-  baseURL: string | null;
-  model: string | null;
-  apiKeyLastFour: string;
-  updatedAt: string;
-  updatedBy: { id: string; name: string } | null;
-}
-
-export interface RecognitionStatus {
-  available: boolean;
-  source: 'household' | 'instance' | null;
-  quota: { monthly: number; used: number; resetsOn: string } | null;
-  householdAdmin: boolean;
-  householdCredentials: boolean;
-  credential: RecognitionCredential | null;
-}
+export type RecognitionCredential = z.infer<typeof credentialSchema>;
+export type RecognitionStatus = z.infer<typeof recognitionStatusSchema>;
 
 export interface StartedRecognition {
   id: string;

@@ -238,6 +238,11 @@ export type RecognizerProblem =
 
 export interface RecognitionStatus {
   available: boolean;
+  // The error a screenshot uploaded now would fail with at once; null while it would be recognized.
+  refusal: Extract<
+    Recognition['error'],
+    'recognition_unavailable' | 'recognition_quota_exhausted' | 'household_key_unavailable'
+  > | null;
   // Null while the household has nothing to recognize with.
   source: 'household' | 'instance' | null;
   // Null for the household's own key. Used counts recognitions that produced drafts or are still running; resetsOn

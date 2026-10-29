@@ -116,24 +116,23 @@ function resetDay(date: string) {
 }
 
 function Availability({ status }: { status: RecognitionStatus }) {
-  const { available, source, quota, householdAdmin, householdCredentials } = status;
+  const { refusal, source, quota, householdAdmin, householdCredentials } = status;
   const settingsLink = (
     <Link href="/settings" className="underline underline-offset-2">
       去设置
     </Link>
   );
-  if (source === 'household') {
-    if (available) return <p className="text-ink-3 text-sm">使用家庭自己的 API key 识别，不限次数</p>;
-    return (
-      <Alert>
-        家庭的 API key 无法使用，请家庭管理员重新配置。
-        {householdAdmin && settingsLink}
-      </Alert>
-    );
-  }
-  if (available) {
+  if (refusal === null) {
+    if (source === 'household') return <p className="text-ink-3 text-sm">使用家庭自己的 API key 识别，不限次数</p>;
     return (
       quota && <p className="text-ink-3 text-sm">使用实例的识别配额，本月还可识别 {quota.monthly - quota.used} 次</p>
+    );
+  }
+  if (refusal === 'household_key_unavailable') {
+    return (
+      <Alert>
+        {failures.household_key_unavailable}。{householdAdmin && settingsLink}
+      </Alert>
     );
   }
   const ownKey =
@@ -145,9 +144,9 @@ function Availability({ status }: { status: RecognitionStatus }) {
     ));
   return (
     <Alert>
-      {quota
-        ? `实例的识别次数本月已用完（${quota.used}/${quota.monthly}），${resetDay(quota.resetsOn)}恢复。`
-        : '识别服务未配置。'}
+      {refusal === 'recognition_quota_exhausted'
+        ? `实例的识别次数本月已用完（${quota!.used}/${quota!.monthly}），${resetDay(quota!.resetsOn)}恢复。`
+        : `${failures.recognition_unavailable}。`}
       {ownKey}
     </Alert>
   );

@@ -304,6 +304,7 @@ describe('recognitions', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       available: true,
+      refusal: null,
       source: 'instance',
       quota: { monthly: 1000, used: 0, resetsOn: expect.stringMatching(/^\d{4}-\d{2}-01$/) },
       householdAdmin: true,
@@ -658,6 +659,7 @@ describe('recognitions without a recognizer', () => {
     const m = await signUpHousehold(ctx);
     expect(await (await m.request('/api/recognizer')).json()).toEqual({
       available: false,
+      refusal: 'recognition_unavailable',
       source: null,
       quota: null,
       householdAdmin: true,

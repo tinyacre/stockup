@@ -214,6 +214,7 @@ test.describe('without a recognizer', () => {
       route.fulfill({
         json: {
           available: false,
+          refusal: 'recognition_unavailable',
           source: null,
           quota: null,
           householdAdmin: true,
