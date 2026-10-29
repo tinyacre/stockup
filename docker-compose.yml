@@ -11,9 +11,14 @@ services:
       # MCP is served only over HTTPS. The server then fetches its own signing keys from this URL, so it has
       # to be reachable from the container too.
       STOCKUP_BASE_URL: ${STOCKUP_BASE_URL:?set STOCKUP_BASE_URL to the public URL members open, e.g. https://stockup.example.com}
-      # Screenshot recognition stays unavailable without an Anthropic API key; the model defaults to claude-haiku-5-5.
-      STOCKUP_ANTHROPIC_API_KEY: ${STOCKUP_ANTHROPIC_API_KEY:-}
-      STOCKUP_ANTHROPIC_MODEL: ${STOCKUP_ANTHROPIC_MODEL:-}
+      # Screenshot recognition reads screenshots with this provider, and stays unavailable while all are empty; setting
+      # only some fails the boot. PROVIDER is anthropic or openai, and it and API_KEY are required. MODEL defaults to
+      # claude-haiku-5-5 or gpt-5-mini. BASE_URL points the openai provider at an OpenAI-compatible service, e.g.
+      # https://openrouter.ai/api/v1 with a MODEL such as google/gemini-3-flash; the model must read images.
+      STOCKUP_RECOGNITION_PROVIDER: ${STOCKUP_RECOGNITION_PROVIDER:-}
+      STOCKUP_RECOGNITION_API_KEY: ${STOCKUP_RECOGNITION_API_KEY:-}
+      STOCKUP_RECOGNITION_BASE_URL: ${STOCKUP_RECOGNITION_BASE_URL:-}
+      STOCKUP_RECOGNITION_MODEL: ${STOCKUP_RECOGNITION_MODEL:-}
       # The header carrying the client address for rate limiting, e.g. CF-Connecting-IP behind Cloudflare. Trust it
       # only when the server is reachable solely through that proxy, since clients can set it themselves otherwise.
       STOCKUP_CLIENT_IP_HEADER: ${STOCKUP_CLIENT_IP_HEADER:-}

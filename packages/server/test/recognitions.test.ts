@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { RecognitionResult } from '../src/recognizer';
-import { fakeRecognizer, fixedRecognition } from './support/fake-recognizer';
+import { fakeRecognizerFactory, fixedRecognition, instanceRecognizer } from './support/fake-recognizer';
 import { joinHousehold, jsonRequest, signUpHousehold, useTestApp, type SignedInMember } from './support/harness';
 
 interface Unit {
@@ -114,8 +114,9 @@ async function screenshotOf(m: SignedInMember, id: string) {
 }
 
 describe('recognitions', () => {
-  const recognizer = fakeRecognizer();
-  const ctx = useTestApp({ recognizer });
+  const recognizers = fakeRecognizerFactory();
+  const { recognizer } = recognizers;
+  const ctx = useTestApp({ recognizers, instanceRecognizer });
 
   test('a screenshot is recognized into drafts with parsed sizes and suggested products', async () => {
     recognizer.respond = async () => fixedRecognition;
@@ -319,6 +320,10 @@ describe('recognitions', () => {
     expect(await res.json()).toEqual({ available: true });
   });
 
+  test("screenshots are read with the instance's provider configuration", () => {
+    expect(recognizers.created).toContainEqual(instanceRecognizer);
+  });
+
   test('recognitions require a signed-in member', async () => {
     const owner = await signUpHousehold(ctx);
     const started = await created<Recognition>(await upload(owner, screenshot(7)));
@@ -334,8 +339,9 @@ describe('recognitions', () => {
 });
 
 describe('reviewing and confirming drafts', () => {
-  const recognizer = fakeRecognizer();
-  const ctx = useTestApp({ recognizer });
+  const recognizers = fakeRecognizerFactory();
+  const { recognizer } = recognizers;
+  const ctx = useTestApp({ recognizers, instanceRecognizer });
 
   async function setUp(m: SignedInMember, result: RecognitionResult = fixedRecognition) {
     recognizer.respond = async () => result;

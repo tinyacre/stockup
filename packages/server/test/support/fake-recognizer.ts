@@ -1,4 +1,11 @@
-import type { RecognitionResult, Screenshot, ScreenshotRecognizer } from '../../src/recognizer';
+import type {
+  RecognitionResult,
+  RecognizerConfig,
+  RecognizerFactory,
+  RecognizerValidation,
+  Screenshot,
+  ScreenshotRecognizer,
+} from '../../src/recognizer';
 
 export const fixedRecognition: RecognitionResult = {
   items: [
@@ -29,6 +36,34 @@ export function fakeRecognizer(): FakeRecognizer {
     recognize(screenshot) {
       fake.screenshots.push(screenshot);
       return fake.respond(screenshot);
+    },
+  };
+  return fake;
+}
+
+export const instanceRecognizer: RecognizerConfig = { provider: 'anthropic', apiKey: 'sk-ant-instance' };
+
+// Stands in for the providers: every configuration gets `recognizer`, and validates as `validation` says.
+export interface FakeRecognizerFactory extends RecognizerFactory {
+  recognizer: FakeRecognizer;
+  created: RecognizerConfig[];
+  validated: RecognizerConfig[];
+  validation: RecognizerValidation;
+}
+
+export function fakeRecognizerFactory(recognizer = fakeRecognizer()): FakeRecognizerFactory {
+  const fake: FakeRecognizerFactory = {
+    recognizer,
+    created: [],
+    validated: [],
+    validation: { ok: true },
+    create(config) {
+      fake.created.push(config);
+      return fake.recognizer;
+    },
+    async validate(config) {
+      fake.validated.push(config);
+      return fake.validation;
     },
   };
   return fake;

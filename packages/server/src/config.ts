@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { recognitionProviders, type RecognitionProvider, type RecognizerConfig } from './recognizer';
 
 export interface Config {
   databaseUrl: string;
@@ -9,8 +10,8 @@ export interface Config {
   webDir: string | undefined;
   // Set only when a proxy in front of the server overwrites this header with the client address.
   clientIpHeader: string | undefined;
-  // Screenshot recognition is unavailable without an API key.
-  recognizer: { apiKey: string; model: string } | undefined;
+  // The instance's own recognition provider; screenshot recognition is unavailable without one.
+  recognizer: RecognizerConfig | undefined;
   // Evidence lives in the local directory without one.
   s3: S3Config | undefined;
   signup: 'open' | 'closed';
@@ -153,6 +154,38 @@ function loadSmtpConfig(env: Env): SmtpConfig | undefined {
   };
 }
 
+const recognizerVars = [
+  'STOCKUP_RECOGNITION_PROVIDER',
+  'STOCKUP_RECOGNITION_API_KEY',
+  'STOCKUP_RECOGNITION_BASE_URL',
+  'STOCKUP_RECOGNITION_MODEL',
+];
+
+function loadRecognizerConfig(env: Env): RecognizerConfig | undefined {
+  if (missingVars(env, recognizerVars).length === recognizerVars.length) return undefined;
+  const missing = missingVars(env, ['STOCKUP_RECOGNITION_PROVIDER', 'STOCKUP_RECOGNITION_API_KEY']);
+  if (missing.length > 0) throw new Error(`Screenshot recognition is configured but ${missing.join(', ')} not set`);
+
+  const provider = env.STOCKUP_RECOGNITION_PROVIDER!.toLowerCase();
+  if (!recognitionProviders.includes(provider as RecognitionProvider)) {
+    throw new Error(
+      `STOCKUP_RECOGNITION_PROVIDER must be ${recognitionProviders.join(' or ')}, got "${env.STOCKUP_RECOGNITION_PROVIDER}"`,
+    );
+  }
+
+  const baseURL = env.STOCKUP_RECOGNITION_BASE_URL;
+  if (baseURL && !(URL.canParse(baseURL) && ['http:', 'https:'].includes(new URL(baseURL).protocol))) {
+    throw new Error(`STOCKUP_RECOGNITION_BASE_URL must be an http(s) URL, got "${baseURL}"`);
+  }
+
+  return {
+    provider: provider as RecognitionProvider,
+    apiKey: env.STOCKUP_RECOGNITION_API_KEY!,
+    ...(baseURL && { baseURL }),
+    ...(env.STOCKUP_RECOGNITION_MODEL && { model: env.STOCKUP_RECOGNITION_MODEL }),
+  };
+}
+
 const turnstileVars = ['STOCKUP_TURNSTILE_SITE_KEY', 'STOCKUP_TURNSTILE_SECRET_KEY'];
 
 function loadTurnstileConfig(env: Env): TurnstileConfig | undefined {
@@ -207,9 +240,7 @@ export function loadConfig(env: Env): Config {
     evidenceDir: path.resolve(env.STOCKUP_EVIDENCE_DIR || 'data/evidence'),
     webDir: env.STOCKUP_WEB_DIR ? path.resolve(env.STOCKUP_WEB_DIR) : undefined,
     clientIpHeader: env.STOCKUP_CLIENT_IP_HEADER?.toLowerCase() || undefined,
-    recognizer: env.STOCKUP_ANTHROPIC_API_KEY
-      ? { apiKey: env.STOCKUP_ANTHROPIC_API_KEY, model: env.STOCKUP_ANTHROPIC_MODEL || 'claude-haiku-5-5' }
-      : undefined,
+    recognizer: loadRecognizerConfig(env),
     s3: loadS3Config(env),
     signup: loadSignup(env, smtp),
     smtp,

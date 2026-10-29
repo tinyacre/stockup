@@ -8,7 +8,8 @@ import { createEmailCodes } from './email-codes';
 import type { EvidenceStore } from './evidence-store';
 import type { Mailer } from './mailer';
 import { mcpRoutes } from './mcp';
-import type { ScreenshotRecognizer } from './recognizer';
+import type { RecognizerConfig, RecognizerFactory } from './recognizer';
+import { providerRecognizers } from './recognizer-factory';
 import { capabilityRoutes } from './routes/capabilities';
 import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
@@ -33,8 +34,10 @@ export interface AppOptions {
   db: Database;
   auth: Auth;
   evidence: EvidenceStore;
-  // Recognition is unavailable without one.
-  recognizer?: ScreenshotRecognizer;
+  // Turns recognizer configurations into recognizers; the real providers unless replaced.
+  recognizers?: RecognizerFactory;
+  // The instance's own provider; recognition is unavailable without one.
+  instanceRecognizer?: RecognizerConfig;
   webDir?: string;
   // Email-based flows (code sending, signup, password reset, changing the email, joining with an email) are unavailable without one.
   mailer?: Mailer;
@@ -50,7 +53,8 @@ export function createApp({
   db,
   auth,
   evidence,
-  recognizer,
+  recognizers = providerRecognizers(),
+  instanceRecognizer,
   webDir,
   mailer,
   signupOpen = false,
@@ -58,6 +62,7 @@ export function createApp({
   clientIpHeader,
 }: AppOptions) {
   if (signupOpen && !mailer) throw new Error('Open signup requires a mailer');
+  const recognizer = instanceRecognizer && recognizers.create(instanceRecognizer);
   const codes = mailer && createEmailCodes({ db, mailer, secret: auth.options.secret! });
 
   const app = new OpenAPIHono();

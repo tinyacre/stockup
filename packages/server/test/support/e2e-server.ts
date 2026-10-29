@@ -5,7 +5,7 @@ import { loadConfig } from '../../src/config';
 import { bootstrap } from '../../src/main';
 import { fetchClaudeMetadata } from './claude-metadata';
 import { fakeMailer } from './fake-mailer';
-import { fakeRecognizer } from './fake-recognizer';
+import { fakeRecognizerFactory } from './fake-recognizer';
 import { createTestDatabase, testAuthSecret } from './harness';
 
 // Serves the built web bundle against a throwaway database, dropped again on shutdown, with the fake
@@ -22,10 +22,12 @@ const config = loadConfig({
   STOCKUP_SIGNUP: 'open',
   STOCKUP_SMTP_HOST: 'smtp.invalid',
   STOCKUP_SMTP_FROM: 'StockUp <noreply@stockup.invalid>',
+  STOCKUP_RECOGNITION_PROVIDER: 'anthropic',
+  STOCKUP_RECOGNITION_API_KEY: 'sk-ant-e2e',
 });
 const mailer = fakeMailer();
 const { app, close } = await bootstrap(config, {
-  recognizer: fakeRecognizer(),
+  recognizers: fakeRecognizerFactory(),
   fetchClientMetadataResource: fetchClaudeMetadata,
   mailer,
 });

@@ -1,7 +1,5 @@
 import { mkdir } from 'node:fs/promises';
-import Anthropic from '@anthropic-ai/sdk';
 import type { ClientMetadataResourceFetch } from '@better-auth/oauth-provider';
-import { anthropicRecognizer } from './anthropic-recognizer';
 import { createApp } from './app';
 import { createAuth, mcpAvailable } from './auth';
 import { loadConfig, type Config } from './config';
@@ -10,31 +8,26 @@ import { localEvidenceStore } from './evidence-store';
 import { smtpMailer, type Mailer } from './mailer';
 import { openS3EvidenceStore } from './s3-evidence-store';
 import { failInterruptedRecognitions } from './recognitions';
-import type { ScreenshotRecognizer } from './recognizer';
+import type { RecognizerFactory } from './recognizer';
 import { cloudflareTurnstile, type TurnstileVerifier } from './turnstile';
-
-// Recognitions give up after two minutes, so a slow call retries once at most and stops by then.
-function configuredRecognizer({ apiKey, model }: NonNullable<Config['recognizer']>) {
-  return anthropicRecognizer(new Anthropic({ apiKey, timeout: 55_000, maxRetries: 1 }), model);
-}
 
 async function openLocalEvidenceStore(dir: string) {
   await mkdir(dir, { recursive: true });
   return localEvidenceStore(dir);
 }
 
-// A recognizer, mailer or Turnstile verifier passed in takes the place of the one the config describes.
+// A recognizer factory passed in takes the place of the real providers, and a mailer or Turnstile verifier the
+// place of the one the config describes.
 export async function bootstrap(
   config: Config,
   options: {
-    recognizer?: ScreenshotRecognizer;
+    recognizers?: RecognizerFactory;
     fetchClientMetadataResource?: ClientMetadataResourceFetch;
     mailer?: Mailer;
     turnstile?: TurnstileVerifier;
   } = {},
 ) {
-  const { fetchClientMetadataResource } = options;
-  const recognizer = options.recognizer ?? (config.recognizer && configuredRecognizer(config.recognizer));
+  const { recognizers, fetchClientMetadataResource } = options;
   const mailer = options.mailer ?? (config.smtp && smtpMailer(config.smtp));
   const turnstile = options.turnstile ?? (config.turnstile && cloudflareTurnstile(config.turnstile));
   const evidence = config.s3 ? await openS3EvidenceStore(config.s3) : await openLocalEvidenceStore(config.evidenceDir);
@@ -57,7 +50,8 @@ export async function bootstrap(
     db,
     auth,
     evidence,
-    recognizer,
+    recognizers,
+    instanceRecognizer: config.recognizer,
     webDir: config.webDir,
     mailer,
     signupOpen: config.signup === 'open',

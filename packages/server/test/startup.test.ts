@@ -5,6 +5,7 @@ import path from 'node:path';
 import { loadConfig } from '../src/config';
 import { bootstrap } from '../src/main';
 import { s3EvidenceStore } from '../src/s3-evidence-store';
+import { fakeRecognizerFactory, instanceRecognizer } from './support/fake-recognizer';
 import { createTestDatabase, jsonRequest, sessionCookie, testAuthSecret } from './support/harness';
 import { testS3Config } from './support/s3';
 
@@ -60,8 +61,10 @@ describe('loadConfig', () => {
         STOCKUP_EVIDENCE_DIR: '/srv/evidence',
         STOCKUP_WEB_DIR: '/srv/web',
         STOCKUP_CLIENT_IP_HEADER: 'CF-Connecting-IP',
-        STOCKUP_ANTHROPIC_API_KEY: 'sk-ant-test',
-        STOCKUP_ANTHROPIC_MODEL: 'claude-sonnet-5-5',
+        STOCKUP_RECOGNITION_PROVIDER: 'openai',
+        STOCKUP_RECOGNITION_API_KEY: 'sk-or-test',
+        STOCKUP_RECOGNITION_BASE_URL: 'https://openrouter.ai/api/v1',
+        STOCKUP_RECOGNITION_MODEL: 'google/gemini-3-flash',
       }),
     ).toEqual({
       databaseUrl: 'postgres://x/y',
@@ -71,7 +74,12 @@ describe('loadConfig', () => {
       evidenceDir: '/srv/evidence',
       webDir: '/srv/web',
       clientIpHeader: 'cf-connecting-ip',
-      recognizer: { apiKey: 'sk-ant-test', model: 'claude-sonnet-5-5' },
+      recognizer: {
+        provider: 'openai',
+        apiKey: 'sk-or-test',
+        baseURL: 'https://openrouter.ai/api/v1',
+        model: 'google/gemini-3-flash',
+      },
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -79,15 +87,45 @@ describe('loadConfig', () => {
     });
   });
 
-  test('recognizes screenshots with Claude Haiku 5.5 unless another model is set', () => {
-    expect(loadConfig({ ...required, STOCKUP_ANTHROPIC_API_KEY: 'sk-ant-test' }).recognizer).toEqual({
-      apiKey: 'sk-ant-test',
-      model: 'claude-haiku-5-5',
-    });
+  test("leaves the model to the provider's default unless one is set", () => {
+    expect(
+      loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: 'Anthropic', STOCKUP_RECOGNITION_API_KEY: 'sk-ant-test' })
+        .recognizer,
+    ).toEqual({ provider: 'anthropic', apiKey: 'sk-ant-test' });
   });
 
-  test('leaves recognition unconfigured without an API key', () => {
-    expect(loadConfig({ ...required, STOCKUP_ANTHROPIC_MODEL: 'claude-sonnet-5-5' }).recognizer).toBeUndefined();
+  test('leaves recognition unconfigured while every recognition variable is empty', () => {
+    expect(
+      loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: '', STOCKUP_RECOGNITION_API_KEY: '' }).recognizer,
+    ).toBeUndefined();
+  });
+
+  test('names every missing recognition variable when only some are set', () => {
+    expect(() => loadConfig({ ...required, STOCKUP_RECOGNITION_MODEL: 'gpt-5-mini' })).toThrow(
+      'Screenshot recognition is configured but STOCKUP_RECOGNITION_PROVIDER, STOCKUP_RECOGNITION_API_KEY not set',
+    );
+    expect(() => loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: 'openai' })).toThrow(
+      'Screenshot recognition is configured but STOCKUP_RECOGNITION_API_KEY not set',
+    );
+  });
+
+  test('rejects a provider other than Anthropic or OpenAI', () => {
+    expect(() =>
+      loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: 'gemini', STOCKUP_RECOGNITION_API_KEY: 'key' }),
+    ).toThrow('STOCKUP_RECOGNITION_PROVIDER');
+  });
+
+  test('rejects a base URL that is not http(s)', () => {
+    for (const baseURL of ['openrouter.ai/api/v1', 'ftp://openrouter.ai']) {
+      expect(() =>
+        loadConfig({
+          ...required,
+          STOCKUP_RECOGNITION_PROVIDER: 'openai',
+          STOCKUP_RECOGNITION_API_KEY: 'key',
+          STOCKUP_RECOGNITION_BASE_URL: baseURL,
+        }),
+      ).toThrow('STOCKUP_RECOGNITION_BASE_URL');
+    }
   });
 
   test('treats a blank setting as unset', () => {
@@ -313,7 +351,7 @@ describe('bootstrap', () => {
     expect((await second.app.request('/api/health')).status).toBe(200);
   });
 
-  test('makes recognition available once an Anthropic API key is configured', async () => {
+  test('makes recognition available once a provider is configured', async () => {
     const config = {
       databaseUrl: await emptyDatabaseUrl(),
       authSecret: testAuthSecret,
@@ -330,7 +368,7 @@ describe('bootstrap', () => {
     };
     const without = await bootstrap(config);
     cleanups.push(without.close);
-    const configured = await bootstrap({ ...config, recognizer: { apiKey: 'sk-ant-test', model: 'claude-haiku-5-5' } });
+    const configured = await bootstrap({ ...config, recognizer: { provider: 'openai', apiKey: 'sk-test' } });
     cleanups.push(configured.close);
 
     const username = `member_${crypto.randomUUID().slice(0, 8)}`;
@@ -362,14 +400,15 @@ describe('bootstrap', () => {
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
       clientIpHeader: undefined,
-      recognizer: undefined,
+      recognizer: instanceRecognizer,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
       turnstile: undefined,
     };
-    const stuck = { recognize: () => new Promise<never>(() => {}) };
-    const first = await bootstrap(config, { recognizer: stuck });
+    const recognizers = fakeRecognizerFactory();
+    recognizers.recognizer.respond = () => new Promise<never>(() => {});
+    const first = await bootstrap(config, { recognizers });
     cleanups.push(first.close);
     const username = `member_${crypto.randomUUID().slice(0, 8)}`;
     const password = 'password-restart';
@@ -385,7 +424,7 @@ describe('bootstrap', () => {
     const { id, status } = (await started.json()) as { id: string; status: string };
     expect(status).toBe('pending');
 
-    const second = await bootstrap(config, { recognizer: stuck });
+    const second = await bootstrap(config, { recognizers });
     cleanups.push(second.close);
     const res = await second.app.request(`/api/recognitions/${id}`, { headers: { cookie } });
     expect(await res.json()).toMatchObject({ status: 'failed', error: 'recognition_interrupted' });
