@@ -1,7 +1,8 @@
-import { and, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, eq, gte, lt, or, sql } from 'drizzle-orm';
 import type { Database, Transaction } from './db';
 import { organization, recognition, type recognitionSources } from './db/schema';
-import { unreadable, type HouseholdCredentials } from './household-credentials';
+import { HOUSEHOLD_ADMIN_ROLE } from './households';
+import { unreadable, type CredentialSummary, type HouseholdCredentials } from './household-credentials';
 import type { CurrentMember } from './members';
 import type { RecognizerConfig, RecognizerFactory, ScreenshotRecognizer } from './recognizer';
 
@@ -17,8 +18,9 @@ export type RecognitionSource = (typeof recognitionSources)[number];
 
 export interface RecognitionQuota {
   monthly: number;
-  // Recognitions on the instance's provider this month that succeeded or are still running; failed ones give their
-  // turn back, and the household's own credential never takes one.
+  // Recognitions on the instance's provider this month that produced drafts or are still running; failed ones and
+  // ones that found nothing on the screenshot give their turn back, and the household's own credential never takes
+  // one.
   used: number;
   // The first day of next month, as YYYY-MM-DD.
   resetsOn: string;
@@ -30,6 +32,11 @@ export interface RecognitionStatus {
   source: RecognitionSource | null;
   // Null for a source without a quota.
   quota: RecognitionQuota | null;
+  householdAdmin: boolean;
+  // Whether the instance lets household admins configure a credential of their own.
+  householdCredentials: boolean;
+  // Shown to the household admin only.
+  credential: CredentialSummary | null;
 }
 
 export type RecognizerChoice =
@@ -58,7 +65,10 @@ async function usedThisMonth(db: Database | Transaction, householdId: string) {
       and(
         eq(recognition.householdId, householdId),
         eq(recognition.source, 'instance'),
-        inArray(recognition.status, ['succeeded', 'pending']),
+        or(
+          eq(recognition.status, 'pending'),
+          and(eq(recognition.status, 'succeeded'), sql`jsonb_array_length(${recognition.result} -> 'items') > 0`),
+        ),
         gte(recognition.createdAt, start),
         lt(recognition.createdAt, next),
       ),
@@ -85,11 +95,17 @@ export function recognitionAccess(
 
   return {
     async status(db: Database, scope: CurrentMember): Promise<RecognitionStatus> {
-      const own = await credentials?.config(db, scope.householdId);
-      if (own) return { available: own !== unreadable, source: 'household', quota: null };
-      if (!offered) return { available: false, source: null, quota: null };
+      const householdAdmin = scope.householdRole === HOUSEHOLD_ADMIN_ROLE;
+      const own = await credentials?.find(scope.householdId);
+      const shown = {
+        householdAdmin,
+        householdCredentials: credentials !== undefined,
+        credential: (householdAdmin && own?.summary) || null,
+      };
+      if (own) return { available: own.readable, source: 'household', quota: null, ...shown };
+      if (!offered) return { available: false, source: null, quota: null, ...shown };
       const quota = await quotaOf(db, offered.monthlyQuota, scope.householdId);
-      return { available: quota.used < quota.monthly, source: 'instance', quota };
+      return { available: quota.used < quota.monthly, source: 'instance', quota, ...shown };
     },
 
     // Holds the household until the transaction ends, so recognitions started at the same time take the

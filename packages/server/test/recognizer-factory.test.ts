@@ -89,6 +89,12 @@ describe('providerRecognizers', () => {
     expect(requests.map((r) => r.body.model)).toEqual(['google/gemini-3-flash', 'google/gemini-3-flash']);
   });
 
+  test("calls the instance's own configuration wherever it points", async () => {
+    const { recognizers, requests } = fakeProviders(() => json(replies.openai));
+    await recognizers.create({ ...openai, baseURL: 'http://10.0.0.5:4000/v1' }).recognize(screenshot);
+    expect(requests.map((r) => r.url)).toEqual(['http://10.0.0.5:4000/v1/chat/completions']);
+  });
+
   describe.each([
     {
       config: anthropic,
@@ -107,6 +113,18 @@ describe('providerRecognizers', () => {
       expect(await recognizers.validate({ ...config, model: 'some-model' })).toEqual({ ok: true });
       expect(requests).toHaveLength(1);
       expect(requests[0]!.body.model).toBe('some-model');
+    });
+
+    test('asks about an image, so a model that cannot read one is refused, and caps the answer', async () => {
+      const { recognizers, requests } = fakeProviders(() => json(reply));
+      await recognizers.validate(config);
+      const { body } = requests[0]!;
+      const content = body.messages[0].content as { type: string }[];
+      expect(content.map((part) => part.type)).toEqual([
+        config.provider === 'anthropic' ? 'image' : 'image_url',
+        'text',
+      ]);
+      expect(config.provider === 'anthropic' ? body.max_tokens : body.max_completion_tokens).toBeNumber();
     });
 
     test.each([

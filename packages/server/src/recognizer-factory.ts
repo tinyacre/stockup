@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { anthropicRecognizer } from './anthropic-recognizer';
 import { openaiRecognizer } from './openai-recognizer';
+import { NonPublicEndpointError, publicOnly, resolveHost, type Fetch, type ResolveHost } from './public-endpoint';
 import {
   RecognizerCallError,
   type RecognitionProvider,
@@ -23,7 +24,17 @@ const recognizing = { timeout: 55_000, maxRetries: 1 };
 // Someone is waiting on the answer while the configuration is checked.
 const validating = { timeout: 20_000, maxRetries: 0 };
 
-const probe = 'Reply with OK.';
+// An 8×8 red PNG, so a model that cannot read images fails the check rather than the first screenshot.
+const probeImage =
+  'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mO4oKCAFTEMLQkAvk5EAYUHFA8AAAAASUVORK5CYII=';
+const probeText = 'What colour is this image? Answer in one word.';
+// Only whether the call succeeds matters; reasoning models spend part of their allowance before answering, so
+// OpenAI's is larger.
+const probeTokens = { anthropic: 16, openai: 256 };
+
+function modelOf(config: RecognizerConfig) {
+  return config.model || defaultModels[config.provider];
+}
 
 type SdkErrors = Pick<
   typeof Anthropic | typeof OpenAI,
@@ -31,7 +42,9 @@ type SdkErrors = Pick<
 >;
 
 function problemOf(error: unknown, sdk: SdkErrors): RecognizerProblem {
-  if (error instanceof sdk.APIConnectionError) return 'unreachable';
+  if (error instanceof sdk.APIConnectionError) {
+    return error.cause instanceof NonPublicEndpointError ? 'endpoint_not_public' : 'unreachable';
+  }
   if (error instanceof sdk.AuthenticationError || error instanceof sdk.PermissionDeniedError) {
     return 'authentication_failed';
   }
@@ -53,12 +66,15 @@ function reportingCallErrors(recognizer: ScreenshotRecognizer, sdk: SdkErrors): 
   };
 }
 
-// `fetch` stands in for the network, so tests can play the provider's side.
+// `fetch` and `resolve` stand in for the network and DNS, so tests can play the provider's side.
 export function providerRecognizers({
-  fetch,
-}: { fetch?: (url: string | URL | Request, init?: RequestInit) => Promise<Response> } = {}): RecognizerFactory {
-  function client({ provider, apiKey, baseURL }: RecognizerConfig, options: typeof recognizing) {
-    const settings = { apiKey, baseURL, fetch, ...options };
+  fetch = globalThis.fetch,
+  resolve = resolveHost,
+}: { fetch?: Fetch; resolve?: ResolveHost } = {}): RecognizerFactory {
+  const publicFetch = publicOnly(fetch, resolve);
+
+  function client({ provider, apiKey, baseURL, publicEndpointOnly }: RecognizerConfig, options: typeof recognizing) {
+    const settings = { apiKey, baseURL, fetch: publicEndpointOnly ? publicFetch : fetch, ...options };
     return provider === 'anthropic'
       ? { provider, client: new Anthropic(settings) }
       : { provider, client: new OpenAI(settings) };
@@ -66,7 +82,7 @@ export function providerRecognizers({
 
   return {
     create(config) {
-      const model = config.model || defaultModels[config.provider];
+      const model = modelOf(config);
       const sdk = client(config, recognizing);
       return sdk.provider === 'anthropic'
         ? reportingCallErrors(anthropicRecognizer(sdk.client, model), Anthropic)
@@ -74,12 +90,38 @@ export function providerRecognizers({
     },
 
     async validate(config): Promise<RecognizerValidation> {
-      const model = config.model || defaultModels[config.provider];
+      const model = modelOf(config);
       const sdk = client(config, validating);
-      const messages = [{ role: 'user' as const, content: probe }];
       try {
-        if (sdk.provider === 'anthropic') await sdk.client.messages.create({ model, max_tokens: 1, messages });
-        else await sdk.client.chat.completions.create({ model, messages });
+        if (sdk.provider === 'anthropic') {
+          await sdk.client.messages.create({
+            model,
+            max_tokens: probeTokens.anthropic,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'image', source: { type: 'base64', media_type: 'image/png', data: probeImage } },
+                  { type: 'text', text: probeText },
+                ],
+              },
+            ],
+          });
+        } else {
+          await sdk.client.chat.completions.create({
+            model,
+            max_completion_tokens: probeTokens.openai,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'image_url', image_url: { url: `data:image/png;base64,${probeImage}` } },
+                  { type: 'text', text: probeText },
+                ],
+              },
+            ],
+          });
+        }
         return { ok: true };
       } catch (error) {
         const problem = problemOf(error, sdk.provider === 'anthropic' ? Anthropic : OpenAI);

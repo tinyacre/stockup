@@ -160,7 +160,7 @@ test('a household admin who used up the monthly quota is pointed at the settings
   await page.reload();
 
   await expect(page.getByRole('alert')).toHaveText(
-    /^本月识别次数已用完，\d+ 月 1 日恢复。也可以为家庭配置自己的 API key：去设置$/,
+    /^实例的识别次数本月已用完（3\/3），\d+ 月 1 日恢复。也可以为家庭配置自己的 API key：去设置$/,
   );
   await expect(page.getByLabel('上传截图')).toBeDisabled();
   await page.getByRole('alert').getByRole('link', { name: '去设置' }).click();

@@ -19,10 +19,7 @@ import {
   RecognitionConfirmedError,
   startRecognition,
 } from '../recognitions';
-import { HOUSEHOLD_ADMIN_ROLE } from '../households';
-import type { HouseholdCredentials } from '../household-credentials';
 import type { RecognitionAccess } from '../recognition-access';
-import { credentialSchema, serializeCredential } from './recognition-credential';
 import { pricingUnitSchema } from './catalog';
 import {
   cents,
@@ -93,33 +90,6 @@ const recognitionSchema = z
   })
   .openapi('Recognition');
 
-const recognitionStatusSchema = z
-  .object({
-    available: z.boolean().openapi({ description: 'Whether a screenshot uploaded now would be recognized' }),
-    source: z.enum(['household', 'instance']).nullable().openapi({
-      description:
-        "What recognitions are read with: the household's own credential, without a quota (household), or the instance's provider within its monthly quota (instance); null when the household has nothing to recognize with",
-    }),
-    quota: z
-      .object({
-        monthly: z.number().int().openapi({ description: 'Recognitions each household gets a month' }),
-        used: z.number().int().openapi({
-          description: 'Recognitions this month that succeeded or are still running; failed ones do not count',
-        }),
-        resetsOn: z.string().openapi({ description: 'The first day of next month, as YYYY-MM-DD' }),
-      })
-      .nullable()
-      .openapi({ description: 'Null for a source without a quota' }),
-    householdAdmin: z.boolean().openapi({ description: 'Whether the caller is the household admin' }),
-    householdCredentials: z.boolean().openapi({
-      description: 'Whether the instance lets household admins configure a credential of their own',
-    }),
-    credential: credentialSchema.nullable().openapi({
-      description: "The household's own credential, shown to the household admin only; null for everyone else",
-    }),
-  })
-  .openapi('RecognitionStatus');
-
 const draftChangesSchema = z
   .object({
     name: z.string().trim().min(1).max(100).optional(),
@@ -162,13 +132,7 @@ function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };
 }
 
-export function recognitionRoutes(
-  db: Database,
-  auth: Auth,
-  store: EvidenceStore,
-  access: RecognitionAccess,
-  credentials: HouseholdCredentials | undefined,
-) {
+export function recognitionRoutes(db: Database, auth: Auth, store: EvidenceStore, access: RecognitionAccess) {
   const middleware = requireMember(auth, db);
   const unauthenticated = { 401: { description: 'Not signed in' } };
   const notFound = { 404: { description: 'No such recognition in this household', content: errorContent } };
@@ -302,23 +266,6 @@ export function recognitionRoutes(
     },
   });
 
-  const availabilityRoute = createRoute({
-    method: 'get',
-    path: '/recognizer',
-    tags: ['recognitions'],
-    summary: "Report whether and with what the household's screenshots can be recognized",
-    description:
-      "A household with a credential of its own recognizes with it, without a quota. Otherwise the instance's provider gives every household the same number of recognitions a month, counted from the first day of the month in the server's time zone; only recognitions that succeed or are still running count.",
-    middleware,
-    responses: {
-      200: {
-        description: 'The recognition status',
-        content: { 'application/json': { schema: recognitionStatusSchema } },
-      },
-      ...unauthenticated,
-    },
-  });
-
   const app = new OpenAPIHono();
   app.use(
     '/recognitions',
@@ -329,20 +276,6 @@ export function recognitionRoutes(
     }),
   );
   return app
-    .openapi(availabilityRoute, async (c) => {
-      const status = await access.status(db, c.var.member);
-      const householdAdmin = c.var.member.householdRole === HOUSEHOLD_ADMIN_ROLE;
-      const credential = householdAdmin ? await credentials?.summary(c.var.member.householdId) : null;
-      return c.json(
-        {
-          ...status,
-          householdAdmin,
-          householdCredentials: credentials !== undefined,
-          credential: credential ? serializeCredential(credential) : null,
-        },
-        200,
-      );
-    })
     .openapi(startRoute, async (c) => {
       const { file } = c.req.valid('form');
       if (file.size > maxEvidenceSize) return c.json({ error: 'evidence_too_large' }, 413);

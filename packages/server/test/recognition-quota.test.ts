@@ -94,6 +94,23 @@ describe('the monthly recognition quota', () => {
     expect(await statusOf(m)).toMatchObject({ available: true, quota: { used: 1 } });
   });
 
+  test('a recognition that finds nothing on the screenshot gives its turn back', async () => {
+    const m = await signUpHousehold(ctx);
+    recognizer.respond = async () => ({ items: [], orderDiscounts: [], date: null, channel: null });
+    expect(await recognize(m)).toMatchObject({ status: 'succeeded', drafts: [] });
+    expect(await statusOf(m)).toMatchObject({ available: true, quota: { used: 0 } });
+  });
+
+  test('a recognition keeps its turn once its drafts are gone', async () => {
+    const m = await signUpHousehold(ctx);
+    const { id } = await recognize(m);
+    const { drafts } = (await (await m.request(`/api/recognitions/${id}`)).json()) as { drafts: { id: string }[] };
+    for (const draft of drafts) {
+      expect((await m.request(`/api/recognitions/${id}/drafts/${draft.id}`, { method: 'DELETE' })).status).toBe(200);
+    }
+    expect(await statusOf(m)).toMatchObject({ quota: { used: 1 } });
+  });
+
   test('a recognition still running holds its turn', async () => {
     const m = await signUpHousehold(ctx);
     let answer!: () => void;

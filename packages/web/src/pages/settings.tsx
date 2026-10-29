@@ -14,11 +14,12 @@ import { codeErrors, EmailCodeField } from '@/components/email-code-field';
 import { useTurnstile } from '@/components/turnstile';
 import {
   api,
-  ApiError,
+  credentialProblem,
   type AuthorizedClient,
   type Me,
   type RecognitionCredential,
   type RecognitionProvider,
+  type RecognizerProblem,
 } from '@/lib/api';
 import { useCapabilities } from '@/lib/capabilities';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
@@ -113,18 +114,17 @@ function EmailSetting({ email, onChanged }: { email: string | null; onChanged():
 
 const providerLabels: Record<RecognitionProvider, string> = { anthropic: 'Anthropic', openai: 'OpenAI' };
 
-const credentialProblems: Record<string, string> = {
+const credentialProblems: Record<RecognizerProblem, string> = {
   authentication_failed: '服务商不接受这个 API key',
   model_not_found: '服务商没有这个模型',
   unreachable: '连接不上服务商，请检查 Base URL',
+  endpoint_not_public: 'Base URL 必须是公网上的 https 地址',
+  provider_error: '服务商报错，请确认模型支持图片输入、账户余额充足',
 };
 
 function describeCredentialError(error: unknown) {
-  const payload = error instanceof ApiError ? (error.payload as { problem?: string; message?: string } | null) : null;
-  if (error instanceof ApiError && error.code === 'credential_rejected') {
-    return credentialProblems[payload?.problem ?? ''] ?? `服务商报错：${payload?.message ?? '未知错误'}`;
-  }
-  return describeError(error);
+  const problem = credentialProblem(error);
+  return problem ? credentialProblems[problem] : describeError(error);
 }
 
 // The household admin's own provider and key, which the household recognizes with instead of the monthly quota.

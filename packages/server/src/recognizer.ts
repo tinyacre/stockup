@@ -39,11 +39,23 @@ export interface RecognizerConfig {
   apiKey: string;
   baseURL?: string;
   model?: string;
+  // Set for a household's own configuration, which the server calls only at public https addresses; the instance's
+  // comes from its operator and may point anywhere, such as a gateway on the local network.
+  publicEndpointOnly?: boolean;
 }
 
-// Why a provider turned a configuration down: the key, the model, the connection, or anything else it reported.
-export type RecognizerProblem = 'authentication_failed' | 'model_not_found' | 'unreachable' | 'provider_error';
+// Why a provider turned a configuration down: the key, the model, the connection, an endpoint the server may not
+// call, or anything else it reported.
+export const recognizerProblems = [
+  'authentication_failed',
+  'model_not_found',
+  'unreachable',
+  'endpoint_not_public',
+  'provider_error',
+] as const;
+export type RecognizerProblem = (typeof recognizerProblems)[number];
 
+// The message is the provider's own wording, for the server's log.
 export type RecognizerValidation = { ok: true } | { ok: false; problem: RecognizerProblem; message: string };
 
 // A recognizer's call to its provider failed, as opposed to the provider answering with something unreadable;

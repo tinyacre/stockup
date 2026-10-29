@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { sql } from 'drizzle-orm';
 import { createApp } from '../src/app';
 import { RecognizerCallError, type RecognizerConfig } from '../src/recognizer';
+import { providerRecognizers } from '../src/recognizer-factory';
 import { fakeRecognizer, fakeRecognizerFactory, fixedRecognition, instanceRecognizer } from './support/fake-recognizer';
 import {
   joinHousehold,
@@ -39,12 +40,14 @@ interface Recognition {
 
 const encryptionKey = Buffer.alloc(32, 1);
 const householdKey = 'sk-household-0123456789-wxyz';
-const openRouter: RecognizerConfig = {
+const openRouter = {
   provider: 'openai',
   apiKey: householdKey,
   baseURL: 'https://openrouter.ai/api/v1',
   model: 'google/gemini-3-flash',
-};
+} as const;
+// Households' configurations are called only at public addresses, which the instance's need not be.
+const openRouterConfig: RecognizerConfig = { ...openRouter, publicEndpointOnly: true };
 
 function saveCredential(m: SignedInMember, body: object = openRouter) {
   return m.request('/api/household/recognition-credential', jsonRequest('PUT', body));
@@ -119,7 +122,7 @@ describe("a household's own recognition credential", () => {
       updatedAt: expect.any(String),
       updatedBy: { id: admin.userId, name: admin.name },
     });
-    expect(recognizers.validated.at(-1)).toEqual(openRouter);
+    expect(recognizers.validated.at(-1)).toEqual(openRouterConfig);
 
     const status = await statusOf(admin);
     expect(status).toEqual({
@@ -157,25 +160,26 @@ describe("a household's own recognition credential", () => {
       model: null,
       apiKeyLastFour: '1234',
     });
-    expect(recognizers.validated.at(-1)).toEqual({ provider: 'anthropic', apiKey: 'sk-ant-own-1234' });
+    expect(recognizers.validated.at(-1)).toEqual({
+      provider: 'anthropic',
+      apiKey: 'sk-ant-own-1234',
+      publicEndpointOnly: true,
+    });
   });
 
-  test('is refused with the reason when the provider turns it down', async () => {
+  test("is refused with the kind of reason, not the provider's words, when the provider turns it down", async () => {
     const admin = await signUpHousehold(ctx);
     recognizers.validation = { ok: false, problem: 'authentication_failed', message: 'invalid x-api-key' };
     const res = await saveCredential(admin);
     expect(res.status).toBe(422);
-    expect(await res.json()).toEqual({
-      error: 'credential_rejected',
-      problem: 'authentication_failed',
-      message: 'invalid x-api-key',
-    });
+    expect(await res.json()).toEqual({ error: 'credential_rejected', problem: 'authentication_failed' });
     expect(await statusOf(admin)).toMatchObject({ source: 'instance', credential: null });
   });
 
-  test('refuses a base URL that is not http(s) and a key too short to mask', async () => {
+  test('refuses a base URL that is not https and a key too short to mask', async () => {
     const admin = await signUpHousehold(ctx);
     expect((await saveCredential(admin, { ...openRouter, baseURL: 'ftp://openrouter.ai' })).status).toBe(400);
+    expect((await saveCredential(admin, { ...openRouter, baseURL: 'http://openrouter.ai/api/v1' })).status).toBe(400);
     expect((await saveCredential(admin, { ...openRouter, apiKey: 'sk-1234' })).status).toBe(400);
     expect((await saveCredential(admin, { ...openRouter, provider: 'gemini' })).status).toBe(400);
   });
@@ -222,7 +226,7 @@ describe("a household's own recognition credential", () => {
     expect((await recognize(admin)).status).toBe('succeeded');
     expect((await recognize(housemate)).status).toBe('succeeded');
     expect(household.screenshots).toHaveLength(seen + 2);
-    expect(recognizers.created.at(-1)).toEqual(openRouter);
+    expect(recognizers.created.at(-1)).toEqual(openRouterConfig);
 
     expect((await deleteCredential(admin)).status).toBe(204);
     expect(await statusOf(housemate)).toMatchObject({ available: true, source: 'instance', quota: { used: 0 } });
@@ -308,5 +312,86 @@ describe('without an encryption key', () => {
       householdCredentials: false,
       credential: null,
     });
+  });
+});
+
+describe("calling a household's own provider", () => {
+  // DNS as a test sets it, and every request the providers would have received.
+  const addresses = new Map<string, string[]>();
+  const requests: { url: string; redirect: RequestInit['redirect'] }[] = [];
+  const reply = {
+    id: 'chatcmpl-test',
+    object: 'chat.completion',
+    created: 0,
+    model: 'google/gemini-3-flash',
+    choices: [
+      {
+        index: 0,
+        message: { role: 'assistant', content: JSON.stringify(fixedRecognition), refusal: null },
+        finish_reason: 'stop',
+      },
+    ],
+  };
+  const ctx = useTestApp({
+    recognizers: providerRecognizers({
+      fetch: async (url, init) => {
+        requests.push({ url: String(url), redirect: init?.redirect });
+        return Response.json(reply);
+      },
+      resolve: async (hostname) => {
+        const found = addresses.get(hostname);
+        if (!found) throw new Error(`getaddrinfo ENOTFOUND ${hostname}`);
+        return found;
+      },
+    }),
+    instanceRecognition: { recognizer: instanceRecognizer, monthlyQuota: 1 },
+    encryptionKey,
+  });
+
+  afterEach(() => {
+    addresses.clear();
+    requests.length = 0;
+  });
+
+  test.each([
+    ['loopback', 'https://gateway.example/v1', ['127.0.0.1']],
+    ['private', 'https://gateway.example/v1', ['93.184.215.14', '10.0.0.7']],
+    ['cloud metadata', 'https://gateway.example/v1', ['169.254.169.254']],
+    ['carrier-grade NAT', 'https://gateway.example/v1', ['100.64.1.1']],
+    ['unique local IPv6', 'https://gateway.example/v1', ['fd12:3456::1']],
+    ['IPv4-mapped loopback', 'https://gateway.example/v1', ['::ffff:127.0.0.1']],
+    ['literal private', 'https://192.168.1.1/v1', []],
+    ['literal IPv6 loopback', 'https://[::1]/v1', []],
+    ['unspecified', 'https://0.0.0.0/v1', []],
+  ])('refuses a base URL at a %s address without calling it', async (_, baseURL, resolved) => {
+    addresses.set('gateway.example', resolved);
+    const admin = await signUpHousehold(ctx);
+    const res = await saveCredential(admin, { ...openRouter, baseURL });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: 'credential_rejected', problem: 'endpoint_not_public' });
+    expect(requests).toHaveLength(0);
+  });
+
+  test('saves one at a public address, and checks the address again on every recognition', async () => {
+    addresses.set('openrouter.ai', ['104.18.2.115']);
+    const admin = await signUpHousehold(ctx);
+    expect((await saveCredential(admin)).status).toBe(200);
+    expect(requests).toEqual([{ url: 'https://openrouter.ai/api/v1/chat/completions', redirect: 'error' }]);
+
+    expect((await recognize(admin)).status).toBe('succeeded');
+    expect(requests).toHaveLength(2);
+
+    addresses.set('openrouter.ai', ['192.168.0.10']);
+    expect(await recognize(admin)).toMatchObject({ status: 'failed', error: 'household_key_unavailable' });
+    expect(requests).toHaveLength(2);
+  });
+
+  test("calls the provider's own endpoint, which is public, when the base URL is empty", async () => {
+    addresses.set('api.anthropic.com', ['160.79.104.10']);
+    const admin = await signUpHousehold(ctx);
+    const res = await saveCredential(admin, { provider: 'anthropic', apiKey: 'sk-ant-own-1234' });
+    // The fake answers in OpenAI's shape, which the Anthropic SDK still takes as a successful call.
+    expect(res.status).toBe(200);
+    expect(requests).toEqual([{ url: 'https://api.anthropic.com/v1/messages', redirect: 'error' }]);
   });
 });

@@ -143,7 +143,9 @@ function Availability({ status }: { status: RecognitionStatus }) {
     ));
   return (
     <Alert>
-      {quota ? `本月识别次数已用完，${resetDay(quota.resetsOn)}恢复。` : '识别服务未配置。'}
+      {quota
+        ? `实例的识别次数本月已用完（${quota.used}/${quota.monthly}），${resetDay(quota.resetsOn)}恢复。`
+        : '识别服务未配置。'}
       {ownKey}
     </Alert>
   );

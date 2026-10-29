@@ -15,39 +15,39 @@ export interface CredentialSummary {
   updatedBy: { id: string; name: string } | null;
 }
 
+// Null stands for the provider's own endpoint and default model.
 export interface CredentialInput {
   provider: RecognitionProvider;
   apiKey: string;
-  baseURL?: string | null;
-  model?: string | null;
+  baseURL: string | null;
+  model: string | null;
 }
 
 export class CredentialRejectedError extends Error {
   override name = 'CredentialRejectedError';
-  constructor(
-    readonly problem: RecognizerProblem,
-    message: string,
-  ) {
-    super(message);
+  constructor(readonly problem: RecognizerProblem) {
+    super(`The provider refused the configuration: ${problem}`);
   }
 }
 
 // A credential sealed with another encryption key than the server now has, so the key cannot be read back.
 export const unreadable = Symbol('unreadable');
 
-function configOf(input: CredentialInput): RecognizerConfig {
+function configOf({ provider, apiKey, baseURL, model }: CredentialInput): RecognizerConfig {
   return {
-    provider: input.provider,
-    apiKey: input.apiKey,
-    ...(input.baseURL && { baseURL: input.baseURL }),
-    ...(input.model && { model: input.model }),
+    provider,
+    apiKey,
+    ...(baseURL !== null && { baseURL }),
+    ...(model !== null && { model }),
+    publicEndpointOnly: true,
   };
 }
 
 export function householdCredentials(db: Database, box: SecretBox, recognizers: RecognizerFactory) {
-  async function summary(householdId: string): Promise<CredentialSummary | null> {
+  async function load(householdId: string) {
     const [found] = await db
       .select({
+        sealedApiKey: householdRecognitionCredential.sealedApiKey,
         provider: householdRecognitionCredential.provider,
         baseURL: householdRecognitionCredential.baseUrl,
         model: householdRecognitionCredential.model,
@@ -60,12 +60,23 @@ export function householdCredentials(db: Database, box: SecretBox, recognizers: 
       .leftJoin(user, eq(user.id, householdRecognitionCredential.updatedBy))
       .where(eq(householdRecognitionCredential.householdId, householdId));
     if (!found) return null;
-    const { updatedById, updatedByName, ...rest } = found;
-    return { ...rest, updatedBy: updatedById ? { id: updatedById, name: updatedByName! } : null };
+    const { sealedApiKey, updatedById, updatedByName, ...rest } = found;
+    const summary: CredentialSummary = {
+      ...rest,
+      updatedBy: updatedById ? { id: updatedById, name: updatedByName! } : null,
+    };
+    return { summary, sealedApiKey };
   }
 
   return {
-    summary,
+    // The household's credential and whether the server can still use it; null when it has none. Opening the key
+    // is the only way to tell: authenticated encryption reveals a key sealed with another encryption key only by
+    // failing to open it.
+    async find(householdId: string): Promise<{ summary: CredentialSummary; readable: boolean } | null> {
+      const found = await load(householdId);
+      if (!found) return null;
+      return { summary: found.summary, readable: box.open(found.sealedApiKey, householdId) !== null };
+    },
 
     // The configuration to recognize with, or `unreadable` when it was sealed with another encryption key.
     async config(
@@ -85,13 +96,18 @@ export function householdCredentials(db: Database, box: SecretBox, recognizers: 
     // Calls the provider with the configuration first, so a key that does not work is never saved.
     async save(scope: CurrentMember, input: CredentialInput): Promise<CredentialSummary> {
       const validation = await recognizers.validate(configOf(input));
-      if (!validation.ok) throw new CredentialRejectedError(validation.problem, validation.message);
+      if (!validation.ok) {
+        console.warn(
+          `Household ${scope.householdId}'s ${input.provider} credential was refused (${validation.problem}): ${validation.message}`,
+        );
+        throw new CredentialRejectedError(validation.problem);
+      }
       const values = {
         provider: input.provider,
         sealedApiKey: box.seal(input.apiKey, scope.householdId),
         apiKeyLastFour: input.apiKey.slice(-4),
-        baseUrl: input.baseURL || null,
-        model: input.model || null,
+        baseUrl: input.baseURL,
+        model: input.model,
         updatedAt: new Date(),
         updatedBy: scope.userId,
       };
@@ -99,7 +115,7 @@ export function householdCredentials(db: Database, box: SecretBox, recognizers: 
         .insert(householdRecognitionCredential)
         .values({ householdId: scope.householdId, ...values })
         .onConflictDoUpdate({ target: householdRecognitionCredential.householdId, set: values });
-      return (await summary(scope.householdId))!;
+      return (await load(scope.householdId))!.summary;
     },
 
     async remove(scope: CurrentMember) {

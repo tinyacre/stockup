@@ -232,12 +232,16 @@ export interface RecognitionCredential {
   updatedBy: { id: string; name: string } | null;
 }
 
+// Why the provider refused a credential being saved, as the API's credential_rejected error reports it.
+export type RecognizerProblem =
+  'authentication_failed' | 'model_not_found' | 'unreachable' | 'endpoint_not_public' | 'provider_error';
+
 export interface RecognitionStatus {
   available: boolean;
   // Null while the household has nothing to recognize with.
   source: 'household' | 'instance' | null;
-  // Null for the household's own key. Used counts recognitions that succeeded or are still running; resetsOn is
-  // YYYY-MM-DD.
+  // Null for the household's own key. Used counts recognitions that produced drafts or are still running; resetsOn
+  // is YYYY-MM-DD.
   quota: { monthly: number; used: number; resetsOn: string } | null;
   householdAdmin: boolean;
   // Whether the instance lets household admins configure a key of their own.
@@ -267,6 +271,12 @@ export class ApiError extends Error {
   ) {
     super(code ?? `HTTP ${status}`);
   }
+}
+
+// Why saving a recognition credential was refused, or null for any other failure.
+export function credentialProblem(error: unknown): RecognizerProblem | null {
+  if (!(error instanceof ApiError) || error.code !== 'credential_rejected') return null;
+  return (error.payload as { problem: RecognizerProblem }).problem;
 }
 
 // Payloads the service worker answered from its cache because the network failed.

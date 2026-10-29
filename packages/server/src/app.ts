@@ -26,8 +26,8 @@ import { meRoutes } from './routes/me';
 import { memberRoutes } from './routes/members';
 import { priceRecordRoutes } from './routes/price-records';
 import { promotionRoutes } from './routes/promotions';
-import { recognitionCredentialRoutes } from './routes/recognition-credential';
 import { recognitionRoutes } from './routes/recognitions';
+import { recognizerRoutes } from './routes/recognizer';
 import { setupRoutes } from './routes/setup';
 import { emailCodeRoutes } from './routes/email-codes';
 import { secretBox } from './secret-box';
@@ -99,8 +99,8 @@ export function createApp({
     .route('/api', channelRoutes(db, auth))
     .route('/api', priceRecordRoutes(db, auth, evidence))
     .route('/api', evidenceRoutes(db, auth, evidence))
-    .route('/api', recognitionRoutes(db, auth, evidence, recognition, credentials))
-    .route('/api', recognitionCredentialRoutes(db, auth, credentials))
+    .route('/api', recognitionRoutes(db, auth, evidence, recognition))
+    .route('/api', recognizerRoutes(db, auth, recognition, credentials))
     .route('/api', judgmentRoutes(db, auth))
     .route('/api', mcpClientRoutes(db, auth));
 
