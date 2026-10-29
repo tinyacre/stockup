@@ -24,6 +24,7 @@ import {
   type PriceRecord,
   type Recognition,
   type RecognitionDraft,
+  type RecognitionStatus,
 } from '@/lib/api';
 import { formatSize, formatYuan } from '@/lib/format';
 import { Link, productPath } from '@/lib/navigation';
@@ -38,6 +39,7 @@ const uploadErrors = {
 
 const failures: Record<NonNullable<Recognition['error']>, string> = {
   recognition_unavailable: '识别服务未配置',
+  recognition_quota_exhausted: '本月识别次数已用完',
   recognition_failed: '识别失败',
   recognition_interrupted: '识别已中断',
 };
@@ -49,7 +51,8 @@ export function RecognitionUploadPage({ onStarted }: { onStarted(id: string): vo
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
   // Uploads stay open while the answer is outstanding: the server fails them cleanly if it has no recognizer.
-  const available = useQuery(queries.recognizer()).data?.available ?? true;
+  const status = useQuery(queries.recognizer()).data;
+  const available = status?.available ?? true;
   const disabled = uploading || !available;
 
   async function upload(file: File | undefined) {
@@ -100,9 +103,37 @@ export function RecognitionUploadPage({ onStarted }: { onStarted(id: string): vo
           }
         />
       </Panel>
-      {!available && <Alert>识别服务未配置</Alert>}
+      {status && <Availability status={status} />}
       {error && <Alert>{error}</Alert>}
     </PageContent>
+  );
+}
+
+function resetDay(date: string) {
+  const [, month, day] = date.split('-').map(Number);
+  return `${month} 月 ${day} 日`;
+}
+
+function Availability({ status }: { status: RecognitionStatus }) {
+  const { available, quota, householdAdmin } = status;
+  if (!quota) return available ? null : <Alert>识别服务未配置</Alert>;
+  if (available) {
+    return <p className="text-ink-3 text-sm">本月还可识别 {quota.monthly - quota.used} 次</p>;
+  }
+  return (
+    <Alert>
+      本月识别次数已用完，{resetDay(quota.resetsOn)}恢复。
+      {householdAdmin ? (
+        <>
+          也可以为家庭配置自己的 API key：
+          <Link href="/settings" className="underline underline-offset-2">
+            去设置
+          </Link>
+        </>
+      ) : (
+        '也可以请家庭管理员配置家庭自己的 API key。'
+      )}
+    </Alert>
   );
 }
 

@@ -200,7 +200,8 @@ export interface Confirmation {
 export interface Recognition {
   id: string;
   status: 'pending' | 'succeeded' | 'failed';
-  error: 'recognition_unavailable' | 'recognition_failed' | 'recognition_interrupted' | null;
+  error:
+    'recognition_unavailable' | 'recognition_quota_exhausted' | 'recognition_failed' | 'recognition_interrupted' | null;
   requestedBy: { id: string; name: string } | null;
   screenshot: { contentType: string; size: number };
   date: string | null;
@@ -211,6 +212,15 @@ export interface Recognition {
   finishedAt: string | null;
   // Drafts are gone once confirmed.
   confirmedAt: string | null;
+}
+
+export interface RecognitionStatus {
+  available: boolean;
+  // Null while the household has nothing to recognize with.
+  source: 'instance' | null;
+  // Used counts recognitions that succeeded or are still running; resetsOn is YYYY-MM-DD.
+  quota: { monthly: number; used: number; resetsOn: string } | null;
+  householdAdmin: boolean;
 }
 
 export interface PriceReferences {
@@ -423,7 +433,7 @@ export const api = {
   },
   deleteEvidence: (id: string) => request(`/api/evidence/${id}`, { method: 'DELETE' }),
   evidenceUrl: (id: string) => `/api/evidence/${encodeURIComponent(id)}`,
-  recognizer: () => request<{ available: boolean }>('/api/recognizer'),
+  recognizer: () => request<RecognitionStatus>('/api/recognizer'),
   startRecognition: (file: File) => {
     const body = new FormData();
     body.append('file', file);

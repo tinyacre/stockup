@@ -140,13 +140,42 @@ test('deleting a draft shares the order discount over the rest', async ({ page, 
   await expect(drafts.getByRole('listitem', { name: '得宝抽纸 M码' })).toContainText('整单优惠分摊 -¥20.00');
 });
 
+// The e2e server gives each household three recognitions a month.
+test('a household admin who used up the monthly quota is pointed at the settings', async ({ page, household }) => {
+  await page.goto('/');
+  await page.getByLabel('用户名').fill(household.admin.username);
+  await page.getByLabel('密码').fill(household.admin.password);
+  await page.getByRole('button', { name: '登录' }).click();
+
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await nav.getByRole('link', { name: '识别' }).click();
+  await expect(page.getByText('本月还可识别 3 次')).toBeVisible();
+
+  for (let i = 0; i < 3; i++) {
+    const started = await page.request.post('/api/recognitions', {
+      multipart: { file: { name: 'order.png', mimeType: 'image/png', buffer: pixel } },
+    });
+    expect(started.status()).toBe(201);
+  }
+  await page.reload();
+
+  await expect(page.getByRole('alert')).toHaveText(
+    /^本月识别次数已用完，\d+ 月 1 日恢复。也可以为家庭配置自己的 API key：去设置$/,
+  );
+  await expect(page.getByLabel('上传截图')).toBeDisabled();
+  await page.getByRole('alert').getByRole('link', { name: '去设置' }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+});
+
 test.describe('without a recognizer', () => {
   // The e2e server always has the fake recognizer, so the server's answer is stood in for here;
   // the service worker would otherwise serve the request out of reach of page.route.
   test.use({ serviceWorkers: 'block' });
 
   test('recognition shows as unavailable', async ({ page, household }) => {
-    await page.route('**/api/recognizer', (route) => route.fulfill({ json: { available: false } }));
+    await page.route('**/api/recognizer', (route) =>
+      route.fulfill({ json: { available: false, source: null, quota: null, householdAdmin: true } }),
+    );
     await page.goto('/');
     await page.getByLabel('用户名').fill(household.admin.username);
     await page.getByLabel('密码').fill(household.admin.password);
