@@ -1,45 +1,17 @@
 import { describe, expect, test } from 'bun:test';
 import { RecognizerCallError, type RecognizerConfig, type Screenshot } from '../src/recognizer';
 import { providerRecognizers } from '../src/recognizer-factory';
+import { anthropicMessage, json, openaiCompletion, recordingFetch } from './support/fake-provider';
 
 const screenshot: Screenshot = { bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]), contentType: 'image/png' };
 
 const answer = JSON.stringify({ items: [], orderDiscounts: [], date: null, channel: null });
 
-const replies = {
-  anthropic: {
-    id: 'msg_test',
-    type: 'message',
-    role: 'assistant',
-    model: 'claude-haiku-5-5',
-    content: [{ type: 'text', text: answer }],
-    stop_reason: 'end_turn',
-    stop_sequence: null,
-    usage: { input_tokens: 1, output_tokens: 1 },
-  },
-  openai: {
-    id: 'chatcmpl-test',
-    object: 'chat.completion',
-    created: 0,
-    model: 'gpt-5-mini',
-    choices: [{ index: 0, message: { role: 'assistant', content: answer, refusal: null }, finish_reason: 'stop' }],
-  },
-};
+const replies = { anthropic: anthropicMessage(answer), openai: openaiCompletion(answer) };
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-}
-
-// Plays the provider's side of every call, recording what each was sent.
 function fakeProviders(respond: () => Response | Promise<Response>) {
-  const requests: { url: string; headers: Headers; body: Record<string, any> }[] = [];
-  const recognizers = providerRecognizers({
-    fetch: async (url, init) => {
-      requests.push({ url: String(url), headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) });
-      return respond();
-    },
-  });
-  return { recognizers, requests };
+  const { fetch, requests } = recordingFetch(respond);
+  return { recognizers: providerRecognizers({ fetch }), requests };
 }
 
 const anthropic: RecognizerConfig = { provider: 'anthropic', apiKey: 'sk-ant-test' };
@@ -154,15 +126,12 @@ describe('providerRecognizers', () => {
     {
       config: anthropic,
       refused: json({ type: 'error', error: { type: 'authentication_error', message: 'no' } }, 401),
-      garbled: json({ ...replies.anthropic, content: [{ type: 'text', text: 'not json' }] }),
+      garbled: json(anthropicMessage('not json')),
     },
     {
       config: openai,
       refused: json({ error: { type: 'invalid_api_key', code: 'invalid_api_key', message: 'no' } }, 401),
-      garbled: json({
-        ...replies.openai,
-        choices: [{ ...replies.openai.choices[0], message: { role: 'assistant', content: 'not json', refusal: null } }],
-      }),
+      garbled: json(openaiCompletion('not json')),
     },
   ])('a $config.provider recognizer', ({ config, refused, garbled }) => {
     test('reports a call the provider refuses as a call error', async () => {

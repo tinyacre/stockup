@@ -7,6 +7,7 @@ import {
   instanceRecognizer,
 } from './support/fake-recognizer';
 import { joinHousehold, jsonRequest, signUpHousehold, useTestApp, type SignedInMember } from './support/harness';
+import { finished, pngSignature, screenshot, upload } from './support/recognitions';
 
 interface Unit {
   dimension: string;
@@ -57,13 +58,8 @@ interface PriceRecord {
   evidence: { id: string; contentType: string; size: number; createdAt: string }[];
 }
 
-const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const tissue = { dimension: 'count', name: '抽' };
 const grams = { dimension: 'weight', name: 'g' };
-
-function screenshot(...rest: number[]) {
-  return new Uint8Array([...pngSignature, ...rest]);
-}
 
 function unique(label: string) {
   return `${label} ${crypto.randomUUID().slice(0, 8)}`;
@@ -89,26 +85,10 @@ async function createProduct(m: SignedInMember, categoryId: string, name: string
   );
 }
 
-function upload(m: SignedInMember, bytes: Uint8Array, name = 'order.png', type = 'image/png') {
-  const form = new FormData();
-  form.append('file', new File([bytes], name, { type }));
-  return m.request('/api/recognitions', { method: 'POST', body: form });
-}
-
 async function read(m: SignedInMember, id: string) {
   const res = await m.request(`/api/recognitions/${id}`);
   expect(res.status).toBe(200);
   return (await res.json()) as Recognition;
-}
-
-// Polls the way the web app does until the recognition has finished.
-async function finished(m: SignedInMember, id: string) {
-  for (let i = 0; i < 200; i++) {
-    const recognition = await read(m, id);
-    if (recognition.status !== 'pending') return recognition;
-    await Bun.sleep(10);
-  }
-  throw new Error(`recognition ${id} is still pending`);
 }
 
 async function screenshotOf(m: SignedInMember, id: string) {
@@ -142,7 +122,7 @@ describe('recognitions', () => {
       finishedAt: null,
     });
 
-    const done = await finished(m, started.id);
+    const done = await finished<Recognition>(m, started.id);
     expect(done).toMatchObject({
       id: started.id,
       status: 'succeeded',
@@ -191,7 +171,7 @@ describe('recognitions', () => {
     expect((await read(m, started.id)).status).toBe('pending');
 
     answer();
-    expect((await finished(m, started.id)).status).toBe('succeeded');
+    expect((await finished<Recognition>(m, started.id)).status).toBe('succeeded');
   });
 
   test('a draft keeps what could not be read or matched', async () => {
@@ -210,7 +190,7 @@ describe('recognitions', () => {
     });
 
     const started = await created<Recognition>(await upload(m, screenshot(2)));
-    const done = await finished(m, started.id);
+    const done = await finished<Recognition>(m, started.id);
     expect(done).toMatchObject({ status: 'succeeded', date: null, channel: null, orderDiscounts: [] });
     expect(done.drafts).toEqual([
       {
@@ -246,7 +226,7 @@ describe('recognitions', () => {
     const bytes = screenshot(3);
 
     const started = await created<Recognition>(await upload(m, bytes));
-    const done = await finished(m, started.id);
+    const done = await finished<Recognition>(m, started.id);
     expect(done).toMatchObject({
       status: 'failed',
       error: 'recognition_failed',
@@ -265,7 +245,7 @@ describe('recognitions', () => {
     const catFood = await createProduct(m, category.id, '皇家猫粮', grams, 1000);
 
     const started = await created<Recognition>(await upload(m, screenshot(4)));
-    const suggested = (await finished(m, started.id)).drafts.map((d) => d.suggestedProduct?.id);
+    const suggested = (await finished<Recognition>(m, started.id)).drafts.map((d) => d.suggestedProduct?.id);
     expect(suggested).toEqual([duplicate.id, catFood.id]);
 
     const merged = await m.request(`/api/products/${kept.id}/merge`, jsonRequest('POST', { productId: duplicate.id }));
@@ -301,7 +281,7 @@ describe('recognitions', () => {
     const housemate = await joinHousehold(ctx, requester);
     const started = await created<Recognition>(await upload(requester, screenshot(5)));
 
-    const seen = await finished(housemate, started.id);
+    const seen = await finished<Recognition>(housemate, started.id);
     expect(seen.requestedBy).toEqual({ id: requester.userId, name: expect.any(String) });
     expect(seen.drafts).toHaveLength(2);
     expect((await screenshotOf(housemate, started.id)).bytes).toEqual(screenshot(5));
@@ -312,7 +292,7 @@ describe('recognitions', () => {
     const owner = await signUpHousehold(ctx);
     const other = await signUpHousehold(ctx);
     const started = await created<Recognition>(await upload(owner, screenshot(6)));
-    await finished(owner, started.id);
+    await finished<Recognition>(owner, started.id);
 
     expect((await other.request(`/api/recognitions/${started.id}`)).status).toBe(404);
     expect((await other.request(`/api/recognitions/${started.id}/screenshot`)).status).toBe(404);
@@ -339,7 +319,7 @@ describe('recognitions', () => {
   test('recognitions require a signed-in member', async () => {
     const owner = await signUpHousehold(ctx);
     const started = await created<Recognition>(await upload(owner, screenshot(7)));
-    await finished(owner, started.id);
+    await finished<Recognition>(owner, started.id);
 
     expect((await ctx.app.request(`/api/recognitions/${started.id}`)).status).toBe(401);
     expect((await ctx.app.request(`/api/recognitions/${started.id}/screenshot`)).status).toBe(401);
@@ -364,7 +344,7 @@ describe('reviewing and confirming drafts', () => {
       await m.request('/api/channels', jsonRequest('POST', { name: unique('京东') })),
     );
     const started = await created<Recognition>(await upload(m, screenshot(9, 9)));
-    const recognition = await finished(m, started.id);
+    const recognition = await finished<Recognition>(m, started.id);
     return { category, tissues, catFood, channel, recognition };
   }
 
@@ -601,7 +581,7 @@ describe('reviewing and confirming drafts', () => {
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: 'no_drafts' });
     answer();
-    expect((await finished(m, started.id)).drafts).toHaveLength(2);
+    expect((await finished<Recognition>(m, started.id)).drafts).toHaveLength(2);
   });
 
   test('a confirmed recognition takes no more edits or confirmations', async () => {
