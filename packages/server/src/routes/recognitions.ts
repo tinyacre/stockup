@@ -19,7 +19,8 @@ import {
   RecognitionConfirmedError,
   startRecognition,
 } from '../recognitions';
-import type { ScreenshotRecognizer } from '../recognizer';
+import { HOUSEHOLD_ADMIN_ROLE } from '../households';
+import type { RecognitionAccess } from '../recognition-access';
 import { pricingUnitSchema } from './catalog';
 import {
   cents,
@@ -70,7 +71,7 @@ const recognitionSchema = z
     status: z.enum(recognitionStatuses),
     error: z.enum(recognitionErrors).nullable().openapi({
       description:
-        'Why it failed: no recognizer is configured (recognition_unavailable), the recognizer failed or gave an answer it could not read (recognition_failed), or the server restarted while it ran (recognition_interrupted)',
+        "Why it failed: the household has nothing to recognize with (recognition_unavailable), it has used up this month's recognitions on the instance's provider (recognition_quota_exhausted), the recognizer failed or gave an answer it could not read (recognition_failed), or the server restarted while it ran (recognition_interrupted)",
     }),
     requestedBy: z.object({ id: z.string(), name: z.string() }).nullable(),
     screenshot: z
@@ -89,6 +90,27 @@ const recognitionSchema = z
     }),
   })
   .openapi('Recognition');
+
+const recognitionStatusSchema = z
+  .object({
+    available: z.boolean().openapi({ description: 'Whether a screenshot uploaded now would be recognized' }),
+    source: z.enum(['instance']).nullable().openapi({
+      description:
+        "What recognitions are read with: the instance's provider within its monthly quota (instance); null when the household has nothing to recognize with",
+    }),
+    quota: z
+      .object({
+        monthly: z.number().int().openapi({ description: 'Recognitions each household gets a month' }),
+        used: z.number().int().openapi({
+          description: 'Recognitions this month that succeeded or are still running; failed ones do not count',
+        }),
+        resetsOn: z.string().openapi({ description: 'The first day of next month, as YYYY-MM-DD' }),
+      })
+      .nullable()
+      .openapi({ description: 'Null for a source without a quota' }),
+    householdAdmin: z.boolean().openapi({ description: 'Whether the caller is the household admin' }),
+  })
+  .openapi('RecognitionStatus');
 
 const draftChangesSchema = z
   .object({
@@ -132,12 +154,7 @@ function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };
 }
 
-export function recognitionRoutes(
-  db: Database,
-  auth: Auth,
-  store: EvidenceStore,
-  recognizer: ScreenshotRecognizer | undefined,
-) {
+export function recognitionRoutes(db: Database, auth: Auth, store: EvidenceStore, access: RecognitionAccess) {
   const middleware = requireMember(auth, db);
   const unauthenticated = { 401: { description: 'Not signed in' } };
   const notFound = { 404: { description: 'No such recognition in this household', content: errorContent } };
@@ -149,7 +166,7 @@ export function recognitionRoutes(
     tags: ['recognitions'],
     summary: 'Upload a screenshot to be recognized into drafts',
     description:
-      'Recognition runs in the background: poll GET /recognitions/{id} until the status leaves pending. Without a configured recognizer it fails at once with recognition_unavailable; the screenshot is kept either way.',
+      "Recognition runs in the background: poll GET /recognitions/{id} until the status leaves pending. When the household has nothing to recognize with it fails at once with recognition_unavailable, and when it has used up this month's quota with recognition_quota_exhausted; the screenshot is kept either way.",
     middleware,
     request: {
       body: {
@@ -275,13 +292,14 @@ export function recognitionRoutes(
     method: 'get',
     path: '/recognizer',
     tags: ['recognitions'],
-    summary: 'Report whether screenshots can be recognized',
-    description: 'Recognition is unavailable until the server is configured with a recognizer.',
+    summary: "Report whether and with what the household's screenshots can be recognized",
+    description:
+      "The instance's provider gives every household the same number of recognitions a month, counted from the first day of the month in the server's time zone. Only recognitions that succeed or are still running count.",
     middleware,
     responses: {
       200: {
-        description: 'Whether recognition is available',
-        content: { 'application/json': { schema: z.object({ available: z.boolean() }) } },
+        description: 'The recognition status',
+        content: { 'application/json': { schema: recognitionStatusSchema } },
       },
       ...unauthenticated,
     },
@@ -297,13 +315,16 @@ export function recognitionRoutes(
     }),
   );
   return app
-    .openapi(availabilityRoute, (c) => c.json({ available: recognizer !== undefined }, 200))
+    .openapi(availabilityRoute, async (c) => {
+      const status = await access.status(db, c.var.member);
+      return c.json({ ...status, householdAdmin: c.var.member.householdRole === HOUSEHOLD_ADMIN_ROLE }, 200);
+    })
     .openapi(startRoute, async (c) => {
       const { file } = c.req.valid('form');
       if (file.size > maxEvidenceSize) return c.json({ error: 'evidence_too_large' }, 413);
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const started = await startRecognition(db, store, recognizer, c.var.member, bytes);
+        const started = await startRecognition(db, store, access, c.var.member, bytes);
         return c.json(serialize(started), 201);
       } catch (error) {
         if (error instanceof EvidenceTooLargeError) return c.json({ error: 'evidence_too_large' }, 413);

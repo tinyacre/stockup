@@ -1,3 +1,4 @@
+import type { InstanceRecognition } from '../../src/recognition-access';
 import type {
   RecognitionResult,
   RecognizerConfig,
@@ -42,6 +43,9 @@ export function fakeRecognizer(): FakeRecognizer {
 }
 
 export const instanceRecognizer: RecognizerConfig = { provider: 'anthropic', apiKey: 'sk-ant-instance' };
+
+// More than any test uses up, for tests about something other than the quota.
+export const instanceRecognition: InstanceRecognition = { recognizer: instanceRecognizer, monthlyQuota: 1000 };
 
 // Stands in for the providers: every configuration gets `recognizer`, and validates as `validation` says.
 export interface FakeRecognizerFactory extends RecognizerFactory {

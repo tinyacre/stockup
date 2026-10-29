@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import type { RecognitionResult } from '../src/recognizer';
-import { fakeRecognizerFactory, fixedRecognition, instanceRecognizer } from './support/fake-recognizer';
+import {
+  fakeRecognizerFactory,
+  fixedRecognition,
+  instanceRecognition,
+  instanceRecognizer,
+} from './support/fake-recognizer';
 import { joinHousehold, jsonRequest, signUpHousehold, useTestApp, type SignedInMember } from './support/harness';
 
 interface Unit {
@@ -116,7 +121,7 @@ async function screenshotOf(m: SignedInMember, id: string) {
 describe('recognitions', () => {
   const recognizers = fakeRecognizerFactory();
   const { recognizer } = recognizers;
-  const ctx = useTestApp({ recognizers, instanceRecognizer });
+  const ctx = useTestApp({ recognizers, instanceRecognition });
 
   test('a screenshot is recognized into drafts with parsed sizes and suggested products', async () => {
     recognizer.respond = async () => fixedRecognition;
@@ -317,7 +322,12 @@ describe('recognitions', () => {
     const m = await signUpHousehold(ctx);
     const res = await m.request('/api/recognizer');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ available: true });
+    expect(await res.json()).toEqual({
+      available: true,
+      source: 'instance',
+      quota: { monthly: 1000, used: 0, resetsOn: expect.stringMatching(/^\d{4}-\d{2}-01$/) },
+      householdAdmin: true,
+    });
   });
 
   test("screenshots are read with the instance's provider configuration", () => {
@@ -341,7 +351,7 @@ describe('recognitions', () => {
 describe('reviewing and confirming drafts', () => {
   const recognizers = fakeRecognizerFactory();
   const { recognizer } = recognizers;
-  const ctx = useTestApp({ recognizers, instanceRecognizer });
+  const ctx = useTestApp({ recognizers, instanceRecognition });
 
   async function setUp(m: SignedInMember, result: RecognitionResult = fixedRecognition) {
     recognizer.respond = async () => result;
@@ -664,7 +674,12 @@ describe('recognitions without a recognizer', () => {
 
   test('report recognition as unavailable', async () => {
     const m = await signUpHousehold(ctx);
-    expect(await (await m.request('/api/recognizer')).json()).toEqual({ available: false });
+    expect(await (await m.request('/api/recognizer')).json()).toEqual({
+      available: false,
+      source: null,
+      quota: null,
+      householdAdmin: true,
+    });
   });
 
   test('fail straight away and keep the screenshot for manual entry', async () => {

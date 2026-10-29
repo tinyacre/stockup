@@ -15,10 +15,13 @@ services:
       # only some fails the boot. PROVIDER is anthropic or openai, and it and API_KEY are required. MODEL defaults to
       # claude-haiku-5-5 or gpt-5-mini. BASE_URL points the openai provider at an OpenAI-compatible service, e.g.
       # https://openrouter.ai/api/v1 with a MODEL such as google/gemini-3-flash; the model must read images.
+      # MONTHLY_QUOTA is also required: how many screenshots each household may have recognized with this provider a
+      # month, counting only successful ones; 0 offers none. Months start on the 1st in the server's time zone.
       STOCKUP_RECOGNITION_PROVIDER: ${STOCKUP_RECOGNITION_PROVIDER:-}
       STOCKUP_RECOGNITION_API_KEY: ${STOCKUP_RECOGNITION_API_KEY:-}
       STOCKUP_RECOGNITION_BASE_URL: ${STOCKUP_RECOGNITION_BASE_URL:-}
       STOCKUP_RECOGNITION_MODEL: ${STOCKUP_RECOGNITION_MODEL:-}
+      STOCKUP_RECOGNITION_MONTHLY_QUOTA: ${STOCKUP_RECOGNITION_MONTHLY_QUOTA:-}
       # The header carrying the client address for rate limiting, e.g. CF-Connecting-IP behind Cloudflare. Trust it
       # only when the server is reachable solely through that proxy, since clients can set it themselves otherwise.
       STOCKUP_CLIENT_IP_HEADER: ${STOCKUP_CLIENT_IP_HEADER:-}

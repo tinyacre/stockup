@@ -15,14 +15,16 @@ import { checkEvidenceFile, removeEvidenceFiles } from './evidence';
 import type { EvidenceStore } from './evidence-store';
 import type { CurrentMember } from './members';
 import { findPriceRecord, insertPriceRecord, InvalidPriceError, ProductNotFoundError } from './price-records';
+import type { RecognitionAccess } from './recognition-access';
 import type { RecognitionResult, Screenshot, ScreenshotRecognizer } from './recognizer';
 
 // Stores the screenshot and starts reading it in the background; the caller polls findRecognition
-// for the outcome. Without a recognizer the recognition fails at once, keeping the screenshot for manual entry.
+// for the outcome. When the household has nothing to recognize with, or has used up its quota, the recognition
+// fails at once, keeping the screenshot for manual entry.
 export async function startRecognition(
   db: Database,
   store: EvidenceStore,
-  recognizer: ScreenshotRecognizer | undefined,
+  access: RecognitionAccess,
   scope: CurrentMember,
   bytes: Uint8Array,
 ) {
@@ -30,23 +32,31 @@ export async function startRecognition(
 
   const id = crypto.randomUUID();
   await store.put(id, bytes);
+  let choice;
   try {
-    await db.insert(recognition).values({
-      id,
-      householdId: scope.householdId,
-      requestedBy: scope.userId,
-      screenshotContentType: contentType,
-      screenshotSize: bytes.length,
-      ...(recognizer
-        ? { status: 'pending' as const }
-        : { status: 'failed' as const, error: 'recognition_unavailable' as const, finishedAt: new Date() }),
+    choice = await db.transaction(async (tx) => {
+      const chosen = await access.choose(tx, scope);
+      const now = new Date();
+      await tx.insert(recognition).values({
+        id,
+        householdId: scope.householdId,
+        requestedBy: scope.userId,
+        screenshotContentType: contentType,
+        screenshotSize: bytes.length,
+        // The quota counts months by the server's clock, so the recognition is dated by it too.
+        createdAt: now,
+        ...('recognizer' in chosen
+          ? { status: 'pending' as const }
+          : { status: 'failed' as const, error: chosen.error, finishedAt: now }),
+      });
+      return chosen;
     });
   } catch (error) {
     await store.delete(id);
     throw error;
   }
   const started = (await findRecognition(db, scope, id))!;
-  if (recognizer) void recognize(db, recognizer, scope, id, { bytes, contentType });
+  if ('recognizer' in choice) void recognize(db, choice.recognizer, scope, id, { bytes, contentType });
   return started;
 }
 

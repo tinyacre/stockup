@@ -24,6 +24,8 @@ const config = loadConfig({
   STOCKUP_SMTP_FROM: 'StockUp <noreply@stockup.invalid>',
   STOCKUP_RECOGNITION_PROVIDER: 'anthropic',
   STOCKUP_RECOGNITION_API_KEY: 'sk-ant-e2e',
+  // Every test has a household of its own, and none needs more recognitions than this before using them up.
+  STOCKUP_RECOGNITION_MONTHLY_QUOTA: '3',
 });
 const mailer = fakeMailer();
 const { app, close } = await bootstrap(config, {

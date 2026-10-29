@@ -8,7 +8,8 @@ import { createEmailCodes } from './email-codes';
 import type { EvidenceStore } from './evidence-store';
 import type { Mailer } from './mailer';
 import { mcpRoutes } from './mcp';
-import type { RecognizerConfig, RecognizerFactory } from './recognizer';
+import { recognitionAccess, type InstanceRecognition } from './recognition-access';
+import type { RecognizerFactory } from './recognizer';
 import { providerRecognizers } from './recognizer-factory';
 import { capabilityRoutes } from './routes/capabilities';
 import { catalogRoutes } from './routes/catalog';
@@ -36,8 +37,9 @@ export interface AppOptions {
   evidence: EvidenceStore;
   // Turns recognizer configurations into recognizers; the real providers unless replaced.
   recognizers?: RecognizerFactory;
-  // The instance's own provider; recognition is unavailable without one.
-  instanceRecognizer?: RecognizerConfig;
+  // The instance's own provider and how many recognitions it gives each household a month; recognition is
+  // unavailable without one.
+  instanceRecognition?: InstanceRecognition;
   webDir?: string;
   // Email-based flows (code sending, signup, password reset, changing the email, joining with an email) are unavailable without one.
   mailer?: Mailer;
@@ -54,7 +56,7 @@ export function createApp({
   auth,
   evidence,
   recognizers = providerRecognizers(),
-  instanceRecognizer,
+  instanceRecognition,
   webDir,
   mailer,
   signupOpen = false,
@@ -62,7 +64,7 @@ export function createApp({
   clientIpHeader,
 }: AppOptions) {
   if (signupOpen && !mailer) throw new Error('Open signup requires a mailer');
-  const recognizer = instanceRecognizer && recognizers.create(instanceRecognizer);
+  const recognition = recognitionAccess(recognizers, instanceRecognition);
   const codes = mailer && createEmailCodes({ db, mailer, secret: auth.options.secret! });
 
   const app = new OpenAPIHono();
@@ -90,7 +92,7 @@ export function createApp({
     .route('/api', channelRoutes(db, auth))
     .route('/api', priceRecordRoutes(db, auth, evidence))
     .route('/api', evidenceRoutes(db, auth, evidence))
-    .route('/api', recognitionRoutes(db, auth, evidence, recognizer))
+    .route('/api', recognitionRoutes(db, auth, evidence, recognition))
     .route('/api', judgmentRoutes(db, auth))
     .route('/api', mcpClientRoutes(db, auth));
 

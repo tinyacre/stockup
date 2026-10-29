@@ -5,7 +5,7 @@ import path from 'node:path';
 import { loadConfig } from '../src/config';
 import { bootstrap } from '../src/main';
 import { s3EvidenceStore } from '../src/s3-evidence-store';
-import { fakeRecognizerFactory, instanceRecognizer } from './support/fake-recognizer';
+import { fakeRecognizerFactory, instanceRecognition } from './support/fake-recognizer';
 import { createTestDatabase, jsonRequest, sessionCookie, testAuthSecret } from './support/harness';
 import { testS3Config } from './support/s3';
 
@@ -45,7 +45,7 @@ describe('loadConfig', () => {
       evidenceDir: path.resolve('data/evidence'),
       webDir: undefined,
       clientIpHeader: undefined,
-      recognizer: undefined,
+      recognition: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -65,6 +65,7 @@ describe('loadConfig', () => {
         STOCKUP_RECOGNITION_API_KEY: 'sk-or-test',
         STOCKUP_RECOGNITION_BASE_URL: 'https://openrouter.ai/api/v1',
         STOCKUP_RECOGNITION_MODEL: 'google/gemini-3-flash',
+        STOCKUP_RECOGNITION_MONTHLY_QUOTA: '50',
       }),
     ).toEqual({
       databaseUrl: 'postgres://x/y',
@@ -74,11 +75,14 @@ describe('loadConfig', () => {
       evidenceDir: '/srv/evidence',
       webDir: '/srv/web',
       clientIpHeader: 'cf-connecting-ip',
-      recognizer: {
-        provider: 'openai',
-        apiKey: 'sk-or-test',
-        baseURL: 'https://openrouter.ai/api/v1',
-        model: 'google/gemini-3-flash',
+      recognition: {
+        recognizer: {
+          provider: 'openai',
+          apiKey: 'sk-or-test',
+          baseURL: 'https://openrouter.ai/api/v1',
+          model: 'google/gemini-3-flash',
+        },
+        monthlyQuota: 50,
       },
       s3: undefined,
       signup: 'closed' as const,
@@ -87,31 +91,73 @@ describe('loadConfig', () => {
     });
   });
 
+  const recognition = { ...required, STOCKUP_RECOGNITION_MONTHLY_QUOTA: '30' };
+
   test("leaves the model to the provider's default unless one is set", () => {
     expect(
-      loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: 'Anthropic', STOCKUP_RECOGNITION_API_KEY: 'sk-ant-test' })
-        .recognizer,
-    ).toEqual({ provider: 'anthropic', apiKey: 'sk-ant-test' });
+      loadConfig({
+        ...recognition,
+        STOCKUP_RECOGNITION_PROVIDER: 'Anthropic',
+        STOCKUP_RECOGNITION_API_KEY: 'sk-ant-test',
+      }).recognition,
+    ).toEqual({ recognizer: { provider: 'anthropic', apiKey: 'sk-ant-test' }, monthlyQuota: 30 });
   });
 
   test('leaves recognition unconfigured while every recognition variable is empty', () => {
     expect(
-      loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: '', STOCKUP_RECOGNITION_API_KEY: '' }).recognizer,
+      loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: '', STOCKUP_RECOGNITION_API_KEY: '' }).recognition,
     ).toBeUndefined();
+  });
+
+  test('leaves recognition unconfigured with a quota of 0 and no provider', () => {
+    expect(loadConfig({ ...required, STOCKUP_RECOGNITION_MONTHLY_QUOTA: '0' }).recognition).toBeUndefined();
   });
 
   test('names every missing recognition variable when only some are set', () => {
     expect(() => loadConfig({ ...required, STOCKUP_RECOGNITION_MODEL: 'gpt-5-mini' })).toThrow(
-      'Screenshot recognition is configured but STOCKUP_RECOGNITION_PROVIDER, STOCKUP_RECOGNITION_API_KEY not set',
+      'Screenshot recognition is configured but STOCKUP_RECOGNITION_PROVIDER, STOCKUP_RECOGNITION_API_KEY, STOCKUP_RECOGNITION_MONTHLY_QUOTA not set',
     );
-    expect(() => loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: 'openai' })).toThrow(
+    expect(() => loadConfig({ ...recognition, STOCKUP_RECOGNITION_PROVIDER: 'openai' })).toThrow(
       'Screenshot recognition is configured but STOCKUP_RECOGNITION_API_KEY not set',
     );
+    expect(() => loadConfig({ ...required, STOCKUP_RECOGNITION_MONTHLY_QUOTA: '30' })).toThrow(
+      'Screenshot recognition is configured but STOCKUP_RECOGNITION_PROVIDER, STOCKUP_RECOGNITION_API_KEY not set',
+    );
+  });
+
+  test('requires a monthly quota with a provider', () => {
+    expect(() =>
+      loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: 'openai', STOCKUP_RECOGNITION_API_KEY: 'key' }),
+    ).toThrow('Screenshot recognition is configured but STOCKUP_RECOGNITION_MONTHLY_QUOTA not set');
+  });
+
+  test('takes a quota of 0 as offering no recognition on the provider', () => {
+    expect(
+      loadConfig({
+        ...required,
+        STOCKUP_RECOGNITION_PROVIDER: 'openai',
+        STOCKUP_RECOGNITION_API_KEY: 'key',
+        STOCKUP_RECOGNITION_MONTHLY_QUOTA: '0',
+      }).recognition?.monthlyQuota,
+    ).toBe(0);
+  });
+
+  test('rejects a quota that is not a whole number', () => {
+    for (const quota of ['-1', '1.5', 'many']) {
+      expect(() =>
+        loadConfig({
+          ...required,
+          STOCKUP_RECOGNITION_PROVIDER: 'openai',
+          STOCKUP_RECOGNITION_API_KEY: 'key',
+          STOCKUP_RECOGNITION_MONTHLY_QUOTA: quota,
+        }),
+      ).toThrow('STOCKUP_RECOGNITION_MONTHLY_QUOTA');
+    }
   });
 
   test('rejects a provider other than Anthropic or OpenAI', () => {
     expect(() =>
-      loadConfig({ ...required, STOCKUP_RECOGNITION_PROVIDER: 'gemini', STOCKUP_RECOGNITION_API_KEY: 'key' }),
+      loadConfig({ ...recognition, STOCKUP_RECOGNITION_PROVIDER: 'gemini', STOCKUP_RECOGNITION_API_KEY: 'key' }),
     ).toThrow('STOCKUP_RECOGNITION_PROVIDER');
   });
 
@@ -119,7 +165,7 @@ describe('loadConfig', () => {
     for (const baseURL of ['openrouter.ai/api/v1', 'ftp://openrouter.ai']) {
       expect(() =>
         loadConfig({
-          ...required,
+          ...recognition,
           STOCKUP_RECOGNITION_PROVIDER: 'openai',
           STOCKUP_RECOGNITION_API_KEY: 'key',
           STOCKUP_RECOGNITION_BASE_URL: baseURL,
@@ -333,7 +379,7 @@ describe('bootstrap', () => {
       evidenceDir,
       webDir: undefined,
       clientIpHeader: undefined,
-      recognizer: undefined,
+      recognition: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -360,7 +406,7 @@ describe('bootstrap', () => {
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
       clientIpHeader: undefined,
-      recognizer: undefined,
+      recognition: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -368,7 +414,10 @@ describe('bootstrap', () => {
     };
     const without = await bootstrap(config);
     cleanups.push(without.close);
-    const configured = await bootstrap({ ...config, recognizer: { provider: 'openai', apiKey: 'sk-test' } });
+    const configured = await bootstrap({
+      ...config,
+      recognition: { recognizer: { provider: 'openai', apiKey: 'sk-test' }, monthlyQuota: 20 },
+    });
     cleanups.push(configured.close);
 
     const username = `member_${crypto.randomUUID().slice(0, 8)}`;
@@ -383,11 +432,12 @@ describe('bootstrap', () => {
     );
     const cookie = sessionCookie(signedIn);
 
-    expect(await (await without.app.request('/api/recognizer', { headers: { cookie } })).json()).toEqual({
+    expect(await (await without.app.request('/api/recognizer', { headers: { cookie } })).json()).toMatchObject({
       available: false,
     });
-    expect(await (await configured.app.request('/api/recognizer', { headers: { cookie } })).json()).toEqual({
+    expect(await (await configured.app.request('/api/recognizer', { headers: { cookie } })).json()).toMatchObject({
       available: true,
+      quota: { monthly: 20 },
     });
   });
 
@@ -400,7 +450,7 @@ describe('bootstrap', () => {
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
       clientIpHeader: undefined,
-      recognizer: instanceRecognizer,
+      recognition: instanceRecognition,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -482,7 +532,7 @@ describe('bootstrap', () => {
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
       clientIpHeader: undefined,
-      recognizer: undefined,
+      recognition: undefined,
       s3: undefined,
       signup: 'closed' as const,
       smtp: undefined,
@@ -507,7 +557,7 @@ describe('bootstrap', () => {
       evidenceDir,
       webDir: undefined,
       clientIpHeader: undefined,
-      recognizer: undefined,
+      recognition: undefined,
       s3: testS3Config(),
       signup: 'closed' as const,
       smtp: undefined,
@@ -587,7 +637,7 @@ describe('bootstrap', () => {
       evidenceDir: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
       webDir: undefined,
       clientIpHeader: undefined,
-      recognizer: undefined,
+      recognition: undefined,
       s3: testS3Config({ bucket: `stockup-missing-${crypto.randomUUID().slice(0, 8)}` }),
       signup: 'closed' as const,
       smtp: undefined,

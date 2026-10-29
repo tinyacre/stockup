@@ -283,7 +283,12 @@ export const evidence = pgTable(
 );
 
 export const recognitionStatuses = ['pending', 'succeeded', 'failed'] as const;
-export const recognitionErrors = ['recognition_unavailable', 'recognition_failed', 'recognition_interrupted'] as const;
+export const recognitionErrors = [
+  'recognition_unavailable',
+  'recognition_quota_exhausted',
+  'recognition_failed',
+  'recognition_interrupted',
+] as const;
 
 // A member's request to read a screenshot into Recognition Drafts. The screenshot sits in the evidence
 // store under the row's id.

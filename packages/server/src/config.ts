@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { InstanceRecognition } from './recognition-access';
 import { recognitionProviders, type RecognitionProvider, type RecognizerConfig } from './recognizer';
 
 export interface Config {
@@ -10,8 +11,8 @@ export interface Config {
   webDir: string | undefined;
   // Set only when a proxy in front of the server overwrites this header with the client address.
   clientIpHeader: string | undefined;
-  // The instance's own recognition provider; screenshot recognition is unavailable without one.
-  recognizer: RecognizerConfig | undefined;
+  // The instance's own recognition provider and monthly quota; screenshot recognition is unavailable without one.
+  recognition: InstanceRecognition | undefined;
   // Evidence lives in the local directory without one.
   s3: S3Config | undefined;
   signup: 'open' | 'closed';
@@ -154,16 +155,27 @@ function loadSmtpConfig(env: Env): SmtpConfig | undefined {
   };
 }
 
-const recognizerVars = [
+const recognitionVars = [
   'STOCKUP_RECOGNITION_PROVIDER',
   'STOCKUP_RECOGNITION_API_KEY',
   'STOCKUP_RECOGNITION_BASE_URL',
   'STOCKUP_RECOGNITION_MODEL',
+  'STOCKUP_RECOGNITION_MONTHLY_QUOTA',
 ];
 
-function loadRecognizerConfig(env: Env): RecognizerConfig | undefined {
-  if (missingVars(env, recognizerVars).length === recognizerVars.length) return undefined;
-  const missing = missingVars(env, ['STOCKUP_RECOGNITION_PROVIDER', 'STOCKUP_RECOGNITION_API_KEY']);
+// The quota caps what the instance's key spends, so a provider is never configured without one. A quota of 0 on
+// its own offers no instance recognition, the same as leaving every variable empty.
+function loadInstanceRecognition(env: Env): InstanceRecognition | undefined {
+  const quota = env.STOCKUP_RECOGNITION_MONTHLY_QUOTA;
+  const set = recognitionVars.filter(
+    (name) => env[name] && !(name === 'STOCKUP_RECOGNITION_MONTHLY_QUOTA' && quota === '0'),
+  );
+  if (set.length === 0) return undefined;
+  const missing = missingVars(env, [
+    'STOCKUP_RECOGNITION_PROVIDER',
+    'STOCKUP_RECOGNITION_API_KEY',
+    'STOCKUP_RECOGNITION_MONTHLY_QUOTA',
+  ]);
   if (missing.length > 0) throw new Error(`Screenshot recognition is configured but ${missing.join(', ')} not set`);
 
   const provider = env.STOCKUP_RECOGNITION_PROVIDER!.toLowerCase();
@@ -178,12 +190,18 @@ function loadRecognizerConfig(env: Env): RecognizerConfig | undefined {
     throw new Error(`STOCKUP_RECOGNITION_BASE_URL must be an http(s) URL, got "${baseURL}"`);
   }
 
-  return {
+  const monthlyQuota = Number(quota);
+  if (!/^\d+$/.test(quota!) || !Number.isSafeInteger(monthlyQuota)) {
+    throw new Error(`STOCKUP_RECOGNITION_MONTHLY_QUOTA must be a whole number of recognitions, got "${quota}"`);
+  }
+
+  const recognizer: RecognizerConfig = {
     provider: provider as RecognitionProvider,
     apiKey: env.STOCKUP_RECOGNITION_API_KEY!,
     ...(baseURL && { baseURL }),
     ...(env.STOCKUP_RECOGNITION_MODEL && { model: env.STOCKUP_RECOGNITION_MODEL }),
   };
+  return { recognizer, monthlyQuota };
 }
 
 const turnstileVars = ['STOCKUP_TURNSTILE_SITE_KEY', 'STOCKUP_TURNSTILE_SECRET_KEY'];
@@ -240,7 +258,7 @@ export function loadConfig(env: Env): Config {
     evidenceDir: path.resolve(env.STOCKUP_EVIDENCE_DIR || 'data/evidence'),
     webDir: env.STOCKUP_WEB_DIR ? path.resolve(env.STOCKUP_WEB_DIR) : undefined,
     clientIpHeader: env.STOCKUP_CLIENT_IP_HEADER?.toLowerCase() || undefined,
-    recognizer: loadRecognizerConfig(env),
+    recognition: loadInstanceRecognition(env),
     s3: loadS3Config(env),
     signup: loadSignup(env, smtp),
     smtp,
