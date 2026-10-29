@@ -140,8 +140,8 @@ describe('loadConfig', () => {
         STOCKUP_RECOGNITION_PROVIDER: 'openai',
         STOCKUP_RECOGNITION_API_KEY: 'key',
         STOCKUP_RECOGNITION_MONTHLY_QUOTA: '0',
-      }).recognition?.monthlyQuota,
-    ).toBe(0);
+      }).recognition,
+    ).toBeUndefined();
   });
 
   test('rejects a quota that is not a whole number', () => {

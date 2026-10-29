@@ -39,9 +39,6 @@ export interface RecognizerConfig {
   apiKey: string;
   baseURL?: string;
   model?: string;
-  // Set for a household's own configuration, which the server calls only at public https addresses; the instance's
-  // comes from its operator and may point anywhere, such as a gateway on the local network.
-  publicEndpointOnly?: boolean;
 }
 
 // Why a provider turned a configuration down: the key, the model, the connection, an endpoint the server may not
@@ -62,16 +59,11 @@ export type RecognizerValidation = { ok: true } | { ok: false; problem: Recogniz
 // for a household's own key this means the key no longer works.
 export class RecognizerCallError extends Error {
   override name = 'RecognizerCallError';
-  constructor(
-    readonly problem: RecognizerProblem,
-    message: string,
-  ) {
-    super(message);
-  }
 }
 
-// Builds recognizers from a configuration, the instance's or a household's, and checks one against its provider
-// before it is relied on.
+// Builds recognizers from a configuration and checks one against its provider before it is relied on. The instance
+// and households each get a factory of their own, since households' providers are called only at public https
+// addresses while the instance's operator may point it anywhere, such as a gateway on the local network.
 export interface RecognizerFactory {
   create(config: RecognizerConfig): ScreenshotRecognizer;
   validate(config: RecognizerConfig): Promise<RecognizerValidation>;

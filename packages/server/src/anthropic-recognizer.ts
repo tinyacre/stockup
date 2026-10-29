@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import { answerFormat, instructions, readAnswer, request } from './recognition-answer';
+import { answerFormat, instructions, probeImage, probeRequest, readAnswer, request } from './recognition-answer';
 import type { RecognitionResult, Screenshot, ScreenshotRecognizer } from './recognizer';
 
 export function anthropicRecognizer(client: Anthropic, model: string): ScreenshotRecognizer {
@@ -34,4 +34,21 @@ export function anthropicRecognizer(client: Anthropic, model: string): Screensho
       return readAnswer(response.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join(''));
     },
   };
+}
+
+// Only whether the call succeeds matters, so the answer is kept short.
+export async function probeAnthropic(client: Anthropic, model: string) {
+  await client.messages.create({
+    model,
+    max_tokens: 16,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: probeImage } },
+          { type: 'text', text: probeRequest },
+        ],
+      },
+    ],
+  });
 }

@@ -30,8 +30,12 @@ export class CredentialRejectedError extends Error {
   }
 }
 
-// A credential sealed with another encryption key than the server now has, so the key cannot be read back.
-export const unreadable = Symbol('unreadable');
+// The household's credential, and the configuration to recognize with: null when the key was sealed with another
+// encryption key than the server now has, so it cannot be read back.
+export interface StoredCredential {
+  summary: CredentialSummary;
+  config: RecognizerConfig | null;
+}
 
 function configOf({ provider, apiKey, baseURL, model }: CredentialInput): RecognizerConfig {
   return {
@@ -39,58 +43,40 @@ function configOf({ provider, apiKey, baseURL, model }: CredentialInput): Recogn
     apiKey,
     ...(baseURL !== null && { baseURL }),
     ...(model !== null && { model }),
-    publicEndpointOnly: true,
   };
 }
 
+const summaryColumns = {
+  provider: householdRecognitionCredential.provider,
+  baseURL: householdRecognitionCredential.baseUrl,
+  model: householdRecognitionCredential.model,
+  apiKeyLastFour: householdRecognitionCredential.apiKeyLastFour,
+  updatedAt: householdRecognitionCredential.updatedAt,
+};
+
+// Requires the factory households' recognitions use, so a configuration is checked the way it will be called.
 export function householdCredentials(db: Database, box: SecretBox, recognizers: RecognizerFactory) {
-  async function load(householdId: string) {
-    const [found] = await db
-      .select({
-        sealedApiKey: householdRecognitionCredential.sealedApiKey,
-        provider: householdRecognitionCredential.provider,
-        baseURL: householdRecognitionCredential.baseUrl,
-        model: householdRecognitionCredential.model,
-        apiKeyLastFour: householdRecognitionCredential.apiKeyLastFour,
-        updatedAt: householdRecognitionCredential.updatedAt,
-        updatedById: user.id,
-        updatedByName: user.name,
-      })
-      .from(householdRecognitionCredential)
-      .leftJoin(user, eq(user.id, householdRecognitionCredential.updatedBy))
-      .where(eq(householdRecognitionCredential.householdId, householdId));
-    if (!found) return null;
-    const { sealedApiKey, updatedById, updatedByName, ...rest } = found;
-    const summary: CredentialSummary = {
-      ...rest,
-      updatedBy: updatedById ? { id: updatedById, name: updatedByName! } : null,
-    };
-    return { summary, sealedApiKey };
-  }
-
   return {
-    // The household's credential and whether the server can still use it; null when it has none. Opening the key
-    // is the only way to tell: authenticated encryption reveals a key sealed with another encryption key only by
-    // failing to open it.
-    async find(householdId: string): Promise<{ summary: CredentialSummary; readable: boolean } | null> {
-      const found = await load(householdId);
-      if (!found) return null;
-      return { summary: found.summary, readable: box.open(found.sealedApiKey, householdId) !== null };
-    },
-
-    // The configuration to recognize with, or `unreadable` when it was sealed with another encryption key.
-    async config(
-      tx: Database | Transaction,
-      householdId: string,
-    ): Promise<RecognizerConfig | typeof unreadable | null> {
+    // Null when the household has none. Opening the key is the only way to tell whether the server can still use
+    // it: authenticated encryption reveals a key sealed with another encryption key only by failing to open it.
+    async find(tx: Database | Transaction, householdId: string): Promise<StoredCredential | null> {
       const [found] = await tx
-        .select()
+        .select({
+          ...summaryColumns,
+          sealedApiKey: householdRecognitionCredential.sealedApiKey,
+          updatedById: user.id,
+          updatedByName: user.name,
+        })
         .from(householdRecognitionCredential)
+        .leftJoin(user, eq(user.id, householdRecognitionCredential.updatedBy))
         .where(eq(householdRecognitionCredential.householdId, householdId));
       if (!found) return null;
-      const apiKey = box.open(found.sealedApiKey, householdId);
-      if (apiKey === null) return unreadable;
-      return configOf({ provider: found.provider, apiKey, baseURL: found.baseUrl, model: found.model });
+      const { sealedApiKey, updatedById, updatedByName, ...summary } = found;
+      const apiKey = box.open(sealedApiKey, householdId);
+      return {
+        summary: { ...summary, updatedBy: updatedById ? { id: updatedById, name: updatedByName! } : null },
+        config: apiKey === null ? null : configOf({ ...summary, apiKey }),
+      };
     },
 
     // Calls the provider with the configuration first, so a key that does not work is never saved.
@@ -111,11 +97,12 @@ export function householdCredentials(db: Database, box: SecretBox, recognizers: 
         updatedAt: new Date(),
         updatedBy: scope.userId,
       };
-      await db
+      const [saved] = await db
         .insert(householdRecognitionCredential)
         .values({ householdId: scope.householdId, ...values })
-        .onConflictDoUpdate({ target: householdRecognitionCredential.householdId, set: values });
-      return (await load(scope.householdId))!.summary;
+        .onConflictDoUpdate({ target: householdRecognitionCredential.householdId, set: values })
+        .returning(summaryColumns);
+      return { ...saved!, updatedBy: { id: scope.userId, name: scope.name } };
     },
 
     async remove(scope: CurrentMember) {

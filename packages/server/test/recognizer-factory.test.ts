@@ -141,7 +141,6 @@ describe('providerRecognizers', () => {
         .recognize(screenshot)
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(RecognizerCallError);
-      expect(error).toMatchObject({ problem: 'authentication_failed' });
     });
 
     test('reports an answer it cannot read as an ordinary error', async () => {

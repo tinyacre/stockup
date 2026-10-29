@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { sql } from 'drizzle-orm';
 import { createApp } from '../src/app';
+import { publicOnly, type Fetch, type ResolveHost } from '../src/public-endpoint';
 import { RecognizerCallError, type RecognizerConfig } from '../src/recognizer';
 import { providerRecognizers } from '../src/recognizer-factory';
 import { fakeRecognizer, fakeRecognizerFactory, fixedRecognition, instanceRecognizer } from './support/fake-recognizer';
@@ -13,30 +14,7 @@ import {
   type SignedInMember,
   type TestContext,
 } from './support/harness';
-
-interface Credential {
-  provider: 'anthropic' | 'openai';
-  baseURL: string | null;
-  model: string | null;
-  apiKeyLastFour: string;
-  updatedAt: string;
-  updatedBy: { id: string; name: string } | null;
-}
-
-interface RecognitionStatus {
-  available: boolean;
-  source: 'household' | 'instance' | null;
-  quota: { monthly: number; used: number; resetsOn: string } | null;
-  householdAdmin: boolean;
-  householdCredentials: boolean;
-  credential: Credential | null;
-}
-
-interface Recognition {
-  id: string;
-  status: 'pending' | 'succeeded' | 'failed';
-  error: string | null;
-}
+import { recognize, startRecognition, statusOf, type RecognitionCredential } from './support/recognitions';
 
 const encryptionKey = Buffer.alloc(32, 1);
 const householdKey = 'sk-household-0123456789-wxyz';
@@ -46,8 +24,6 @@ const openRouter = {
   baseURL: 'https://openrouter.ai/api/v1',
   model: 'google/gemini-3-flash',
 } as const;
-// Households' configurations are called only at public addresses, which the instance's need not be.
-const openRouterConfig: RecognizerConfig = { ...openRouter, publicEndpointOnly: true };
 
 function saveCredential(m: SignedInMember, body: object = openRouter) {
   return m.request('/api/household/recognition-credential', jsonRequest('PUT', body));
@@ -55,32 +31,6 @@ function saveCredential(m: SignedInMember, body: object = openRouter) {
 
 function deleteCredential(m: SignedInMember) {
   return m.request('/api/household/recognition-credential', { method: 'DELETE' });
-}
-
-async function statusOf(m: SignedInMember) {
-  const res = await m.request('/api/recognizer');
-  expect(res.status).toBe(200);
-  return (await res.json()) as RecognitionStatus;
-}
-
-const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-
-async function upload(m: SignedInMember) {
-  const form = new FormData();
-  form.append('file', new File([new Uint8Array(pngSignature)], 'order.png', { type: 'image/png' }));
-  const res = await m.request('/api/recognitions', { method: 'POST', body: form });
-  expect(res.status).toBe(201);
-  return (await res.json()) as Recognition;
-}
-
-async function recognize(m: SignedInMember) {
-  const { id } = await upload(m);
-  for (let i = 0; i < 200; i++) {
-    const recognition = (await (await m.request(`/api/recognitions/${id}`)).json()) as Recognition;
-    if (recognition.status !== 'pending') return recognition;
-    await Bun.sleep(10);
-  }
-  throw new Error(`recognition ${id} is still pending`);
 }
 
 // Gives the instance's configuration and households' configurations recognizers of their own, so a test can tell
@@ -113,7 +63,7 @@ describe("a household's own recognition credential", () => {
     const admin = await signUpHousehold(ctx);
     const res = await saveCredential(admin);
     expect(res.status).toBe(200);
-    const saved = (await res.json()) as Credential;
+    const saved = (await res.json()) as RecognitionCredential;
     expect(saved).toEqual({
       provider: 'openai',
       baseURL: 'https://openrouter.ai/api/v1',
@@ -122,7 +72,7 @@ describe("a household's own recognition credential", () => {
       updatedAt: expect.any(String),
       updatedBy: { id: admin.userId, name: admin.name },
     });
-    expect(recognizers.validated.at(-1)).toEqual(openRouterConfig);
+    expect(recognizers.validated.at(-1)).toEqual(openRouter);
 
     const status = await statusOf(admin);
     expect(status).toEqual({
@@ -160,11 +110,7 @@ describe("a household's own recognition credential", () => {
       model: null,
       apiKeyLastFour: '1234',
     });
-    expect(recognizers.validated.at(-1)).toEqual({
-      provider: 'anthropic',
-      apiKey: 'sk-ant-own-1234',
-      publicEndpointOnly: true,
-    });
+    expect(recognizers.validated.at(-1)).toEqual({ provider: 'anthropic', apiKey: 'sk-ant-own-1234' });
   });
 
   test("is refused with the kind of reason, not the provider's words, when the provider turns it down", async () => {
@@ -226,7 +172,7 @@ describe("a household's own recognition credential", () => {
     expect((await recognize(admin)).status).toBe('succeeded');
     expect((await recognize(housemate)).status).toBe('succeeded');
     expect(household.screenshots).toHaveLength(seen + 2);
-    expect(recognizers.created.at(-1)).toEqual(openRouterConfig);
+    expect(recognizers.created.at(-1)).toEqual(openRouter);
 
     expect((await deleteCredential(admin)).status).toBe(204);
     expect(await statusOf(housemate)).toMatchObject({ available: true, source: 'instance', quota: { used: 0 } });
@@ -236,7 +182,7 @@ describe("a household's own recognition credential", () => {
     const admin = await signUpHousehold(ctx);
     await saveCredential(admin);
     household.respond = async () => {
-      throw new RecognizerCallError('authentication_failed', 'invalid x-api-key');
+      throw new RecognizerCallError('invalid x-api-key');
     };
     const seen = instance.screenshots.length;
 
@@ -284,7 +230,7 @@ describe("a household's own recognition credential", () => {
     const seen = instance.screenshots.length;
 
     expect(await statusOf(restarted)).toMatchObject({ available: false, source: 'household', quota: null });
-    expect((await upload(restarted)).error).toBe('household_key_unavailable');
+    expect((await startRecognition(restarted)).error).toBe('household_key_unavailable');
     expect(instance.screenshots).toHaveLength(seen);
 
     expect((await saveCredential(restarted)).status).toBe(200);
@@ -332,18 +278,17 @@ describe("calling a household's own provider", () => {
       },
     ],
   };
+  const fetch: Fetch = async (url, init) => {
+    requests.push({ url: String(url), redirect: init?.redirect });
+    return Response.json(reply);
+  };
+  const resolve: ResolveHost = async (hostname) => {
+    const found = addresses.get(hostname);
+    if (!found) throw new Error(`getaddrinfo ENOTFOUND ${hostname}`);
+    return found;
+  };
   const ctx = useTestApp({
-    recognizers: providerRecognizers({
-      fetch: async (url, init) => {
-        requests.push({ url: String(url), redirect: init?.redirect });
-        return Response.json(reply);
-      },
-      resolve: async (hostname) => {
-        const found = addresses.get(hostname);
-        if (!found) throw new Error(`getaddrinfo ENOTFOUND ${hostname}`);
-        return found;
-      },
-    }),
+    householdRecognizers: providerRecognizers({ fetch: publicOnly(fetch, resolve) }),
     instanceRecognition: { recognizer: instanceRecognizer, monthlyQuota: 1 },
     encryptionKey,
   });

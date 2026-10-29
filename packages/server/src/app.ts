@@ -9,6 +9,7 @@ import type { EvidenceStore } from './evidence-store';
 import type { Mailer } from './mailer';
 import { householdCredentials } from './household-credentials';
 import { mcpRoutes } from './mcp';
+import { publicOnly } from './public-endpoint';
 import { recognitionAccess, type InstanceRecognition } from './recognition-access';
 import type { RecognizerFactory } from './recognizer';
 import { providerRecognizers } from './recognizer-factory';
@@ -38,8 +39,11 @@ export interface AppOptions {
   db: Database;
   auth: Auth;
   evidence: EvidenceStore;
-  // Turns recognizer configurations into recognizers; the real providers unless replaced.
+  // Turn recognizer configurations into recognizers, the real providers unless replaced: the instance's, called
+  // wherever its operator points it, and households', called only at public https addresses. A replacement for
+  // `recognizers` serves households too unless `householdRecognizers` replaces theirs.
   recognizers?: RecognizerFactory;
+  householdRecognizers?: RecognizerFactory;
   // The instance's own provider and how many recognitions it gives each household a month; recognition is
   // unavailable without one.
   instanceRecognition?: InstanceRecognition;
@@ -60,7 +64,8 @@ export function createApp({
   db,
   auth,
   evidence,
-  recognizers = providerRecognizers(),
+  recognizers,
+  householdRecognizers = recognizers ?? providerRecognizers({ fetch: publicOnly(globalThis.fetch) }),
   instanceRecognition,
   encryptionKey,
   webDir,
@@ -70,8 +75,11 @@ export function createApp({
   clientIpHeader,
 }: AppOptions) {
   if (signupOpen && !mailer) throw new Error('Open signup requires a mailer');
-  const credentials = encryptionKey && householdCredentials(db, secretBox(encryptionKey), recognizers);
-  const recognition = recognitionAccess(recognizers, instanceRecognition, credentials);
+  const credentials = encryptionKey && householdCredentials(db, secretBox(encryptionKey), householdRecognizers);
+  const recognition = recognitionAccess(
+    { recognizers: recognizers ?? providerRecognizers(), recognition: instanceRecognition },
+    { recognizers: householdRecognizers, credentials },
+  );
   const codes = mailer && createEmailCodes({ db, mailer, secret: auth.options.secret! });
 
   const app = new OpenAPIHono();

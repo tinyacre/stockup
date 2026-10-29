@@ -43,6 +43,12 @@ Leave out shipping fees, and leave out lines that are not goods.`;
 
 export const request = 'Transcribe the goods in this screenshot.';
 
+// What a configuration is checked with before it is relied on: an 8×8 red PNG, so a model that cannot read images
+// fails the check rather than the first screenshot.
+export const probeImage =
+  'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mO4oKCAFTEMLQkAvk5EAYUHFA8AAAAASUVORK5CYII=';
+export const probeRequest = 'What colour is this image? Answer in one word.';
+
 function cents(amount: number) {
   return Math.round(amount * 100);
 }

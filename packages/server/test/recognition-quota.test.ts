@@ -1,59 +1,8 @@
 import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
+import { localDate } from '@stockup/domain';
 import { fakeRecognizerFactory, fixedRecognition, instanceRecognizer } from './support/fake-recognizer';
-import { joinHousehold, signUpHousehold, useTestApp, type SignedInMember } from './support/harness';
-
-interface RecognitionStatus {
-  available: boolean;
-  source: 'household' | 'instance' | null;
-  quota: { monthly: number; used: number; resetsOn: string } | null;
-  householdAdmin: boolean;
-  householdCredentials: boolean;
-  credential: null;
-}
-
-interface Recognition {
-  id: string;
-  status: 'pending' | 'succeeded' | 'failed';
-  error: string | null;
-}
-
-const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-
-function screenshot(...rest: number[]) {
-  return new Uint8Array([...pngSignature, ...rest]);
-}
-
-async function upload(m: SignedInMember, bytes = screenshot()) {
-  const form = new FormData();
-  form.append('file', new File([bytes], 'order.png', { type: 'image/png' }));
-  const res = await m.request('/api/recognitions', { method: 'POST', body: form });
-  expect(res.status).toBe(201);
-  return (await res.json()) as Recognition;
-}
-
-async function finished(m: SignedInMember, id: string) {
-  for (let i = 0; i < 200; i++) {
-    const recognition = (await (await m.request(`/api/recognitions/${id}`)).json()) as Recognition;
-    if (recognition.status !== 'pending') return recognition;
-    await Bun.sleep(10);
-  }
-  throw new Error(`recognition ${id} is still pending`);
-}
-
-async function recognize(m: SignedInMember) {
-  return finished(m, (await upload(m)).id);
-}
-
-async function statusOf(m: SignedInMember) {
-  const res = await m.request('/api/recognizer');
-  expect(res.status).toBe(200);
-  return (await res.json()) as RecognitionStatus;
-}
-
-function localDate(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
+import { joinHousehold, signUpHousehold, useTestApp } from './support/harness';
+import { finished, recognize, screenshot, startRecognition, statusOf } from './support/recognitions';
 
 function monthStart(offset: number) {
   const now = new Date();
@@ -115,7 +64,7 @@ describe('the monthly recognition quota', () => {
     const m = await signUpHousehold(ctx);
     let answer!: () => void;
     recognizer.respond = () => new Promise((resolve) => (answer = () => resolve(fixedRecognition)));
-    const running = await upload(m);
+    const running = await startRecognition(m);
     expect((await statusOf(m)).quota).toMatchObject({ used: 1 });
 
     answer();
@@ -131,7 +80,7 @@ describe('the monthly recognition quota', () => {
 
     const seen = recognizer.screenshots.length;
     const bytes = screenshot(9);
-    const refused = await upload(m, bytes);
+    const refused = await startRecognition(m, bytes);
     expect(refused).toMatchObject({ status: 'failed', error: 'recognition_quota_exhausted' });
     expect(recognizer.screenshots).toHaveLength(seen);
     const kept = await m.request(`/api/recognitions/${refused.id}/screenshot`);
@@ -156,7 +105,7 @@ describe('the monthly recognition quota', () => {
     await recognize(housemate);
 
     expect(await statusOf(housemate)).toMatchObject({ available: false, quota: { used: 2 }, householdAdmin: false });
-    expect((await upload(housemate)).error).toBe('recognition_quota_exhausted');
+    expect((await startRecognition(housemate)).error).toBe('recognition_quota_exhausted');
   });
 
   test('starts over on the first of the month', async () => {
@@ -176,24 +125,5 @@ describe('the monthly recognition quota', () => {
       quota: { used: 0, resetsOn: localDate(monthStart(1)) },
     });
     expect((await recognize(m)).status).toBe('succeeded');
-  });
-});
-
-describe('a monthly quota of 0', () => {
-  const recognizers = fakeRecognizerFactory();
-  const ctx = useTestApp({ recognizers, instanceRecognition: { recognizer: instanceRecognizer, monthlyQuota: 0 } });
-
-  test('offers no recognition on the instance provider', async () => {
-    const m = await signUpHousehold(ctx);
-    expect(await statusOf(m)).toEqual({
-      available: false,
-      source: null,
-      quota: null,
-      householdAdmin: true,
-      householdCredentials: false,
-      credential: null,
-    });
-    expect((await upload(m)).error).toBe('recognition_unavailable');
-    expect(recognizers.recognizer.screenshots).toHaveLength(0);
   });
 });

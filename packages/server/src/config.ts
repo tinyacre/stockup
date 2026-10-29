@@ -59,6 +59,10 @@ function missingVars(env: Env, names: string[]): string[] {
   return names.filter((name) => !env[name]);
 }
 
+function isHttpUrl(value: string) {
+  return URL.canParse(value) && ['http:', 'https:'].includes(new URL(value).protocol);
+}
+
 const s3Vars = [
   'STOCKUP_S3_ENDPOINT',
   'STOCKUP_S3_REGION',
@@ -79,17 +83,9 @@ function loadS3Config(env: Env): S3Config | undefined {
   if (missing.length > 0) throw new Error(`S3 evidence storage is configured but ${missing.join(', ')} not set`);
 
   const endpoint = env.STOCKUP_S3_ENDPOINT!;
-  const url = URL.canParse(endpoint) ? new URL(endpoint) : undefined;
+  const url = isHttpUrl(endpoint) ? new URL(endpoint) : undefined;
   // The client appends the bucket and key to the endpoint, so anything beyond the origin would be lost or misread.
-  if (
-    !url ||
-    !['http:', 'https:'].includes(url.protocol) ||
-    url.username ||
-    url.password ||
-    url.pathname !== '/' ||
-    url.search ||
-    url.hash
-  ) {
+  if (!url || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
     throw new Error(`STOCKUP_S3_ENDPOINT must be http(s)://host[:port] with no path, got "${endpoint}"`);
   }
 
@@ -166,14 +162,13 @@ const recognitionVars = [
   'STOCKUP_RECOGNITION_MONTHLY_QUOTA',
 ];
 
-// The quota caps what the instance's key spends, so a provider is never configured without one. A quota of 0 on
-// its own offers no instance recognition, the same as leaving every variable empty.
+// The quota caps what the instance's key spends, so a provider is never configured without one, and a quota of 0
+// offers no instance recognition whatever else is set.
 function loadInstanceRecognition(env: Env): InstanceRecognition | undefined {
   const quota = env.STOCKUP_RECOGNITION_MONTHLY_QUOTA;
-  const set = recognitionVars.filter(
-    (name) => env[name] && !(name === 'STOCKUP_RECOGNITION_MONTHLY_QUOTA' && quota === '0'),
-  );
-  if (set.length === 0) return undefined;
+  if (missingVars(env, recognitionVars).length === recognitionVars.length || /^0+$/.test(quota ?? '')) {
+    return undefined;
+  }
   const missing = missingVars(env, [
     'STOCKUP_RECOGNITION_PROVIDER',
     'STOCKUP_RECOGNITION_API_KEY',
@@ -189,7 +184,7 @@ function loadInstanceRecognition(env: Env): InstanceRecognition | undefined {
   }
 
   const baseURL = env.STOCKUP_RECOGNITION_BASE_URL;
-  if (baseURL && !(URL.canParse(baseURL) && ['http:', 'https:'].includes(new URL(baseURL).protocol))) {
+  if (baseURL && !isHttpUrl(baseURL)) {
     throw new Error(`STOCKUP_RECOGNITION_BASE_URL must be an http(s) URL, got "${baseURL}"`);
   }
 
