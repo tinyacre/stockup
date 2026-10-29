@@ -42,7 +42,12 @@ export function fakeRecognizer(): FakeRecognizer {
   return fake;
 }
 
-export const instanceRecognizer: RecognizerConfig = { provider: 'anthropic', apiKey: 'sk-ant-instance' };
+export const instanceRecognizer: RecognizerConfig = {
+  provider: 'anthropic',
+  apiKey: 'sk-ant-instance',
+  baseURL: null,
+  model: null,
+};
 
 // More than any test uses up, for tests about something other than the quota.
 export const instanceRecognition: InstanceRecognition = { recognizer: instanceRecognizer, monthlyQuota: 1000 };

@@ -32,13 +32,13 @@ export interface ScreenshotRecognizer {
 export const recognitionProviders = ['anthropic', 'openai'] as const;
 export type RecognitionProvider = (typeof recognitionProviders)[number];
 
-// Which provider to call and how; the provider's default model stands in for a missing one. An OpenAI base URL
+// Which provider to call and how; null stands for the provider's own endpoint and default model. An OpenAI base URL
 // points the recognizer at any service that speaks the OpenAI protocol, such as OpenRouter.
 export interface RecognizerConfig {
   provider: RecognitionProvider;
   apiKey: string;
-  baseURL?: string;
-  model?: string;
+  baseURL: string | null;
+  model: string | null;
 }
 
 // Why a provider turned a configuration down: the key, the model, the connection, an endpoint the server may not

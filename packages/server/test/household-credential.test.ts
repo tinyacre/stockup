@@ -111,7 +111,12 @@ describe("a household's own recognition credential", () => {
       model: null,
       apiKeyLastFour: '1234',
     });
-    expect(recognizers.validated.at(-1)).toEqual({ provider: 'anthropic', apiKey: 'sk-ant-own-1234' });
+    expect(recognizers.validated.at(-1)).toEqual({
+      provider: 'anthropic',
+      apiKey: 'sk-ant-own-1234',
+      baseURL: null,
+      model: null,
+    });
   });
 
   test("is refused with the kind of reason, not the provider's words, when the provider turns it down", async () => {

@@ -14,8 +14,8 @@ function fakeProviders(respond: () => Response | Promise<Response>) {
   return { recognizers: providerRecognizers({ fetch }), requests };
 }
 
-const anthropic: RecognizerConfig = { provider: 'anthropic', apiKey: 'sk-ant-test' };
-const openai: RecognizerConfig = { provider: 'openai', apiKey: 'sk-test' };
+const anthropic: RecognizerConfig = { provider: 'anthropic', apiKey: 'sk-ant-test', baseURL: null, model: null };
+const openai: RecognizerConfig = { provider: 'openai', apiKey: 'sk-test', baseURL: null, model: null };
 
 describe('providerRecognizers', () => {
   test('reads screenshots with Claude Haiku 5.5 from Anthropic unless another model is set', async () => {

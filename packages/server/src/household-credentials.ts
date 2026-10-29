@@ -15,14 +15,6 @@ export interface CredentialSummary {
   updatedBy: { id: string; name: string } | null;
 }
 
-// Null stands for the provider's own endpoint and default model.
-export interface CredentialInput {
-  provider: RecognitionProvider;
-  apiKey: string;
-  baseURL: string | null;
-  model: string | null;
-}
-
 export class CredentialRejectedError extends Error {
   override name = 'CredentialRejectedError';
   constructor(readonly problem: RecognizerProblem) {
@@ -35,15 +27,6 @@ export class CredentialRejectedError extends Error {
 export interface StoredCredential {
   summary: CredentialSummary;
   config: RecognizerConfig | null;
-}
-
-function configOf({ provider, apiKey, baseURL, model }: CredentialInput): RecognizerConfig {
-  return {
-    provider,
-    apiKey,
-    ...(baseURL !== null && { baseURL }),
-    ...(model !== null && { model }),
-  };
 }
 
 const summaryColumns = {
@@ -72,16 +55,17 @@ export function householdCredentials(db: Database, box: SecretBox, recognizers: 
         .where(eq(householdRecognitionCredential.householdId, householdId));
       if (!found) return null;
       const { sealedApiKey, updatedById, updatedByName, ...summary } = found;
+      const { provider, baseURL, model } = summary;
       const apiKey = box.open(sealedApiKey, householdId);
       return {
         summary: { ...summary, updatedBy: updatedById ? { id: updatedById, name: updatedByName! } : null },
-        config: apiKey === null ? null : configOf({ ...summary, apiKey }),
+        config: apiKey === null ? null : { provider, apiKey, baseURL, model },
       };
     },
 
     // Calls the provider with the configuration first, so a key that does not work is never saved.
-    async save(scope: CurrentMember, input: CredentialInput): Promise<CredentialSummary> {
-      const validation = await recognizers.validate(configOf(input));
+    async save(scope: CurrentMember, input: RecognizerConfig): Promise<CredentialSummary> {
+      const validation = await recognizers.validate(input);
       if (!validation.ok) {
         console.warn(
           `Household ${scope.householdId}'s ${input.provider} credential was refused (${validation.problem}): ${validation.message}`,

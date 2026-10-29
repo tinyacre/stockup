@@ -102,7 +102,10 @@ describe('loadConfig', () => {
         STOCKUP_RECOGNITION_PROVIDER: 'Anthropic',
         STOCKUP_RECOGNITION_API_KEY: 'sk-ant-test',
       }).recognition,
-    ).toEqual({ recognizer: { provider: 'anthropic', apiKey: 'sk-ant-test' }, monthlyQuota: 30 });
+    ).toEqual({
+      recognizer: { provider: 'anthropic', apiKey: 'sk-ant-test', baseURL: null, model: null },
+      monthlyQuota: 30,
+    });
   });
 
   test('leaves recognition unconfigured while every recognition variable is empty', () => {
@@ -432,7 +435,10 @@ describe('bootstrap', () => {
     cleanups.push(without.close);
     const configured = await bootstrap({
       ...config,
-      recognition: { recognizer: { provider: 'openai', apiKey: 'sk-test' }, monthlyQuota: 20 },
+      recognition: {
+        recognizer: { provider: 'openai', apiKey: 'sk-test', baseURL: null, model: null },
+        monthlyQuota: 20,
+      },
     });
     cleanups.push(configured.close);
 

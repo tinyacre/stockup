@@ -103,25 +103,21 @@ export function providerRecognizers({ fetch = globalThis.fetch }: { fetch?: Fetc
     options: typeof recognizing,
   ) {
     const provider: Provider<Clients[P]> = providers[config.provider];
-    const client = provider.client({ apiKey: config.apiKey, baseURL: config.baseURL, fetch, ...options });
-    const model = modelOf(config);
-    return {
-      errors: provider.errors,
-      recognizer: () => provider.recognizer(client, model),
-      probe: () => provider.probe(client, model),
-    };
+    // The SDKs read their base URL environment variable only when the option is undefined, not when it is null.
+    const client = provider.client({ apiKey: config.apiKey, baseURL: config.baseURL ?? undefined, fetch, ...options });
+    return { provider, client, model: modelOf(config) };
   }
 
   return {
     create(config) {
-      const provider = connect(config, recognizing);
-      return reportingCallErrors(provider.recognizer(), provider.errors);
+      const { provider, client, model } = connect(config, recognizing);
+      return reportingCallErrors(provider.recognizer(client, model), provider.errors);
     },
 
     async validate(config): Promise<RecognizerValidation> {
-      const provider = connect(config, validating);
+      const { provider, client, model } = connect(config, validating);
       try {
-        await provider.probe();
+        await provider.probe(client, model);
         return { ok: true };
       } catch (error) {
         return { ok: false, problem: problemOf(error, provider.errors), message: (error as Error).message };

@@ -196,8 +196,8 @@ function loadInstanceRecognition(env: Env): InstanceRecognition | undefined {
   const recognizer: RecognizerConfig = {
     provider: provider as RecognitionProvider,
     apiKey: env.STOCKUP_RECOGNITION_API_KEY!,
-    ...(baseURL && { baseURL }),
-    ...(env.STOCKUP_RECOGNITION_MODEL && { model: env.STOCKUP_RECOGNITION_MODEL }),
+    baseURL: baseURL || null,
+    model: env.STOCKUP_RECOGNITION_MODEL || null,
   };
   return { recognizer, monthlyQuota };
 }
