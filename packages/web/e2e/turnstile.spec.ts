@@ -67,7 +67,6 @@ test.describe('with Turnstile', () => {
     expect((await signedIn).headers()['x-turnstile-token']).toBe('e2e-token-2');
     await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible();
 
-    // Sending a code to change the email is challenged too, from the settings page.
     await page.goto('/settings');
     const panel = page.getByRole('region', { name: '邮箱' });
     await panel.getByLabel('新邮箱').fill(`${household.admin.username}@example.com`);

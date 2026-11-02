@@ -104,7 +104,6 @@ async function productNames(m: SignedInMember, query = '') {
   return products.map((p) => p.name);
 }
 
-// A household with a cat food priced per 500 g that has two price records, one entered in pounds.
 async function seed(m: SignedInMember) {
   const category = await createCategory(m);
   const channel = await createChannel(m);

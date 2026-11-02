@@ -33,7 +33,6 @@ test('a member builds and browses the catalog', async ({ page, household }) => {
   await page.reload();
   await expect(page.getByRole('heading', { name: categoryName })).toBeVisible();
 
-  // A product is edited on its own page.
   await product.getByRole('link', { name: productName }).click();
   await page.getByRole('button', { name: '编辑', exact: true }).click();
   const editor = page.getByRole('form', { name: '编辑商品' });
@@ -43,7 +42,6 @@ test('a member builds and browses the catalog', async ({ page, household }) => {
   await expect(page.getByRole('heading', { name: `${productName} 加大` })).toBeVisible();
   await expect(page.getByText('计价单位 kg · 基准规格 10 kg')).toBeVisible();
 
-  // Groups and categories are set up on their own page.
   await createGroup(page, otherGroupName);
   const nav = page.getByRole('navigation', { name: '主导航' });
   await nav.getByRole('link', { name: '分类' }).click();

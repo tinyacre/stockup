@@ -59,7 +59,6 @@ async function catalogOf(m: SignedInMember) {
   return (await res.json()) as CategoryGroup[];
 }
 
-// A household with one category group, one category in it and one product in that.
 async function seed(m: SignedInMember) {
   const group = await created<{ id: string; name: string }>(await createGroup(m));
   const category = await created<{ id: string; name: string; categoryGroupId: string }>(
