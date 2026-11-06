@@ -1,13 +1,17 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { DrizzleQueryError, sql } from 'drizzle-orm';
+import { loadConfig } from '../src/config';
 import { errorReporter } from '../src/error-reports';
 import type { EvidenceStore } from '../src/evidence-store';
+import { bootstrap } from '../src/main';
 import { readAnswer } from '../src/recognition-answer';
 import { RecognizerCallError } from '../src/recognizer';
-import { fakeGlitchtip } from './support/fake-glitchtip';
+import { ambientSentrySink, fakeGlitchtip } from './support/fake-glitchtip';
 import { fakeRecognizerFactory, fixedRecognition, instanceRecognition } from './support/fake-recognizer';
-import { signUpHousehold, useTestApp } from './support/harness';
+import { createTestDatabase, signUpHousehold, testAuthSecret, useTestApp } from './support/harness';
 import { finished, startRecognition } from './support/recognitions';
 
 const dsn = 'https://0123abcd@errors.example.com/5';
@@ -203,6 +207,32 @@ describe('server error reports', () => {
   });
 });
 
-test('nothing is reported without a DSN', () => {
+test('nothing is reported without a DSN, even with an ambient SENTRY_DSN', async () => {
+  await using sink = ambientSentrySink();
   expect(errorReporter({ dsn: undefined, release: '1.4.0' })).toBeUndefined();
+  expect(errorReporter({ dsn: '', release: '1.4.0' })).toBeUndefined();
+  await Bun.sleep(50);
+  expect(sink.hits).toBe(0);
+});
+
+test('a server without a DSN sends nothing for a failing request, even with an ambient SENTRY_DSN', async () => {
+  await using sink = ambientSentrySink();
+  const database = await createTestDatabase({ migrated: false });
+  const { app, close } = await bootstrap(
+    loadConfig({
+      STOCKUP_DATABASE_URL: database.url,
+      STOCKUP_AUTH_SECRET: testAuthSecret,
+      STOCKUP_BASE_URL: 'http://localhost',
+      STOCKUP_EVIDENCE_DIR: path.join(mkdtempSync(path.join(tmpdir(), 'stockup-')), 'evidence'),
+    }),
+  );
+  try {
+    await database.db.execute(sql.raw('DROP TABLE "user" CASCADE'));
+    expect((await app.request('/api/setup')).status).toBe(500);
+    await Bun.sleep(100);
+    expect(sink.hits).toBe(0);
+  } finally {
+    await close();
+    await database.drop();
+  }
 });

@@ -58,6 +58,21 @@ describe('the help-improve switch', () => {
     expect(await (await other.request('/api/me')).json()).toMatchObject({ user: { telemetryEnabled: true } });
   });
 
+  test('changing the theme or name keeps the choice', async () => {
+    const member = await signUpHousehold(ctx);
+    await member.request('/api/me', jsonRequest('PATCH', { telemetryEnabled: false }));
+    await member.request('/api/me', jsonRequest('PATCH', { theme: 'price-tag', name: '新名字' }));
+    expect(await (await member.request('/api/me')).json()).toMatchObject({
+      user: { name: '新名字', theme: 'price-tag', telemetryEnabled: false },
+    });
+  });
+
+  test('Better Auth refuses to set it through its own endpoints', async () => {
+    const member = await signUpHousehold(ctx);
+    await member.request('/api/auth/update-user', jsonRequest('POST', { telemetryEnabled: false }));
+    expect(await (await member.request('/api/me')).json()).toMatchObject({ user: { telemetryEnabled: true } });
+  });
+
   test('rejects a value that is not a boolean', async () => {
     const member = await signUpHousehold(ctx);
     expect((await member.request('/api/me', jsonRequest('PATCH', { telemetryEnabled: 'no' }))).status).toBe(400);
