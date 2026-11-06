@@ -3,8 +3,58 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
+
+const env = process.env;
+
+function required(name: string) {
+  const value = env[name];
+  if (!value) throw new Error(`${name} is required when GLITCHTIP_AUTH_TOKEN is set`);
+  return value;
+}
+
+// With GLITCHTIP_AUTH_TOKEN set (the image build), the bundle gets debug ids and hidden source maps, which are
+// uploaded to GlitchTip as release STOCKUP_RELEASE and never written to dist. Without it, no source map is built.
+const uploadSourceMaps = Boolean(env.GLITCHTIP_AUTH_TOKEN);
+
+function sourceMapUpload() {
+  return sentryVitePlugin({
+    // The plugin's own usage reporting goes to sentry.io.
+    telemetry: false,
+    url: required('GLITCHTIP_URL'),
+    org: required('GLITCHTIP_ORG'),
+    project: required('GLITCHTIP_PROJECT'),
+    authToken: env.GLITCHTIP_AUTH_TOKEN,
+    // GlitchTip's API sits behind Cloudflare Access; only its ingest paths are open.
+    headers: {
+      'CF-Access-Client-Id': required('CF_ACCESS_CLIENT_ID'),
+      'CF-Access-Client-Secret': required('CF_ACCESS_CLIENT_SECRET'),
+    },
+    // The bundle names its release from /api/capabilities, which the server reads from the same STOCKUP_RELEASE.
+    release: { name: required('STOCKUP_RELEASE'), inject: false, setCommits: false, deploy: false },
+    sourcemaps: { deleteSourcemapsAfterUpload: true },
+    errorHandler: (error) => {
+      throw error;
+    },
+  });
+}
+
+const telemetryModule = /[\\/]node_modules[\\/](@tinyacre[\\/]telemetry|@sentry)[\\/]/;
 
 export default defineConfig({
+  build: {
+    sourcemap: uploadSourceMaps ? 'hidden' : false,
+    rolldownOptions: {
+      output: {
+        // Telemetry code gets a directory of its own, which the service worker leaves out of its precache, so a
+        // device that reports nothing never downloads it.
+        chunkFileNames: (chunk) =>
+          chunk.moduleIds.some((id) => telemetryModule.test(id))
+            ? 'assets/telemetry/[name]-[hash].js'
+            : 'assets/[name]-[hash].js',
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -29,6 +79,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2,svg,png}'],
+        globIgnores: ['**/node_modules/**/*', 'assets/telemetry/**'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/\.well-known\//, /^\/mcp$/],
         runtimeCaching: [
@@ -70,6 +121,7 @@ export default defineConfig({
         ],
       },
     }),
+    uploadSourceMaps && sourceMapUpload(),
   ],
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, 'src') },

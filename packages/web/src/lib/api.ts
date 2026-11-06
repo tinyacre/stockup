@@ -1,9 +1,18 @@
 import type { Discount, PromotionLowest, Size, Unit, Verdict } from '@stockup/domain';
+import type { SentryConfig, UmamiConfig } from '@tinyacre/telemetry';
 import type { Theme } from '@/lib/theme';
 
 export interface Me {
   // `email` is null until the member has a verified address.
-  user: { id: string; username: string; name: string; email: string | null; theme: Theme; isInstanceAdmin: boolean };
+  user: {
+    id: string;
+    username: string;
+    name: string;
+    email: string | null;
+    theme: Theme;
+    telemetryEnabled: boolean;
+    isInstanceAdmin: boolean;
+  };
   household: { id: string; name: string; role: string };
 }
 
@@ -323,6 +332,8 @@ export interface Capabilities {
   signup: boolean;
   email: boolean;
   turnstileSiteKey: string | null;
+  // Null when the instance collects no front-end analytics or errors.
+  telemetry: { release: string; umami: UmamiConfig; sentry: SentryConfig } | null;
 }
 
 export type EmailCodePurpose = 'register' | 'join' | 'password-reset' | 'change-email';
@@ -383,6 +394,8 @@ export const api = {
   renameHousehold: (body: { name: string }) =>
     request<{ id: string; name: string }>('/api/household', { method: 'PATCH', body }),
   setTheme: (theme: Theme) => request<Me>('/api/me', { method: 'PATCH', body: { theme } }),
+  setTelemetryEnabled: (telemetryEnabled: boolean) =>
+    request<Me>('/api/me', { method: 'PATCH', body: { telemetryEnabled } }),
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request('/api/me/password', { method: 'POST', body }),
   signOutOthers: () => request('/api/me/sign-out-others', { method: 'POST' }),

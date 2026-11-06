@@ -10,6 +10,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { api, ApiError, type Me } from '@/lib/api';
 import { NavigationProvider } from '@/lib/navigation';
 import { queryClient } from '@/lib/queries';
+import { followTelemetryChoice, reportPageview, type TelemetryChoice } from '@/lib/telemetry';
 import { applyTheme } from '@/lib/theme';
 import { CatalogPage } from '@/pages/catalog';
 import { CategoriesPage } from '@/pages/categories';
@@ -48,6 +49,14 @@ async function loadSession(): Promise<Session> {
   }
 }
 
+// A signed-in account's switch applies; with nobody signed in, the device's. An account that cannot be read, as
+// with no household or no connection, leaves telemetry held.
+function telemetryChoice(session: Session): TelemetryChoice {
+  if (session.state === 'signed-in') return { account: session.me.user.telemetryEnabled };
+  if (session.state === 'signed-out' || session.state === 'setup') return 'device';
+  return 'unknown';
+}
+
 function invitationInPath() {
   // Invitation IDs are UUIDs, so the path segment needs no decoding.
   return /^\/join\/([^/]+)$/.exec(window.location.pathname)?.[1];
@@ -74,14 +83,15 @@ function Session() {
   // An invitee who already has an account signs in before using the invitation with it.
   const [signingInToJoin, setSigningInToJoin] = useState(false);
   // Cached household data belongs to whoever was signed in when it was read.
-  const refresh = useCallback(
-    () =>
-      loadSession().then((next) => {
-        if (next.state !== 'signed-in') queryClient.clear();
-        setSession(next);
-      }),
-    [],
-  );
+  // A refresh may find another account signed in, whose switch is not known until it loads.
+  const refresh = useCallback(() => {
+    void followTelemetryChoice('unknown');
+    return loadSession().then((next) => {
+      if (next.state !== 'signed-in') queryClient.clear();
+      setSession(next);
+      void followTelemetryChoice(telemetryChoice(next));
+    });
+  }, []);
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -206,6 +216,7 @@ function useRoute() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+  useEffect(reportPageview, [route]);
   const navigate = (path: string, state: unknown = null) => {
     if (path === window.location.pathname) return setRoute(currentRoute());
     window.history.pushState(state, '', path);

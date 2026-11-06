@@ -49,5 +49,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             STOCKUP_RELEASE=${{ steps.vars.outputs.release }}
+            GLITCHTIP_URL=${{ vars.GLITCHTIP_URL }}
+            GLITCHTIP_ORG=${{ vars.GLITCHTIP_ORG }}
+            GLITCHTIP_PROJECT=${{ vars.GLITCHTIP_PROJECT }}
+          # Upload the web bundle's source maps through Cloudflare Access, which guards GlitchTip's API.
+          secrets: |
+            glitchtip_auth_token=${{ secrets.GLITCHTIP_AUTH_TOKEN }}
+            cf_access_client_id=${{ secrets.CF_ACCESS_CLIENT_ID }}
+            cf_access_client_secret=${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

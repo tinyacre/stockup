@@ -8,7 +8,7 @@ import { List, ListCell, ListRow } from '@/components/ui/list';
 import { NativeSelect } from '@/components/ui/native-select';
 import { PageContent, PageHeader } from '@/components/ui/page';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
-import { SegmentedControl } from '@/components/ui/segmented-control';
+import { SegmentedControl, type Choice } from '@/components/ui/segmented-control';
 import { Alert, attempt, DeleteButton, describeError, ListSkeleton, RetryAlert } from '@/components/editing';
 import { codeErrors, EmailCodeField } from '@/components/email-code-field';
 import { useTurnstile } from '@/components/turnstile';
@@ -24,6 +24,7 @@ import {
 import { useCapabilities } from '@/lib/capabilities';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
 import { queries, useRefresh } from '@/lib/queries';
+import { browserRefusesTracking, followTelemetryChoice } from '@/lib/telemetry';
 import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
 
 // The header shows the display name, the shell applies the theme and the email panel shows the address,
@@ -35,6 +36,7 @@ export function SettingsPage({ me, onSessionChange }: { me: Me; onSessionChange(
     <PageContent className="grid items-stretch min-[1200px]:grid-cols-2">
       <PageHeader title="个人设置" />
       <ThemeSetting theme={me.user.theme} onChanged={onSessionChange} />
+      {capabilities?.telemetry && <TelemetrySetting enabled={me.user.telemetryEnabled} onChanged={onSessionChange} />}
       <SettingsForm
         title="显示名称"
         submitLabel="保存名称"
@@ -216,39 +218,98 @@ function RecognitionKeySetting({ credential }: { credential: RecognitionCredenti
 }
 
 function ThemeSetting({ theme, onChanged }: { theme: Theme; onChanged(): void }) {
-  const [shown, setShown] = useState(theme);
+  return (
+    <ChoiceSetting
+      title="主题"
+      options={themes.map((value) => ({ value, label: themeLabels[value] }))}
+      value={theme}
+      save={(next) => attempt(() => api.setTheme(next))}
+      onSaved={(next) => {
+        applyTheme(next);
+        onChanged();
+      }}
+    />
+  );
+}
+
+// One switch for the member, on every device; a browser that asks not to be tracked sends nothing either way.
+function TelemetrySetting({ enabled, onChanged }: { enabled: boolean; onChanged(): void }) {
+  return (
+    <ChoiceSetting
+      title="帮助改进 StockUp"
+      description="发送页面访问统计和错误报告，不含成员、家庭和价格信息"
+      options={[
+        { value: true, label: '开启' },
+        { value: false, label: '关闭' },
+      ]}
+      value={enabled}
+      save={(next) => attempt(() => api.setTelemetryEnabled(next))}
+      onSaved={async (next) => {
+        await followTelemetryChoice({ account: next });
+        onChanged();
+      }}
+    >
+      {browserRefusesTracking() && (
+        <p className="text-xs text-ink-3">此浏览器开启了「请勿追踪」，在这台设备上不会发送</p>
+      )}
+    </ChoiceSetting>
+  );
+}
+
+// A choice saved on the account before it shows as made: applying a theme, for one, writes the copy a reload paints
+// from, so it waits until the account holds the choice.
+function ChoiceSetting<T extends string | boolean>({
+  title,
+  description,
+  options,
+  value,
+  save,
+  onSaved,
+  children,
+}: {
+  title: string;
+  description?: string;
+  options: Choice<T>[];
+  value: T;
+  // Resolves to the error message when saving fails.
+  save(next: T): Promise<string | undefined>;
+  onSaved(next: T): void | Promise<void>;
+  children?: ReactNode;
+}) {
+  const [shown, setShown] = useState(value);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
 
-  // Applying a theme writes the copy a reload paints from, so it waits until the account holds the choice.
-  async function choose(next: Theme) {
+  async function choose(next: T) {
     if (saving || next === shown) return;
     setSaving(true);
     setError(undefined);
-    const message = await attempt(() => api.setTheme(next));
+    const message = await save(next);
     setSaving(false);
     if (message) {
       setError(message);
     } else {
       setShown(next);
-      applyTheme(next);
-      onChanged();
+      await onSaved(next);
     }
   }
 
   return (
     <Panel asChild>
-      <section aria-label="主题">
-        <PanelHeader title="主题" />
+      <section aria-label={title}>
+        <PanelHeader title={title}>
+          {description && <span className="text-xs text-ink-3">{description}</span>}
+        </PanelHeader>
         <PanelBody className="flex flex-col gap-3">
           <SegmentedControl
-            aria-label="主题"
+            aria-label={title}
             className="self-start"
-            options={themes.map((value) => ({ value, label: themeLabels[value] }))}
+            options={options}
             value={shown}
             onValueChange={choose}
             aria-busy={saving}
           />
+          {children}
           {error && <Alert>{error}</Alert>}
         </PanelBody>
       </section>
