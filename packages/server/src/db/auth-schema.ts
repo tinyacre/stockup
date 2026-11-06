@@ -18,6 +18,7 @@ export const user = pgTable('user', {
   displayUsername: text('display_username'),
   role: text('role').default('user').notNull(),
   theme: text('theme').default('tool').notNull(),
+  telemetryEnabled: boolean('telemetry_enabled').default(true).notNull(),
 });
 
 export const session = pgTable(

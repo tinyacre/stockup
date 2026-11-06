@@ -59,18 +59,26 @@ export interface TestContext {
 // Registers suite-level hooks that give the calling test file its own migrated database
 // and evidence directory. With `listen`, the app also serves HTTP on a free port, which the MCP endpoint
 // needs because it fetches the signing keys from its own base URL. With `evidenceStore: 's3'`, evidence goes
-// to the test bucket from testS3Config() instead of the directory.
+// to the test bucket from testS3Config() instead of the directory; a store passed in takes the place of both.
 export function useTestApp({
   listen = false,
   evidenceStore = 'local',
   ...options
-}: Omit<AppOptions, 'db' | 'auth' | 'evidence'> & { listen?: boolean; evidenceStore?: 'local' | 's3' } = {}) {
+}: Omit<AppOptions, 'db' | 'auth' | 'evidence'> & {
+  listen?: boolean;
+  evidenceStore?: 'local' | 's3' | EvidenceStore;
+} = {}) {
   const ctx = {} as TestContext;
   let server: ReturnType<typeof Bun.serve> | undefined;
   beforeAll(async () => {
     ctx.database = await createTestDatabase();
     ctx.evidenceDir = mkdtempSync(path.join(tmpdir(), 'stockup-evidence-'));
-    ctx.evidence = evidenceStore === 's3' ? s3EvidenceStore(testS3Config()) : localEvidenceStore(ctx.evidenceDir);
+    ctx.evidence =
+      typeof evidenceStore === 'object'
+        ? evidenceStore
+        : evidenceStore === 's3'
+          ? s3EvidenceStore(testS3Config())
+          : localEvidenceStore(ctx.evidenceDir);
     server = listen ? Bun.serve({ port: 0, fetch: (req) => ctx.app.fetch(req) }) : undefined;
     ctx.baseUrl = server?.url.origin ?? 'http://localhost';
     ctx.auth = createAuth({

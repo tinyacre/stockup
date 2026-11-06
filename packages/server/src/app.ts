@@ -2,9 +2,13 @@ import path from 'node:path';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic } from 'hono/bun';
+import { HTTPException } from 'hono/http-exception';
+import { routePath } from 'hono/route';
 import { mcpAvailable, type Auth } from './auth';
+import type { WebTelemetryConfig } from './config';
 import type { Database } from './db';
 import { createEmailCodes } from './email-codes';
+import type { ErrorReporter } from './error-reports';
 import type { EvidenceStore } from './evidence-store';
 import type { Mailer } from './mailer';
 import { householdCredentials } from './household-credentials';
@@ -57,6 +61,12 @@ export interface AppOptions {
   turnstile?: TurnstileVerifier;
   // Where the client address that Turnstile checks tokens against comes from; see Config.clientIpHeader.
   clientIpHeader?: string;
+  // Failures stay in the server's log without one.
+  errorReporter?: ErrorReporter;
+  // Browsers load no telemetry without one.
+  webTelemetry?: WebTelemetryConfig;
+  // What the web bundle's error reports name their release, matching its uploaded source maps.
+  release?: string;
 }
 
 export function createApp({
@@ -72,6 +82,9 @@ export function createApp({
   signupOpen = false,
   turnstile,
   clientIpHeader,
+  errorReporter,
+  webTelemetry,
+  release = 'dev',
 }: AppOptions) {
   if (signupOpen && !mailer) throw new Error('Open signup requires a mailer');
   const credentials = encryptionKey && householdCredentials(db, secretBox(encryptionKey), householdRecognizers);
@@ -82,6 +95,15 @@ export function createApp({
   const codes = mailer && createEmailCodes({ db, mailer, secret: auth.options.secret! });
 
   const app = new OpenAPIHono();
+  // Answers as Hono does by default, and reports what ends in a 5xx: a 4xx is the client's to fix.
+  app.onError((error, c) => {
+    const response = error instanceof HTTPException ? error.getResponse() : c.text('Internal Server Error', 500);
+    if (response.status >= 500) {
+      console.error(error);
+      errorReporter?.request(routePath(c), c.req.method, response.status, error);
+    }
+    return response;
+  });
   // Every way into an account is challenged, the MCP authorization sign-in included, because any unchallenged
   // entry is the one scripts would use. Code sending is challenged inside its handler, after the address is
   // validated, so a typo does not spend the token.
@@ -92,7 +114,10 @@ export function createApp({
   );
   app
     .route('/api', healthRoutes(db))
-    .route('/api', capabilityRoutes({ signupOpen, mailer, turnstile }))
+    .route(
+      '/api',
+      capabilityRoutes({ signupOpen, mailer, turnstile, webTelemetry, release, baseURL: auth.options.baseURL! }),
+    )
     .route('/api', setupRoutes(db, auth))
     .route('/api', emailCodeRoutes(db, auth, { codes, signupOpen, turnstile, clientIpHeader }))
     .route('/api', signupRoutes(auth, { codes, signupOpen }))
@@ -106,7 +131,7 @@ export function createApp({
     .route('/api', channelRoutes(db, auth))
     .route('/api', priceRecordRoutes(db, auth, evidence))
     .route('/api', evidenceRoutes(db, auth, evidence))
-    .route('/api', recognitionRoutes(db, auth, evidence, recognition))
+    .route('/api', recognitionRoutes(db, auth, evidence, recognition, errorReporter))
     .route('/api', recognizerRoutes(db, auth, recognition, credentials))
     .route('/api', judgmentRoutes(db, auth))
     .route('/api', mcpClientRoutes(db, auth));

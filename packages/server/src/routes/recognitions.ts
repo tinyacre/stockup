@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { bodyLimit } from 'hono/body-limit';
 import type { Auth } from '../auth';
 import type { Database } from '../db';
+import type { ErrorReporter } from '../error-reports';
 import { ParentNotFoundError } from '../db/errors';
 import { evidenceContentTypes, recognitionErrors, recognitionStatuses } from '../db/schema';
 import { EvidenceTooLargeError, maxEvidenceSize, UnsupportedEvidenceTypeError } from '../evidence';
@@ -132,7 +133,13 @@ function json<T extends z.ZodType>(schema: T) {
   return { content: { 'application/json': { schema } }, required: true };
 }
 
-export function recognitionRoutes(db: Database, auth: Auth, store: EvidenceStore, access: RecognitionAccess) {
+export function recognitionRoutes(
+  db: Database,
+  auth: Auth,
+  store: EvidenceStore,
+  access: RecognitionAccess,
+  errorReporter?: ErrorReporter,
+) {
   const middleware = requireMember(auth, db);
   const unauthenticated = { 401: { description: 'Not signed in' } };
   const notFound = { 404: { description: 'No such recognition in this household', content: errorContent } };
@@ -281,7 +288,7 @@ export function recognitionRoutes(db: Database, auth: Auth, store: EvidenceStore
       if (file.size > maxEvidenceSize) return c.json({ error: 'evidence_too_large' }, 413);
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const started = await startRecognition(db, store, access, c.var.member, bytes);
+        const started = await startRecognition(db, store, access, c.var.member, bytes, errorReporter);
         return c.json(serialize(started), 201);
       } catch (error) {
         if (error instanceof EvidenceTooLargeError) return c.json({ error: 'evidence_too_large' }, 413);

@@ -4,7 +4,7 @@ import type { Auth } from '../auth';
 import type { Database } from '../db';
 import { EmailTakenError } from '../db/errors';
 import type { EmailCodes } from '../email-codes';
-import { changeEmail, requireMember, updateTheme, type CurrentMember } from '../members';
+import { changeEmail, requireMember, updatePreferences, type CurrentMember } from '../members';
 import { accountSchema } from './setup';
 import { codeFailures, emailCodeSchema, emailSchema, respondToInvalidCode } from './email-codes';
 
@@ -20,6 +20,9 @@ const meSchema = z.object({
     name: z.string(),
     email: z.string().nullable().openapi({ description: 'Null until the member has a verified address' }),
     theme: z.enum(themes),
+    telemetryEnabled: z.boolean().openapi({
+      description: 'Whether the member lets the web app send analytics and front-end errors, on every device',
+    }),
     isInstanceAdmin: z.boolean(),
   }),
   household: z.object({ id: z.string(), name: z.string(), role: z.string() }),
@@ -33,6 +36,7 @@ function toMe(m: CurrentMember) {
       name: m.name,
       email: m.email,
       theme: m.theme as Theme,
+      telemetryEnabled: m.telemetryEnabled,
       isInstanceAdmin: m.isInstanceAdmin,
     },
     household: { id: m.householdId, name: m.householdName, role: m.householdRole },
@@ -63,16 +67,16 @@ export function meRoutes(db: Database, auth: Auth, codes?: EmailCodes) {
     method: 'patch',
     path: '/me',
     tags: ['members'],
-    summary: "Change the signed-in member's display name or theme",
+    summary: "Change the signed-in member's display name, theme or help-improve switch",
     description:
-      'Price records show the new name of the member who entered them. The theme follows the account to every device.',
+      'Price records show the new name of the member who entered them. The theme and the switch follow the account to every device.',
     middleware,
     request: {
       body: json(
         accountSchema
           .pick({ name: true })
           .partial()
-          .extend({ theme: z.enum(themes).optional() }),
+          .extend({ theme: z.enum(themes).optional(), telemetryEnabled: z.boolean().optional() }),
       ),
     },
     responses: {
@@ -127,11 +131,21 @@ export function meRoutes(db: Database, auth: Auth, codes?: EmailCodes) {
   return new OpenAPIHono()
     .openapi(route, (c) => c.json(toMe(c.var.member), 200))
     .openapi(updateRoute, async (c) => {
-      const { name, theme } = c.req.valid('json');
+      const { name, theme, telemetryEnabled } = c.req.valid('json');
       if (name !== undefined) await auth.api.updateUser({ body: { name }, headers: c.req.raw.headers });
-      if (theme !== undefined) await updateTheme(db, c.var.member.userId, theme);
+      if (theme !== undefined || telemetryEnabled !== undefined) {
+        await updatePreferences(db, c.var.member.userId, { theme, telemetryEnabled });
+      }
       const { member } = c.var;
-      return c.json(toMe({ ...member, name: name ?? member.name, theme: theme ?? member.theme }), 200);
+      return c.json(
+        toMe({
+          ...member,
+          name: name ?? member.name,
+          theme: theme ?? member.theme,
+          telemetryEnabled: telemetryEnabled ?? member.telemetryEnabled,
+        }),
+        200,
+      );
     })
     .openapi(passwordRoute, async (c) => {
       try {

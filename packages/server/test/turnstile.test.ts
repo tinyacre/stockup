@@ -59,6 +59,7 @@ describe('an instance with Turnstile', () => {
       signup: true,
       email: true,
       turnstileSiteKey: 'test-site-key',
+      telemetry: null,
     });
   });
 

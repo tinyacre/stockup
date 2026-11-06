@@ -10,6 +10,7 @@ import {
 import { searchByName } from '@stockup/domain/search';
 import type { Database } from './db';
 import { ParentNotFoundError, translate } from './db/errors';
+import type { ErrorReporter } from './error-reports';
 import { evidence, product, recognition, recognitionDraft, user } from './db/schema';
 import { checkEvidenceFile, removeEvidenceFiles } from './evidence';
 import type { EvidenceStore } from './evidence-store';
@@ -27,6 +28,7 @@ export async function startRecognition(
   access: RecognitionAccess,
   scope: CurrentMember,
   bytes: Uint8Array,
+  errorReporter?: ErrorReporter,
 ) {
   const contentType = checkEvidenceFile(bytes);
 
@@ -56,17 +58,21 @@ export async function startRecognition(
     throw error;
   }
   const started = (await findRecognition(db, scope, id))!;
-  if ('recognizer' in choice) void recognize(db, choice, scope, id, { bytes, contentType });
+  if ('recognizer' in choice) void recognize(db, choice, scope, id, { bytes, contentType }, errorReporter);
   return started;
 }
 
 // Past this the member is better off entering the screenshot by hand than waiting on.
 const recognitionDeadline = 2 * 60 * 1000;
 
+class DeadlineError extends Error {
+  override name = 'DeadlineError';
+}
+
 function withDeadline<T>(work: Promise<T>, ms: number) {
   let timer: ReturnType<typeof setTimeout>;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`No answer within ${ms} ms`)), ms);
+    timer = setTimeout(() => reject(new DeadlineError(`No answer within ${ms} ms`)), ms);
   });
   return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
 }
@@ -77,18 +83,27 @@ async function recognize(
   scope: CurrentMember,
   id: string,
   screenshot: Screenshot,
+  errorReporter?: ErrorReporter,
 ) {
   try {
     const result = await withDeadline(recognizer.recognize(screenshot), recognitionDeadline);
     await saveDrafts(db, scope, id, result);
   } catch (error) {
     console.error(`Recognition ${id} failed`, error);
+    // A provider that refuses or keeps the member waiting is the configuration's or the provider's to fix, and
+    // the household may be the one that configured it.
+    if (!(error instanceof RecognizerCallError || error instanceof DeadlineError)) {
+      errorReporter?.task('recognition', error);
+    }
     const failure = error instanceof RecognizerCallError ? callFailure : 'recognition_failed';
     await db
       .update(recognition)
       .set({ status: 'failed', error: failure, finishedAt: new Date() })
       .where(and(eq(recognition.id, id), eq(recognition.status, 'pending')))
-      .catch((e) => console.error(`Could not mark recognition ${id} as failed`, e));
+      .catch((e) => {
+        console.error(`Could not mark recognition ${id} as failed`, e);
+        errorReporter?.task('recognition', e);
+      });
   }
 }
 

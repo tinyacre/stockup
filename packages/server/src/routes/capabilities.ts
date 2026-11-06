@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
+import type { WebTelemetryConfig } from '../config';
 import type { Mailer } from '../mailer';
 import type { TurnstileVerifier } from '../turnstile';
 
@@ -20,6 +21,17 @@ const route = createRoute({
               .string()
               .nullable()
               .openapi({ description: 'Set when requests need a Turnstile token' }),
+            telemetry: z
+              .object({
+                release: z.string(),
+                umami: z.object({ endpoint: z.string(), websiteId: z.string(), hostname: z.string() }),
+                sentry: z.object({ dsn: z.string(), tunnel: z.string() }),
+              })
+              .nullable()
+              .openapi({
+                description:
+                  'The @tinyacre/telemetry configuration for front-end analytics and errors; null when the instance collects none',
+              }),
           }),
         },
       },
@@ -27,16 +39,43 @@ const route = createRoute({
   },
 });
 
+// The browser posts to paths on the instance's own origin, which the reverse proxy forwards: /_s/ to Umami and
+// /_e/ to GlitchTip, each with the prefix stripped. GlitchTip's envelope endpoint is named by the DSN's project id
+// and public key.
+function telemetryFor(webTelemetry: WebTelemetryConfig, release: string, baseURL: string) {
+  const dsn = new URL(webTelemetry.glitchtipDsn);
+  const project = dsn.pathname.split('/').pop();
+  return {
+    release,
+    umami: { endpoint: '/_s/api/send', websiteId: webTelemetry.umamiWebsiteId, hostname: new URL(baseURL).hostname },
+    sentry: {
+      dsn: webTelemetry.glitchtipDsn,
+      tunnel: `/_e/api/${project}/envelope/?sentry_key=${encodeURIComponent(dsn.username)}`,
+    },
+  };
+}
+
 export function capabilityRoutes({
   signupOpen,
   mailer,
   turnstile,
+  webTelemetry,
+  release,
+  baseURL,
 }: {
   signupOpen: boolean;
   mailer?: Mailer;
   turnstile?: TurnstileVerifier;
+  webTelemetry?: WebTelemetryConfig;
+  release: string;
+  // Every event reports this host as the app's, whichever host served the page.
+  baseURL: string;
 }) {
+  const telemetry = webTelemetry ? telemetryFor(webTelemetry, release, baseURL) : null;
   return new OpenAPIHono().openapi(route, (c) =>
-    c.json({ signup: signupOpen, email: mailer !== undefined, turnstileSiteKey: turnstile?.siteKey ?? null }, 200),
+    c.json(
+      { signup: signupOpen, email: mailer !== undefined, turnstileSiteKey: turnstile?.siteKey ?? null, telemetry },
+      200,
+    ),
   );
 }

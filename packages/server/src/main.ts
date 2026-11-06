@@ -4,6 +4,7 @@ import { createApp } from './app';
 import { createAuth, mcpAvailable } from './auth';
 import { loadConfig, type Config } from './config';
 import { connect, migrate } from './db';
+import { errorReporter } from './error-reports';
 import { localEvidenceStore } from './evidence-store';
 import { smtpMailer, type Mailer } from './mailer';
 import { openS3EvidenceStore } from './s3-evidence-store';
@@ -31,6 +32,8 @@ export async function bootstrap(
   const { recognizers, householdRecognizers, fetchClientMetadataResource } = options;
   const mailer = options.mailer ?? (config.smtp && smtpMailer(config.smtp));
   const turnstile = options.turnstile ?? (config.turnstile && cloudflareTurnstile(config.turnstile));
+  const reporter = errorReporter({ dsn: config.errorReportDsn, release: config.release });
+  if (reporter) console.log(`Reporting server errors to ${new URL(config.errorReportDsn!).host}`);
   const evidence = config.s3 ? await openS3EvidenceStore(config.s3) : await openLocalEvidenceStore(config.evidenceDir);
   const { db, close } = connect(config.databaseUrl);
   await migrate(db);
@@ -60,6 +63,9 @@ export async function bootstrap(
     signupOpen: config.signup === 'open',
     turnstile,
     clientIpHeader: config.clientIpHeader,
+    errorReporter: reporter,
+    webTelemetry: config.webTelemetry,
+    release: config.release,
   });
   return { app, close };
 }

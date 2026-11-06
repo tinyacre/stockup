@@ -63,6 +63,16 @@ services:
       # be reached. Set STOCKUP_CLIENT_IP_HEADER behind a proxy so Cloudflare sees the visitor's address.
       STOCKUP_TURNSTILE_SITE_KEY: ${STOCKUP_TURNSTILE_SITE_KEY:-}
       STOCKUP_TURNSTILE_SECRET_KEY: ${STOCKUP_TURNSTILE_SECRET_KEY:-}
+      # Nothing is reported anywhere while these are empty. The server's own failures (5xx responses and failed
+      # background recognitions, never 4xx) go to a GlitchTip or Sentry project of yours at this DSN, with only the
+      # route template, method, status, release, error message and stack.
+      STOCKUP_SERVER_GLITCHTIP_DSN: ${STOCKUP_SERVER_GLITCHTIP_DSN:-}
+      # Front-end analytics (Umami) and errors (GlitchTip) need both; setting only one fails the boot. Members can turn
+      # them off in their settings, and a browser sending GPC or Do Not Track sends nothing. The browser posts to this
+      # instance only, so the reverse proxy in front of it must forward /_s/api/send to Umami and
+      # /_e/api/<project id>/envelope/ to GlitchTip, each with the prefix stripped and the query kept.
+      STOCKUP_UMAMI_WEBSITE_ID: ${STOCKUP_UMAMI_WEBSITE_ID:-}
+      STOCKUP_WEB_GLITCHTIP_DSN: ${STOCKUP_WEB_GLITCHTIP_DSN:-}
     volumes:
       - ${STOCKUP_EVIDENCE_PATH:-./data/evidence}:/data/evidence
     healthcheck:

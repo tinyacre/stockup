@@ -20,8 +20,11 @@ COPY packages/domain/src packages/domain/src
 COPY packages/server/src packages/server/src
 COPY packages/server/drizzle packages/server/drizzle
 COPY --from=build /app/packages/web/dist web
+# The version error reports name, X.Y.Z from a v* tag; a local build reports as dev.
+ARG STOCKUP_RELEASE=dev
 # Calendar dates the server fills in, such as a judgment's default date, follow the household's day.
-ENV TZ=Asia/Shanghai \
+ENV STOCKUP_RELEASE=${STOCKUP_RELEASE} \
+    TZ=Asia/Shanghai \
     NODE_ENV=production \
     STOCKUP_PORT=8080 \
     STOCKUP_WEB_DIR=/app/web \

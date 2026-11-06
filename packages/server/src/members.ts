@@ -20,6 +20,8 @@ export interface CurrentMember {
   // Null for an account without a verified address.
   email: string | null;
   theme: string;
+  // The account's help-improve switch, which the web app applies to front-end analytics and errors.
+  telemetryEnabled: boolean;
   isInstanceAdmin: boolean;
 }
 
@@ -39,6 +41,7 @@ export async function findCurrentMember(db: Database, userId: string): Promise<C
       name: user.name,
       email: user.email,
       theme: user.theme,
+      telemetryEnabled: user.telemetryEnabled,
       role: user.role,
     })
     .from(member)
@@ -166,8 +169,12 @@ export async function makeHouseholdAdmin(db: Database, scope: CurrentMember, use
   });
 }
 
-export async function updateTheme(db: Database, userId: string, theme: string) {
-  await db.update(user).set({ theme }).where(eq(user.id, userId));
+export async function updatePreferences(
+  db: Database,
+  userId: string,
+  changes: { theme?: string; telemetryEnabled?: boolean },
+) {
+  await db.update(user).set(changes).where(eq(user.id, userId));
 }
 
 // Fails with EmailTakenError when another account has the address, which is only revealed to whoever holds its code.

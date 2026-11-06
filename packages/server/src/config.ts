@@ -23,6 +23,17 @@ export interface Config {
   smtp: SmtpConfig | undefined;
   // Signup, code sending, sign-in, password reset and joining go unchallenged without one.
   turnstile: TurnstileConfig | undefined;
+  // The version the image was built as; error reports and the web bundle's uploaded source maps are named by it.
+  release: string;
+  // The operator's GlitchTip project for the server's own failures; nothing is reported without one.
+  errorReportDsn: string | undefined;
+  // Where browsers send analytics and front-end errors; the web app loads no telemetry without one.
+  webTelemetry: WebTelemetryConfig | undefined;
+}
+
+export interface WebTelemetryConfig {
+  umamiWebsiteId: string;
+  glitchtipDsn: string;
 }
 
 export interface TurnstileConfig {
@@ -221,6 +232,27 @@ function loadTurnstileConfig(env: Env): TurnstileConfig | undefined {
   return { siteKey: env.STOCKUP_TURNSTILE_SITE_KEY!, secretKey: env.STOCKUP_TURNSTILE_SECRET_KEY! };
 }
 
+// A Sentry DSN names the project's public key as the user part and the project id as the last path segment.
+function readDsn(env: Env, name: string) {
+  const value = env[name];
+  if (!value) return undefined;
+  const url = isHttpUrl(value) ? new URL(value) : undefined;
+  if (!url?.username || !/^\/(?:.+\/)?\d+$/.test(url.pathname)) {
+    throw new Error(`${name} must be a DSN such as https://<public key>@<host>/<project id>, got "${value}"`);
+  }
+  return value;
+}
+
+const webTelemetryVars = ['STOCKUP_UMAMI_WEBSITE_ID', 'STOCKUP_WEB_GLITCHTIP_DSN'];
+
+// @tinyacre/telemetry sends to both or to neither, so half a configuration is a mistake.
+function loadWebTelemetry(env: Env): WebTelemetryConfig | undefined {
+  const missing = missingVars(env, webTelemetryVars);
+  if (missing.length === webTelemetryVars.length) return undefined;
+  if (missing.length > 0) throw new Error(`Web telemetry is configured but ${missing.join(', ')} not set`);
+  return { umamiWebsiteId: env.STOCKUP_UMAMI_WEBSITE_ID!, glitchtipDsn: readDsn(env, 'STOCKUP_WEB_GLITCHTIP_DSN')! };
+}
+
 // Signup stays closed unless asked for, so a public instance never opens to everyone by accident; it also
 // needs SMTP, since the emailed code is what proves a new account's address.
 function loadSignup(env: Env, smtp: SmtpConfig | undefined): Config['signup'] {
@@ -272,5 +304,8 @@ export function loadConfig(env: Env): Config {
     signup: loadSignup(env, smtp),
     smtp,
     turnstile: loadTurnstileConfig(env),
+    release: env.STOCKUP_RELEASE || 'dev',
+    errorReportDsn: readDsn(env, 'STOCKUP_SERVER_GLITCHTIP_DSN'),
+    webTelemetry: loadWebTelemetry(env),
   };
 }

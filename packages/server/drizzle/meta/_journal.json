@@ -120,6 +120,13 @@
       "when": 1793280578072,
       "tag": "0016_recognition_instance_quota_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793932342947,
+      "tag": "0017_telemetry_switch",
+      "breakpoints": true
     }
   ]
 }

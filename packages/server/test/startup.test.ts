@@ -51,6 +51,9 @@ describe('loadConfig', () => {
       signup: 'closed' as const,
       smtp: undefined,
       turnstile: undefined,
+      release: 'dev',
+      errorReportDsn: undefined,
+      webTelemetry: undefined,
     });
   });
 
@@ -90,6 +93,9 @@ describe('loadConfig', () => {
       signup: 'closed' as const,
       smtp: undefined,
       turnstile: undefined,
+      release: 'dev',
+      errorReportDsn: undefined,
+      webTelemetry: undefined,
     });
   });
 
@@ -374,6 +380,51 @@ describe('loadConfig for Turnstile', () => {
   });
 });
 
+describe('loadConfig for telemetry', () => {
+  const serverDsn = 'https://0123abcd@errors.example.com/5';
+  const webDsn = 'https://4567cdef@errors.example.com/4';
+
+  test('reports nothing anywhere unless configured', () => {
+    const config = loadConfig(required);
+    expect(config.errorReportDsn).toBeUndefined();
+    expect(config.webTelemetry).toBeUndefined();
+  });
+
+  test('names the release the image was built as', () => {
+    expect(loadConfig({ ...required, STOCKUP_RELEASE: '1.4.0' }).release).toBe('1.4.0');
+  });
+
+  test("reports the server's errors to the server DSN", () => {
+    expect(loadConfig({ ...required, STOCKUP_SERVER_GLITCHTIP_DSN: serverDsn }).errorReportDsn).toBe(serverDsn);
+  });
+
+  test('turns on web telemetry with both the Umami website and the web DSN', () => {
+    expect(
+      loadConfig({ ...required, STOCKUP_UMAMI_WEBSITE_ID: 'site-id', STOCKUP_WEB_GLITCHTIP_DSN: webDsn }).webTelemetry,
+    ).toEqual({ umamiWebsiteId: 'site-id', glitchtipDsn: webDsn });
+  });
+
+  test('refuses to start with only half of web telemetry', () => {
+    expect(() => loadConfig({ ...required, STOCKUP_UMAMI_WEBSITE_ID: 'site-id' })).toThrow(
+      'Web telemetry is configured but STOCKUP_WEB_GLITCHTIP_DSN not set',
+    );
+    expect(() => loadConfig({ ...required, STOCKUP_WEB_GLITCHTIP_DSN: webDsn })).toThrow(
+      'Web telemetry is configured but STOCKUP_UMAMI_WEBSITE_ID not set',
+    );
+  });
+
+  test('rejects a DSN without a public key or project', () => {
+    for (const dsn of ['errors.example.com/5', 'https://errors.example.com/5', 'https://key@errors.example.com/']) {
+      expect(() => loadConfig({ ...required, STOCKUP_SERVER_GLITCHTIP_DSN: dsn })).toThrow(
+        `STOCKUP_SERVER_GLITCHTIP_DSN must be a DSN such as https://<public key>@<host>/<project id>, got "${dsn}"`,
+      );
+    }
+    expect(() =>
+      loadConfig({ ...required, STOCKUP_UMAMI_WEBSITE_ID: 'site-id', STOCKUP_WEB_GLITCHTIP_DSN: 'nope' }),
+    ).toThrow('STOCKUP_WEB_GLITCHTIP_DSN must be a DSN');
+  });
+});
+
 describe('bootstrap', () => {
   const cleanups: Array<() => Promise<void>> = [];
   afterAll(async () => {
@@ -402,6 +453,9 @@ describe('bootstrap', () => {
       signup: 'closed' as const,
       smtp: undefined,
       turnstile: undefined,
+      release: 'dev',
+      errorReportDsn: undefined,
+      webTelemetry: undefined,
     };
 
     const first = await bootstrap(config);
@@ -430,6 +484,9 @@ describe('bootstrap', () => {
       signup: 'closed' as const,
       smtp: undefined,
       turnstile: undefined,
+      release: 'dev',
+      errorReportDsn: undefined,
+      webTelemetry: undefined,
     };
     const without = await bootstrap(config);
     cleanups.push(without.close);
@@ -478,6 +535,9 @@ describe('bootstrap', () => {
       signup: 'closed' as const,
       smtp: undefined,
       turnstile: undefined,
+      release: 'dev',
+      errorReportDsn: undefined,
+      webTelemetry: undefined,
     };
     const recognizers = fakeRecognizerFactory();
     recognizers.recognizer.respond = () => new Promise<never>(() => {});
@@ -520,6 +580,7 @@ describe('bootstrap', () => {
       signup: true,
       email: true,
       turnstileSiteKey: null,
+      telemetry: null,
     });
   });
 
@@ -561,6 +622,9 @@ describe('bootstrap', () => {
       signup: 'closed' as const,
       smtp: undefined,
       turnstile: undefined,
+      release: 'dev',
+      errorReportDsn: undefined,
+      webTelemetry: undefined,
     });
     cleanups.push(close);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('MCP'));
@@ -587,6 +651,9 @@ describe('bootstrap', () => {
       signup: 'closed' as const,
       smtp: undefined,
       turnstile: undefined,
+      release: 'dev',
+      errorReportDsn: undefined,
+      webTelemetry: undefined,
     });
     cleanups.push(close);
     expect(existsSync(evidenceDir)).toBe(false);
@@ -668,6 +735,9 @@ describe('bootstrap', () => {
       signup: 'closed' as const,
       smtp: undefined,
       turnstile: undefined,
+      release: 'dev',
+      errorReportDsn: undefined,
+      webTelemetry: undefined,
     };
     await expect(bootstrap(config)).rejects.toThrow(
       `S3 bucket ${config.s3.bucket} at ${config.s3.endpoint} cannot be written`,

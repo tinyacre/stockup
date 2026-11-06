@@ -47,6 +47,7 @@ export function createAuth({ db, secret, baseURL, clientIpHeader, fetchClientMet
       additionalFields: {
         role: { type: 'string', required: true, defaultValue: 'user', input: false },
         theme: { type: 'string', required: true, defaultValue: 'tool', input: false },
+        telemetryEnabled: { type: 'boolean', required: true, defaultValue: true, input: false },
       },
     },
     plugins: [

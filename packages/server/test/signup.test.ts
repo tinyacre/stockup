@@ -43,7 +43,7 @@ describe('an instance with signup closed and no mail', () => {
   test('offers neither signup nor email', async () => {
     const res = await ctx.app.request('/api/capabilities');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ signup: false, email: false, turnstileSiteKey: null });
+    expect(await res.json()).toEqual({ signup: false, email: false, turnstileSiteKey: null, telemetry: null });
   });
 
   test('refuses to send codes or register', async () => {
@@ -75,6 +75,7 @@ describe('an instance that can mail but keeps signup closed', () => {
       signup: false,
       email: true,
       turnstileSiteKey: null,
+      telemetry: null,
     });
   });
 
@@ -97,6 +98,7 @@ describe('open signup', () => {
       signup: true,
       email: true,
       turnstileSiteKey: null,
+      telemetry: null,
     });
   });
 
@@ -129,6 +131,7 @@ describe('open signup', () => {
         name: visitor.name,
         email: visitor.email,
         theme: 'tool',
+        telemetryEnabled: true,
         isInstanceAdmin: false,
       },
       household: { id: householdId, name: `${visitor.username} 的家`, role: 'admin' },
