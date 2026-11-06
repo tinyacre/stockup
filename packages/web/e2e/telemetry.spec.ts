@@ -1,4 +1,4 @@
-import type { Page, Request } from '@playwright/test';
+import type { Browser, BrowserContext, Page, Request } from '@playwright/test';
 import type { Capabilities } from '../src/lib/api';
 import { expect, test } from './test';
 
@@ -17,6 +17,54 @@ const openSection = (page: Page, name: string) =>
   page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name }).click();
 
 const isTelemetry = (url: string) => /\/_s\/|\/_e\/|\/assets\/telemetry\//.test(new URL(url).pathname);
+
+// Answers the capabilities as an instance with telemetry configured would, records each pageview sent, and
+// swallows error envelopes.
+async function routeTelemetry(target: Page | BrowserContext, pageviews: string[]) {
+  await target.route('**/api/capabilities', async (route) => {
+    const response = await route.fetch();
+    const capabilities = (await response.json()) as Capabilities;
+    await route.fulfill({
+      response,
+      json: {
+        ...capabilities,
+        telemetry: {
+          release: 'e2e',
+          umami: { endpoint: '/_s/api/send', websiteId: 'e2e-site', hostname: 'stockup.example.com' },
+          sentry: {
+            dsn: 'https://e2ekey@errors.example.com/4',
+            tunnel: '/_e/api/4/envelope/?sentry_key=e2ekey',
+          },
+        },
+      },
+    });
+  });
+  await target.route('**/_s/api/send', async (route) => {
+    const { payload } = route.request().postDataJSON() as { payload: { url: string } };
+    pageviews.push(payload.url);
+    await route.fulfill({ json: {} });
+  });
+  await target.route('**/_e/**', (route) => route.fulfill({ json: {} }));
+}
+
+function recordTelemetryRequests(context: BrowserContext) {
+  const sent: string[] = [];
+  context.on('request', (request) => isTelemetry(request.url()) && sent.push(new URL(request.url()).pathname));
+  return sent;
+}
+
+// A context of its own, so the device cache and the session start empty.
+const newDevice = (browser: Browser) => browser.newContext({ serviceWorkers: 'block' });
+
+async function turnOffForAccount(browser: Browser, account: { username: string; password: string }) {
+  const context = await newDevice(browser);
+  const signedIn = await context.request.post('/api/auth/sign-in/username', {
+    data: { username: account.username, password: account.password },
+  });
+  expect(signedIn.ok()).toBe(true);
+  expect((await context.request.patch('/api/me', { data: { telemetryEnabled: false } })).ok()).toBe(true);
+  return context;
+}
 
 test('an instance without telemetry loads none of its code and sends nothing', async ({ page, household, baseURL }) => {
   const requests: string[] = [];
@@ -37,30 +85,7 @@ test.describe('an instance with telemetry', () => {
 
   test.beforeEach(async ({ page }) => {
     pageviews.length = 0;
-    await page.route('**/api/capabilities', async (route) => {
-      const response = await route.fetch();
-      const capabilities = (await response.json()) as Capabilities;
-      await route.fulfill({
-        response,
-        json: {
-          ...capabilities,
-          telemetry: {
-            release: 'e2e',
-            umami: { endpoint: '/_s/api/send', websiteId: 'e2e-site', hostname: 'stockup.example.com' },
-            sentry: {
-              dsn: 'https://e2ekey@errors.example.com/4',
-              tunnel: '/_e/api/4/envelope/?sentry_key=e2ekey',
-            },
-          },
-        },
-      });
-    });
-    await page.route('**/_s/api/send', async (route) => {
-      const { payload } = route.request().postDataJSON() as { payload: { url: string } };
-      pageviews.push(payload.url);
-      await route.fulfill({ json: {} });
-    });
-    await page.route('**/_e/**', (route) => route.fulfill({ json: {} }));
+    await routeTelemetry(page, pageviews);
   });
 
   test('reports each page as its route template until the member turns the switch off', async ({ page, household }) => {
@@ -96,5 +121,69 @@ test.describe('an instance with telemetry', () => {
     await page.goto(`/products/${id}`);
     await expect.poll(() => pageviews.at(-1)).toBe('/products/:id');
     expect(pageviews.filter((url) => url.includes(id))).toEqual([]);
+  });
+
+  test('an account that turned it off sends nothing on a device whose cache still has it on', async ({
+    browser,
+    household,
+  }) => {
+    const context = await turnOffForAccount(browser, household.admin);
+    await context.addInitScript(() => localStorage.setItem('tinyacre.telemetry.enabled', '1'));
+    await routeTelemetry(context, pageviews);
+    const sent = recordTelemetryRequests(context);
+
+    const page = await context.newPage();
+    await page.goto('/products');
+    await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+
+    expect(sent).toEqual([]);
+    expect(pageviews).toEqual([]);
+    await context.close();
+  });
+
+  test('an error thrown while an account that turned it off is signing in sends nothing', async ({
+    browser,
+    household,
+  }) => {
+    await (await turnOffForAccount(browser, household.admin)).close();
+
+    const context = await newDevice(browser);
+    await context.addInitScript(() => localStorage.setItem('tinyacre.telemetry.enabled', '1'));
+    await routeTelemetry(context, pageviews);
+    const sent = recordTelemetryRequests(context);
+    // Holds back the account's choice until the error has had its chance to be reported.
+    let gated = false;
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    await context.route('**/api/me', async (route) => {
+      if (gated) await released;
+      await route.continue();
+    });
+
+    const page = await context.newPage();
+    await page.goto('/');
+    await expect.poll(() => pageviews).toEqual(['/']);
+    await expect.poll(() => sent.some((path) => path.startsWith('/assets/telemetry/sentry-'))).toBe(true);
+
+    gated = true;
+    await page.getByLabel('用户名').fill(household.admin.username);
+    await page.getByLabel('密码').fill(household.admin.password);
+    const accountRequested = page.waitForRequest('**/api/me');
+    await page.getByRole('button', { name: '登录' }).click();
+    await accountRequested;
+    await page.evaluate(() =>
+      setTimeout(() => {
+        throw new Error('thrown during sign-in');
+      }),
+    );
+    await page.waitForTimeout(500);
+    release();
+    await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+
+    expect(sent.filter((path) => path.startsWith('/_e/'))).toEqual([]);
+    expect(pageviews).toEqual(['/']);
+    await context.close();
   });
 });
