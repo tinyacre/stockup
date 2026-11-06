@@ -1,5 +1,6 @@
 import path from 'node:path';
-import type { ErrorEvent, StackFrame } from '@sentry/bun';
+import type { ErrorEvent, EventHint, StackFrame } from '@sentry/bun';
+import { DrizzleQueryError } from 'drizzle-orm';
 
 // The server's own failures, sent to the operator's GlitchTip (STOCKUP_SERVER_GLITCHTIP_DSN). What an event may
 // carry is fixed by tinyacre/telemetry's data boundary: every event is rebuilt from the route template or task
@@ -35,7 +36,7 @@ export function errorReporter({
       stackParser: Sentry.defaultStackParser,
       sendClientReports: false,
       maxBreadcrumbs: 0,
-      beforeSend: whitelist,
+      beforeSend: withinDataBoundary,
       transport: (options) =>
         Sentry.createTransport(options, async ({ body }) => {
           const res = await fetch(options.url, {
@@ -61,7 +62,7 @@ export function errorReporter({
       const scope = new Sentry.Scope();
       scope.setTransactionName(transaction);
       scope.setTags(tags);
-      client.captureException(error, undefined, scope);
+      client.captureException(error, { originalException: error }, scope);
     });
   }
 
@@ -80,7 +81,7 @@ export function errorReporter({
 
 // Runs on the event the SDK has finished assembling, which by then holds the host name, the environment, the
 // runtime and trace contexts, and returns a new one with only what the data boundary keeps.
-function whitelist(event: ErrorEvent): ErrorEvent {
+function withinDataBoundary(event: ErrorEvent, { originalException }: EventHint): ErrorEvent {
   const { event_id, timestamp, level, platform, release, transaction, tags } = event;
   return {
     type: undefined,
@@ -94,7 +95,7 @@ function whitelist(event: ErrorEvent): ErrorEvent {
     exception: {
       values: event.exception?.values?.map(({ type, value, stacktrace }) => ({
         type,
-        value: value === undefined ? undefined : scrub(value),
+        value: reportedMessage(originalException, value),
         stacktrace: stacktrace && { frames: stacktrace.frames?.map(keptFrame) },
       })),
     },
@@ -104,6 +105,16 @@ function whitelist(event: ErrorEvent): ErrorEvent {
 function keptFrame({ function: fn, filename, lineno, colno, in_app }: StackFrame): StackFrame {
   const inRepository = filename?.startsWith(`${root}/`);
   return { function: fn, filename: inRepository ? path.relative(root, filename!) : filename, lineno, colno, in_app };
+}
+
+// A failed query's message lists its parameters, which hold what members entered, and the database's own message
+// can quote a value too; the SQL with its placeholders and the SQLSTATE say what failed without them.
+function reportedMessage(error: unknown, value: string | undefined) {
+  if (error instanceof DrizzleQueryError) {
+    const code = (error.cause as { code?: unknown } | undefined)?.code;
+    return `Failed query: ${error.query}${typeof code === 'string' ? ` (SQLSTATE ${code})` : ''}`;
+  }
+  return value === undefined ? undefined : scrub(value);
 }
 
 // Messages interpolate ids only; this is the backstop for one that breaks the rule.

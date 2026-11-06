@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { DrizzleQueryError } from 'drizzle-orm';
 import { errorReporter } from '../src/error-reports';
 import type { EvidenceStore } from '../src/evidence-store';
 import { RecognizerCallError } from '../src/recognizer';
@@ -9,22 +10,22 @@ import { finished, startRecognition } from './support/recognitions';
 
 const dsn = 'https://0123abcd@errors.example.com/5';
 
-// Keeps files in memory and throws on reads while `failReads` is set, the way a broken disk or bucket would.
+// Keeps files in memory and throws `readFailure` on reads while it is set, the way a broken disk or bucket would.
 function evidenceThatFailsToRead() {
   const files = new Map<string, Uint8Array<ArrayBuffer>>();
   const store = {
-    failReads: false as boolean,
+    readFailure: undefined as Error | undefined,
     async put(key: string, data: Uint8Array) {
       files.set(key, new Uint8Array(data));
     },
     async get(key: string) {
-      if (store.failReads) throw new Error('Could not read the evidence of bob@example.com');
+      if (store.readFailure) throw store.readFailure;
       return files.get(key) ?? null;
     },
     async delete(key: string) {
       files.delete(key);
     },
-  } satisfies EvidenceStore & { failReads: boolean };
+  } satisfies EvidenceStore & { readFailure: Error | undefined };
   return store;
 }
 
@@ -43,7 +44,7 @@ describe('server error reports', () => {
   }
 
   afterEach(() => {
-    evidence.failReads = false;
+    evidence.readFailure = undefined;
     recognizers.recognizer.respond = async () => fixedRecognition;
   });
 
@@ -51,7 +52,7 @@ describe('server error reports', () => {
     const m = await signUpHousehold(ctx);
     const { id } = await startRecognition(m);
     await finished(m, id);
-    evidence.failReads = true;
+    evidence.readFailure = new Error('Could not read the evidence of bob@example.com');
 
     const res = await m.request(`/api/recognitions/${id}/screenshot?token=secret`);
 
@@ -85,6 +86,28 @@ describe('server error reports', () => {
       expect.objectContaining({ filename: 'packages/server/test/error-reports.test.ts', in_app: true }),
     );
     expect(glitchtip.urls).toEqual([expect.stringMatching(/^https:\/\/errors\.example\.com\/api\/5\/envelope\//)]);
+  });
+
+  test("a failed query reports its SQL and SQLSTATE, never its parameters or the database's message", async () => {
+    const m = await signUpHousehold(ctx);
+    const { id } = await startRecognition(m);
+    await finished(m, id);
+    const cause = Object.assign(new Error('invalid input syntax for type integer: "得宝抽纸"'), { code: '22P02' });
+    evidence.readFailure = new DrizzleQueryError(
+      'update "product" set "name" = $1 where "id" = $2',
+      ['得宝抽纸', id],
+      cause,
+    );
+
+    expect((await m.request(`/api/recognitions/${id}/screenshot`)).status).toBe(500);
+
+    const [event] = await delivered();
+    expect(event).toMatchObject({
+      exception: {
+        values: [{ value: 'Failed query: update "product" set "name" = $1 where "id" = $2 (SQLSTATE 22P02)' }],
+      },
+    });
+    expect(JSON.stringify(event)).not.toContain('得宝抽纸');
   });
 
   test('a request refused with a 4xx reports nothing', async () => {

@@ -95,15 +95,21 @@ export function createApp({
   const codes = mailer && createEmailCodes({ db, mailer, secret: auth.options.secret! });
 
   const app = new OpenAPIHono();
-  // Answers as Hono does by default, and reports what ends in a 5xx: a 4xx is the client's to fix.
+  // Answers as Hono does by default.
   app.onError((error, c) => {
     const response = error instanceof HTTPException ? error.getResponse() : c.text('Internal Server Error', 500);
-    if (response.status >= 500) {
-      console.error(error);
-      errorReporter?.request(routePath(c), c.req.method, response.status, error);
-    }
+    if (response.status >= 500) console.error(error);
     return response;
   });
+  // Reports every 5xx, thrown or answered, as Better Auth answers its own failures; a 4xx is the client's to fix.
+  if (errorReporter) {
+    app.use(async (c, next) => {
+      await next();
+      if (c.res.status < 500) return;
+      const failure = c.error ?? new Error(`Answered ${c.res.status}`);
+      errorReporter.request(routePath(c), c.req.method, c.res.status, failure);
+    });
+  }
   // Every way into an account is challenged, the MCP authorization sign-in included, because any unchallenged
   // entry is the one scripts would use. Code sending is challenged inside its handler, after the address is
   // validated, so a typo does not spend the token.
