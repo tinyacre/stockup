@@ -1,5 +1,6 @@
+import { readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -14,7 +15,7 @@ function required(name: string) {
 }
 
 // With GLITCHTIP_AUTH_TOKEN set (the image build), the bundle gets debug ids and hidden source maps, which are
-// uploaded to GlitchTip as release STOCKUP_RELEASE and never written to dist. Without it, no source map is built.
+// uploaded to GlitchTip as release STOCKUP_RELEASE and then deleted from dist. Without it, no source map is built.
 const uploadSourceMaps = Boolean(env.GLITCHTIP_AUTH_TOKEN);
 
 function sourceMapUpload() {
@@ -32,11 +33,34 @@ function sourceMapUpload() {
     },
     // The bundle names its release from /api/capabilities, which the server reads from the same STOCKUP_RELEASE.
     release: { name: required('STOCKUP_RELEASE'), inject: false, setCommits: false, deploy: false },
-    sourcemaps: { deleteSourcemapsAfterUpload: true },
     errorHandler: (error) => {
       throw error;
     },
   });
+}
+
+// Hidden source maps are built only to be uploaded, which the Sentry plugin does in writeBundle; this runs after it.
+// The plugin's own deleteSourcemapsAfterUpload leaves them in dist under Vite 8.
+function deleteHiddenSourceMaps(): Plugin {
+  let outDir = '';
+  let hidden = false;
+  return {
+    name: 'stockup:delete-hidden-source-maps',
+    apply: 'build',
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir);
+      hidden = config.build.sourcemap === 'hidden';
+    },
+    closeBundle: {
+      order: 'post',
+      handler() {
+        if (!hidden) return;
+        for (const entry of readdirSync(outDir, { recursive: true, withFileTypes: true })) {
+          if (entry.isFile() && entry.name.endsWith('.map')) rmSync(path.join(entry.parentPath, entry.name));
+        }
+      },
+    },
+  };
 }
 
 const telemetryModule = /[\\/]node_modules[\\/](@tinyacre[\\/]telemetry|@sentry)[\\/]/;
@@ -124,6 +148,7 @@ export default defineConfig({
       },
     }),
     uploadSourceMaps && sourceMapUpload(),
+    deleteHiddenSourceMaps(),
   ],
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, 'src') },
