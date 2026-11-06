@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { DrizzleQueryError } from 'drizzle-orm';
+import { DrizzleQueryError, sql } from 'drizzle-orm';
 import { errorReporter } from '../src/error-reports';
 import type { EvidenceStore } from '../src/evidence-store';
+import { readAnswer } from '../src/recognition-answer';
 import { RecognizerCallError } from '../src/recognizer';
 import { fakeGlitchtip } from './support/fake-glitchtip';
 import { fakeRecognizerFactory, fixedRecognition, instanceRecognition } from './support/fake-recognizer';
@@ -118,22 +119,46 @@ describe('server error reports', () => {
     expect(await delivered()).toEqual([]);
   });
 
-  test('a recognition that fails in the background reports it as a task', async () => {
+  test('a recognition whose drafts cannot be saved reports it as a task', async () => {
     const m = await signUpHousehold(ctx);
-    recognizers.recognizer.respond = async () => {
-      throw new TypeError("Cannot read properties of undefined (reading 'items')");
-    };
-
-    const { id } = await startRecognition(m);
-    expect((await finished(m, id)).status).toBe('failed');
+    const { db } = ctx.database;
+    await db.execute(sql.raw('ALTER TABLE "recognition_draft" ADD CONSTRAINT refuse_all CHECK (false) NOT VALID'));
+    try {
+      const { id } = await startRecognition(m);
+      expect((await finished(m, id)).status).toBe('failed');
+    } finally {
+      await db.execute(sql.raw('ALTER TABLE "recognition_draft" DROP CONSTRAINT refuse_all'));
+    }
 
     const [event, ...more] = await delivered();
     expect(more).toEqual([]);
     expect(event).toMatchObject({
       transaction: 'task recognition',
       tags: { task: 'recognition' },
-      exception: { values: [{ type: 'TypeError', value: "Cannot read properties of undefined (reading 'items')" }] },
+      exception: { values: [{ value: expect.stringContaining('insert into "recognition_draft"') }] },
     });
+  });
+
+  test("a model's refusal of a screenshot reports nothing", async () => {
+    const m = await signUpHousehold(ctx);
+    recognizers.recognizer.respond = async () => {
+      throw new Error('The model refused: the screenshot shows 得宝抽纸 delivered to 上海市长宁区');
+    };
+
+    const { id } = await startRecognition(m);
+    expect((await finished(m, id)).status).toBe('failed');
+
+    expect(await delivered()).toEqual([]);
+  });
+
+  test("a model's malformed answer reports nothing", async () => {
+    const m = await signUpHousehold(ctx);
+    recognizers.recognizer.respond = async () => readAnswer('{"items": [{"name": "得宝抽纸", "quantity": "十八"}]}');
+
+    const { id } = await startRecognition(m);
+    expect((await finished(m, id)).status).toBe('failed');
+
+    expect(await delivered()).toEqual([]);
   });
 
   test("a provider's refusal of a recognition reports nothing", async () => {

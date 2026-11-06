@@ -11,7 +11,7 @@ import { searchByName } from '@stockup/domain/search';
 import type { Database } from './db';
 import { ParentNotFoundError, translate } from './db/errors';
 import type { ErrorReporter } from './error-reports';
-import { evidence, product, recognition, recognitionDraft, user } from './db/schema';
+import { evidence, product, recognition, recognitionDraft, type recognitionErrors, user } from './db/schema';
 import { checkEvidenceFile, removeEvidenceFiles } from './evidence';
 import type { EvidenceStore } from './evidence-store';
 import type { CurrentMember } from './members';
@@ -65,14 +65,10 @@ export async function startRecognition(
 // Past this the member is better off entering the screenshot by hand than waiting on.
 const recognitionDeadline = 2 * 60 * 1000;
 
-class DeadlineError extends Error {
-  override name = 'DeadlineError';
-}
-
 function withDeadline<T>(work: Promise<T>, ms: number) {
   let timer: ReturnType<typeof setTimeout>;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new DeadlineError(`No answer within ${ms} ms`)), ms);
+    timer = setTimeout(() => reject(new Error(`No answer within ${ms} ms`)), ms);
   });
   return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
 }
@@ -85,25 +81,32 @@ async function recognize(
   screenshot: Screenshot,
   errorReporter?: ErrorReporter,
 ) {
-  try {
-    const result = await withDeadline(recognizer.recognize(screenshot), recognitionDeadline);
-    await saveDrafts(db, scope, id, result);
-  } catch (error) {
-    console.error(`Recognition ${id} failed`, error);
-    // A provider that refuses or keeps the member waiting is the configuration's or the provider's to fix, and
-    // the household may be the one that configured it.
-    if (!(error instanceof RecognizerCallError || error instanceof DeadlineError)) {
-      errorReporter?.task('recognition', error);
-    }
-    const failure = error instanceof RecognizerCallError ? callFailure : 'recognition_failed';
-    await db
+  const fail = (failure: (typeof recognitionErrors)[number]) =>
+    db
       .update(recognition)
       .set({ status: 'failed', error: failure, finishedAt: new Date() })
       .where(and(eq(recognition.id, id), eq(recognition.status, 'pending')))
-      .catch((e) => {
-        console.error(`Could not mark recognition ${id} as failed`, e);
-        errorReporter?.task('recognition', e);
+      .catch((error) => {
+        console.error(`Could not mark recognition ${id} as failed`, error);
+        errorReporter?.task('recognition', error);
       });
+
+  // What the provider answers or fails with depends on the instance's or the household's configuration and on the
+  // member's screenshot, and its errors can quote the model's reading of it, so only StockUp's own failures after
+  // the answer are reported.
+  let result;
+  try {
+    result = await withDeadline(recognizer.recognize(screenshot), recognitionDeadline);
+  } catch (error) {
+    console.error(`Recognition ${id} failed`, error);
+    return fail(error instanceof RecognizerCallError ? callFailure : 'recognition_failed');
+  }
+  try {
+    await saveDrafts(db, scope, id, result);
+  } catch (error) {
+    console.error(`Recognition ${id} failed`, error);
+    errorReporter?.task('recognition', error);
+    return fail('recognition_failed');
   }
 }
 
