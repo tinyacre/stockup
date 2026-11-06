@@ -80,6 +80,8 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2,svg,png}'],
         globIgnores: ['**/node_modules/**/*', 'assets/telemetry/**'],
+        // The service worker would otherwise follow build.sourcemap, and its maps are never uploaded.
+        sourcemap: false,
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/\.well-known\//, /^\/mcp$/],
         runtimeCaching: [
