@@ -40,17 +40,16 @@ const route = createRoute({
 });
 
 // The browser posts to paths on the instance's own origin, which the reverse proxy forwards: /_s/ to Umami and
-// /_e/ to GlitchTip, each with the prefix stripped. GlitchTip's envelope endpoint is named by the DSN's project id
-// and public key.
+// /_e/ to GlitchTip, each with the prefix stripped. GlitchTip's envelope endpoint is named by the DSN's project id;
+// @tinyacre/telemetry sends the DSN's public key in a header, since ad blockers drop URLs carrying `sentry_key=`.
 function telemetryFor(webTelemetry: WebTelemetryConfig, release: string, baseURL: string) {
-  const dsn = new URL(webTelemetry.glitchtipDsn);
-  const project = dsn.pathname.split('/').pop();
+  const project = new URL(webTelemetry.glitchtipDsn).pathname.split('/').pop();
   return {
     release,
     umami: { endpoint: '/_s/api/send', websiteId: webTelemetry.umamiWebsiteId, hostname: new URL(baseURL).hostname },
     sentry: {
       dsn: webTelemetry.glitchtipDsn,
-      tunnel: `/_e/api/${project}/envelope/?sentry_key=${encodeURIComponent(dsn.username)}`,
+      tunnel: `/_e/api/${project}/envelope/`,
     },
   };
 }

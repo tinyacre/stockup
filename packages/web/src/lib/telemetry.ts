@@ -28,12 +28,6 @@ function rememberOnDevice(enabled: boolean) {
   }
 }
 
-// The same reading @tinyacre/telemetry applies: such a browser sends nothing whatever the switch says.
-export function browserRefusesTracking() {
-  const nav = navigator as Navigator & { globalPrivacyControl?: boolean };
-  return nav.globalPrivacyControl === true || nav.doNotTrack === '1';
-}
-
 // Loaded the first time a choice turns telemetry on, on an instance that configures it, and started held until
 // that choice is applied.
 let started: Promise<Telemetry<typeof events> | null> | undefined;
@@ -77,12 +71,12 @@ export async function followTelemetryChoice(choice: TelemetryChoice) {
     return;
   }
   const enabled = choice === 'device' ? deviceChoice() : choice.account;
-  const t = enabled && !browserRefusesTracking() ? await telemetry() : await started;
+  const t = enabled ? await telemetry() : await started;
   if (mine !== latest) return;
   if (t) await t.setEnabled(enabled);
   else rememberOnDevice(enabled);
   if (mine !== latest) return;
-  const nowSending = Boolean(t) && enabled && !browserRefusesTracking();
+  const nowSending = Boolean(t) && enabled;
   if (nowSending && sending === false) reportedPath = undefined;
   sending = nowSending;
   decided = true;

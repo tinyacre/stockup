@@ -54,16 +54,10 @@ describe('following the help-improve choice', () => {
     expect(stored.get('tinyacre.telemetry.enabled')).toBe('1');
   });
 
-  test('a browser sending GPC or DNT loads nothing, whatever the account says', async () => {
+  // Capabilities are read once per page, so a single test covers the browser that sends GPC and DNT.
+  test('on an instance without telemetry, an account that helps asks only for the capabilities, GPC and DNT or not', async () => {
     nav.globalPrivacyControl = true;
-    await followTelemetryChoice({ account: true });
-    nav.globalPrivacyControl = false;
     nav.doNotTrack = '1';
-    await followTelemetryChoice({ account: true });
-    expect(requests).toEqual([]);
-  });
-
-  test('on an instance without telemetry, an account that helps asks only for the capabilities', async () => {
     await followTelemetryChoice({ account: true });
     expect(requests).toEqual(['/api/capabilities']);
     expect(stored.get('tinyacre.telemetry.enabled')).toBe('1');

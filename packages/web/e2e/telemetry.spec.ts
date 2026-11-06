@@ -33,7 +33,7 @@ async function routeTelemetry(target: Page | BrowserContext, pageviews: string[]
           umami: { endpoint: '/_s/api/send', websiteId: 'e2e-site', hostname: 'stockup.example.com' },
           sentry: {
             dsn: 'https://e2ekey@errors.example.com/4',
-            tunnel: '/_e/api/4/envelope/?sentry_key=e2ekey',
+            tunnel: '/_e/api/4/envelope/',
           },
         },
       },

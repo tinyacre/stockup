@@ -24,7 +24,7 @@ describe('an instance with web telemetry', () => {
       umami: { endpoint: '/_s/api/send', websiteId: 'site-id', hostname: 'localhost' },
       sentry: {
         dsn: 'https://4567cdef@errors.example.com/4',
-        tunnel: '/_e/api/4/envelope/?sentry_key=4567cdef',
+        tunnel: '/_e/api/4/envelope/',
       },
     });
   });

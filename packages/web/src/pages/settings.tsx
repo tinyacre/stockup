@@ -24,7 +24,7 @@ import {
 import { useCapabilities } from '@/lib/capabilities';
 import { clientHost, scopeDescriptions } from '@/lib/oauth';
 import { queries, useRefresh } from '@/lib/queries';
-import { browserRefusesTracking, followTelemetryChoice } from '@/lib/telemetry';
+import { followTelemetryChoice } from '@/lib/telemetry';
 import { applyTheme, themeLabels, themes, type Theme } from '@/lib/theme';
 
 // The header shows the display name, the shell applies the theme and the email panel shows the address,
@@ -232,7 +232,7 @@ function ThemeSetting({ theme, onChanged }: { theme: Theme; onChanged(): void })
   );
 }
 
-// One switch for the member, on every device; a browser that asks not to be tracked sends nothing either way.
+// One switch for the member, on every device.
 function TelemetrySetting({ enabled, onChanged }: { enabled: boolean; onChanged(): void }) {
   return (
     <ChoiceSetting
@@ -248,11 +248,7 @@ function TelemetrySetting({ enabled, onChanged }: { enabled: boolean; onChanged(
         await followTelemetryChoice({ account: next });
         onChanged();
       }}
-    >
-      {browserRefusesTracking() && (
-        <p className="text-xs text-ink-3">此浏览器开启了「请勿追踪」，在这台设备上不会发送</p>
-      )}
-    </ChoiceSetting>
+    />
   );
 }
 

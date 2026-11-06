@@ -68,9 +68,9 @@ services:
       # route template, method, status, release, error message and stack.
       STOCKUP_SERVER_GLITCHTIP_DSN: ${STOCKUP_SERVER_GLITCHTIP_DSN:-}
       # Front-end analytics (Umami) and errors (GlitchTip) need both; setting only one fails the boot. Members can turn
-      # them off in their settings, and a browser sending GPC or Do Not Track sends nothing. The browser posts to this
-      # instance only, so the reverse proxy in front of it must forward /_s/api/send to Umami and
-      # /_e/api/<project id>/envelope/ to GlitchTip, each with the prefix stripped and the query kept.
+      # them off in their settings. The browser posts to this instance only, so the reverse proxy in front of it must
+      # forward /_s/api/send to Umami and /_e/api/<project id>/envelope/ to GlitchTip, each with the prefix stripped. The
+      # GlitchTip key travels in the X-Sentry-Auth header, which the proxy must pass on.
       STOCKUP_UMAMI_WEBSITE_ID: ${STOCKUP_UMAMI_WEBSITE_ID:-}
       STOCKUP_WEB_GLITCHTIP_DSN: ${STOCKUP_WEB_GLITCHTIP_DSN:-}
     volumes:
