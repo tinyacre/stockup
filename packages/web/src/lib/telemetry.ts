@@ -1,39 +1,12 @@
-import type { RouteLocation, Telemetry } from '@tinyacre/telemetry';
+import type { Telemetry } from '@tinyacre/telemetry';
 import { loadCapabilities } from '@/lib/capabilities';
+import { routeTemplate } from '@/lib/routes';
 
 // Front-end analytics and errors go through @tinyacre/telemetry, which fixes what may leave the browser
 // (tinyacre/telemetry's data boundary); this module decides whose choice applies and which page is open.
 
 // Pageviews only, until there are custom events worth counting.
 const events = [] as const;
-
-// Every page the app shows, as route templates; any other path reports as /unknown, never as itself.
-const staticPaths = new Set([
-  '/',
-  '/products',
-  '/categories',
-  '/recognitions',
-  '/channels',
-  '/promotions',
-  '/members',
-  '/invitations',
-  '/households',
-  '/settings',
-  '/sign-up',
-  '/reset-password',
-  '/oauth/sign-in',
-  '/oauth/consent',
-]);
-const dynamicPaths = [
-  { pattern: /^\/products\/[^/]+$/, template: '/products/:id' },
-  { pattern: /^\/recognitions\/[^/]+$/, template: '/recognitions/:id' },
-  { pattern: /^\/join\/[^/]+$/, template: '/join/:id' },
-];
-
-export function routeTemplate({ pathname }: RouteLocation) {
-  if (staticPaths.has(pathname)) return pathname;
-  return dynamicPaths.find(({ pattern }) => pattern.test(pathname))?.template ?? '/unknown';
-}
 
 // The device cache @tinyacre/telemetry reads at start and writes on every setEnabled ('0' is off).
 const deviceKey = 'tinyacre.telemetry.enabled';

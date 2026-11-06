@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { AppShell, canSee, sections, type SectionPath } from '@/components/app-shell';
+import { AppShell, canSee, sections } from '@/components/app-shell';
 import { AuthLayout } from '@/components/auth-form';
 import { BrandLogo } from '@/components/brand';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { api, ApiError, type Me } from '@/lib/api';
 import { NavigationProvider } from '@/lib/navigation';
 import { queryClient } from '@/lib/queries';
+import { invitationIn, routeAt, sessionPages, type Route } from '@/lib/routes';
 import { followTelemetryChoice, reportPageview, type TelemetryChoice } from '@/lib/telemetry';
 import { applyTheme } from '@/lib/theme';
 import { CatalogPage } from '@/pages/catalog';
@@ -57,16 +58,11 @@ function telemetryChoice(session: Session): TelemetryChoice {
   return 'unknown';
 }
 
-function invitationInPath() {
-  // Invitation IDs are UUIDs, so the path segment needs no decoding.
-  return /^\/join\/([^/]+)$/.exec(window.location.pathname)?.[1];
-}
-
 // Better Auth sends an MCP client's authorization request here with a signed query, which these pages hand back.
 function authorizationPage() {
   const { pathname, search } = window.location;
-  if (pathname === '/oauth/sign-in') return { page: 'sign-in' as const, oauthQuery: search.slice(1) };
-  if (pathname === '/oauth/consent') return { page: 'consent' as const, oauthQuery: search.slice(1) };
+  if (pathname === sessionPages.oauthSignIn) return { page: 'sign-in' as const, oauthQuery: search.slice(1) };
+  if (pathname === sessionPages.oauthConsent) return { page: 'consent' as const, oauthQuery: search.slice(1) };
 }
 
 export function App() {
@@ -100,7 +96,7 @@ function Session() {
     window.history.replaceState(null, '', '/');
     refresh();
   };
-  const invitationId = invitationInPath();
+  const invitationId = invitationIn(window.location.pathname);
   const authorization = authorizationPage();
 
   if (authorization?.page === 'sign-in') return <SignInPage oauthQuery={authorization.oauthQuery} onDone={refresh} />;
@@ -121,8 +117,8 @@ function Session() {
           <JoinPage invitationId={invitationId} onDone={leaveInvitation} onSignIn={() => setSigningInToJoin(true)} />
         );
       }
-      if (window.location.pathname === '/sign-up') return <SignUpPage onDone={refresh} />;
-      if (window.location.pathname === '/reset-password') return <ResetPasswordPage />;
+      if (window.location.pathname === sessionPages.signUp) return <SignUpPage onDone={refresh} />;
+      if (window.location.pathname === sessionPages.resetPassword) return <ResetPasswordPage />;
       return <SignInPage onDone={refresh} />;
     case 'signed-in':
       if (invitationId) {
@@ -180,20 +176,8 @@ function SessionNotice({ message, hint, children }: { message: string; hint?: st
   );
 }
 
-// A product page belongs to the catalog section, and a recognition to the recognition section.
-interface Route {
-  section: SectionPath;
-  productId?: string;
-  recognitionId?: string;
-}
-
 function currentRoute(): Route {
-  const path = window.location.pathname;
-  const product = /^\/products\/([^/]+)$/.exec(path);
-  if (product) return { section: '/products', productId: decodeURIComponent(product[1]!) };
-  const recognition = /^\/recognitions\/([^/]+)$/.exec(path);
-  if (recognition) return { section: '/recognitions', recognitionId: decodeURIComponent(recognition[1]!) };
-  return { section: sections.find((s) => s.path === path)?.path ?? '/' };
+  return routeAt(window.location.pathname) ?? { section: '/' };
 }
 
 // The stylesheet reads the direction from the root element to slide the page in from the matching side.
