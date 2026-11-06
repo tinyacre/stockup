@@ -53,6 +53,9 @@ export function errorReporter({
           };
         }),
     });
+    // The constructor records the SDK's name, version and integrations, which the envelope adds to each event after
+    // beforeSend has run.
+    delete client.getOptions()._metadata;
     client.init();
     return { Sentry, client };
   });
@@ -82,7 +85,8 @@ export function errorReporter({
 // Runs on the event the SDK has finished assembling, which by then holds the host name, the environment, the
 // runtime and trace contexts, and returns a new one with only what the data boundary keeps.
 function withinDataBoundary(event: ErrorEvent, { originalException }: EventHint): ErrorEvent {
-  const { event_id, timestamp, level, platform, release, transaction, tags } = event;
+  const { event_id, timestamp, level, platform, release, transaction } = event;
+  const tags = Object.fromEntries(Object.entries(event.tags ?? {}).filter(([key]) => keptTags.has(key)));
   return {
     type: undefined,
     event_id,
@@ -102,9 +106,16 @@ function withinDataBoundary(event: ErrorEvent, { originalException }: EventHint)
   };
 }
 
+const keptTags = new Set(['http.method', 'http.status_code', 'task']);
+
 function keptFrame({ function: fn, filename, lineno, colno, in_app }: StackFrame): StackFrame {
-  const inRepository = filename?.startsWith(`${root}/`);
-  return { function: fn, filename: inRepository ? path.relative(root, filename!) : filename, lineno, colno, in_app };
+  return { function: fn, filename: filename && reportedFileName(filename), lineno, colno, in_app };
+}
+
+// A path outside the repository names a directory of the host, such as a home directory holding a package cache.
+function reportedFileName(file: string) {
+  if (!path.isAbsolute(file)) return file;
+  return file.startsWith(`${root}/`) ? path.relative(root, file) : path.basename(file);
 }
 
 // A failed query's message lists its parameters, which hold what members entered, and the database's own message

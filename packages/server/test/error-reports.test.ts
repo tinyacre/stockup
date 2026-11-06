@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { DrizzleQueryError, sql } from 'drizzle-orm';
 import { errorReporter } from '../src/error-reports';
@@ -58,10 +59,8 @@ describe('server error reports', () => {
     const res = await m.request(`/api/recognitions/${id}/screenshot?token=secret`);
 
     expect(res.status).toBe(500);
-    const [event, ...more] = await delivered();
+    const [kept, ...more] = await delivered();
     expect(more).toEqual([]);
-    const { sdk, ...kept } = event!;
-    expect(sdk).toBeDefined();
     expect(kept).toEqual({
       event_id: expect.any(String),
       timestamp: expect.any(Number),
@@ -80,13 +79,43 @@ describe('server error reports', () => {
         ],
       },
     });
-    const { frames } = (kept.exception as { values: [{ stacktrace: { frames: Record<string, unknown>[] } }] }).values[0]
-      .stacktrace;
+    const { frames } = (kept!.exception as { values: [{ stacktrace: { frames: Record<string, unknown>[] } }] })
+      .values[0].stacktrace;
     for (const frame of frames) expect(allowedFrameFields).toEqual(expect.arrayContaining(Object.keys(frame)));
     expect(frames).toContainEqual(
       expect.objectContaining({ filename: 'packages/server/test/error-reports.test.ts', in_app: true }),
     );
     expect(glitchtip.urls).toEqual([expect.stringMatching(/^https:\/\/errors\.example\.com\/api\/5\/envelope\//)]);
+  });
+
+  test('tags set anywhere but the report itself stay out', async () => {
+    const Sentry = await import('@sentry/bun');
+    Sentry.getGlobalScope().setTag('server_name', 'stockup-prod-1');
+    Sentry.getIsolationScope().setTag('household', 'household-1');
+    try {
+      reporter.task('recognition', new Error('recognition 01J failed'));
+      const [event] = await delivered();
+      expect(event!.tags).toEqual({ task: 'recognition' });
+    } finally {
+      Sentry.getGlobalScope().setTag('server_name', undefined);
+      Sentry.getIsolationScope().setTag('household', undefined);
+    }
+  });
+
+  test('a frame outside the repository is named by its file alone', async () => {
+    const error = new Error('recognition 01J failed');
+    error.stack = [
+      'Error: recognition 01J failed',
+      '    at parse (/home/builder/.bun/install/cache/zod@4.6.7/index.js:10:5)',
+      `    at recognize (${path.resolve(import.meta.dir, '../src/recognitions.ts')}:90:20)`,
+    ].join('\n');
+
+    reporter.task('recognition', error);
+
+    const [event] = await delivered();
+    const { frames } = (event!.exception as { values: [{ stacktrace: { frames: Record<string, unknown>[] } }] })
+      .values[0].stacktrace;
+    expect(frames.map((f) => f.filename)).toEqual(['packages/server/src/recognitions.ts', 'index.js']);
   });
 
   test("a failed query reports its SQL and SQLSTATE, never its parameters or the database's message", async () => {
